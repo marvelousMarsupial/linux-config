@@ -14,10 +14,7 @@ themes:
 templates:
   - name: tmux
     repo: https://github.com/mattdavis90/base16-tmux.git
+  - name: vim
+    repo: https://github.com/tinted-theming/base16-vim.git
 
 default_theme: mocha
-
-# Available schemes:
-# - mocha, frappe, latte, macchiato (catppuccin)
-# - gruvbox-dark-hard, gruvbox-dark-medium, gruvbox-dark-soft
-# - gruvbox-light-hard, gruvbox-light-medium, gruvbox-light-soft

@@ -45,9 +45,17 @@
     dest: ~/.config/flavours/config.toml
     content: |
       shell = "bash -c '{}'"
-      
+
       [[items]]
       file = "~/.tmux.conf"
       template = "tmux"
       subtemplate = "base16"
+      rewrite = true
+
+      [[items]]
+      file = "~/.config/nvim/lua/theme.lua"
+      template = "vim"
+      subtemplate = "tinted-vim"
+      start = ""
+      end = ""
       rewrite = true
