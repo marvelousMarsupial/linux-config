@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage: theme gruvbox | theme catppuccin
+# Usage: theme gruvbox | theme catppuccin | theme rose-pine
 
 case "$1" in
   gruvbox)
@@ -11,11 +11,17 @@ case "$1" in
   catppuccin|mocha)
     YAZI_THEME="catppuccin-mocha"
     NVIM_THEME="base16-catppuccin-mocha"
-    TMUX_THEME="mocha"
+    TMUX_THEME="catppuccin-mocha"
     SHELL_THEME="base16-catppuccin-mocha"
     ;;
+  rose-pine|rosepine)
+    YAZI_THEME="rose-pine"
+    NVIM_THEME="base16-rose-pine"
+    TMUX_THEME="rose-pine"
+    SHELL_THEME="base16-rose-pine"
+    ;;
   *)
-    echo "Usage: theme [gruvbox|catppuccin]"
+    echo "Usage: theme [gruvbox|catppuccin|rose-pine]"
     exit 1
     ;;
 esac
