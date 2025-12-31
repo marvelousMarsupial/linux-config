@@ -1,0 +1,7 @@
+---
+- name: Deploy workstation
+  hosts: localhost
+  connection: local
+  become: yes
+  roles:
+    - server

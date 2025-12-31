@@ -1,0 +1,13 @@
+---
+- name: Download Yazi
+  ansible.builtin.get_url:
+    url: https://github.com/sxyazi/yazi/releases/latest/download/yazi-x86_64-unknown-linux-gnu.zip
+    dest: /tmp/yazi.zip
+
+- name: Extract and install Yazi
+  ansible.builtin.shell: |
+    unzip -o /tmp/yazi.zip -d /tmp/yazi
+    mv /tmp/yazi/yazi-x86_64-unknown-linux-gnu/yazi /usr/local/bin/
+    chmod +x /usr/local/bin/yazi
+  args:
+    creates: /usr/local/bin/yazi

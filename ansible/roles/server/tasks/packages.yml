@@ -1,0 +1,21 @@
+---
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - zsh
+      - zsh-autosuggestions
+      - zsh-syntax-highlighting
+      - neovim
+      - btop
+      - bat
+      - eza
+      - fd-find
+      - ripgrep
+      - git
+      - curl
+      - wget
+      - tmux
+      - stow
+      - unzip
+    state: present
+    update_cache: yes
