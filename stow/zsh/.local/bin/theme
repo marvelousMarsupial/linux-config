@@ -1,0 +1,50 @@
+#!/bin/bash
+# Usage: theme gruvbox | theme catppuccin
+
+case "$1" in
+  gruvbox)
+    YAZI_THEME="gruvbox-dark"
+    NVIM_THEME="base16-gruvbox-dark-hard"
+    TMUX_THEME="gruvbox-dark-hard"
+    SHELL_THEME="base16-gruvbox-dark-hard"
+    ;;
+  catppuccin|mocha)
+    YAZI_THEME="catppuccin-mocha"
+    NVIM_THEME="base16-catppuccin-mocha"
+    TMUX_THEME="mocha"
+    SHELL_THEME="base16-catppuccin-mocha"
+    ;;
+  *)
+    echo "Usage: theme [gruvbox|catppuccin]"
+    exit 1
+    ;;
+esac
+
+# Terminal colors
+[ -f ~/.local/share/base16-shell/scripts/${SHELL_THEME}.sh ] && source ~/.local/share/base16-shell/scripts/${SHELL_THEME}.sh
+
+# Yazi
+cat > ~/.config/yazi/theme.toml << EOFYAZI
+[flavor]
+dark = "$YAZI_THEME"
+EOFYAZI
+
+# Nvim
+cat > ~/.config/nvim/lua/plugins/colorscheme.lua << EOFNVIM
+return {
+  {
+    "tinted-theming/tinted-vim",
+    lazy = false,
+    priority = 1000,
+    config = function()
+      vim.cmd("colorscheme $NVIM_THEME")
+    end,
+  },
+}
+EOFNVIM
+
+# Tmux via flavours
+flavours apply "$TMUX_THEME"
+tmux source-file ~/.tmux.conf 2>/dev/null
+
+echo "Switched to $1"

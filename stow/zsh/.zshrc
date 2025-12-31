@@ -1,6 +1,8 @@
 # PATH
 export PATH="$HOME/.local/bin:$PATH"
 export VIMRUNTIME="$HOME/.local/nvim-runtime/usr/share/nvim/runtime"
+# Base16 shell colors
+[ -f ~/.local/share/base16-shell/profile_helper.sh ] && source ~/.local/share/base16-shell/profile_helper.sh
 
 # Plugins
 source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
