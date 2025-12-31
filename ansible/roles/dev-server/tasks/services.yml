@@ -1,0 +1,58 @@
+---
+- name: Create service scripts directory
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.local/bin"
+    state: directory
+  become: false
+
+- name: Create coder-start script
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.local/bin/coder-start"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      code-server --bind-addr 0.0.0.0:8080 --auth password &
+      echo "Coder running at http://$(hostname -I | awk '{print $1}'):8080"
+      echo "Password in ~/.config/code-server/config.yaml"
+  become: false
+
+- name: Create coder-stop script
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.local/bin/coder-stop"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      pkill -f code-server
+  become: false
+
+- name: Create jupyter-start script
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.local/bin/jupyter-start"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      source ~/.venv/jupyter/bin/activate
+      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser &
+      echo "JupyterLab at http://$(hostname -I | awk '{print $1}'):8888"
+  become: false
+
+- name: Create jupyter-stop script
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.local/bin/jupyter-stop"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      pkill -f jupyter-lab
+  become: false
+
+- name: Add dev-server aliases
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_env.HOME }}/.zsh_aliases"
+    marker: "# {mark} DEV-SERVER ALIASES"
+    block: |
+      alias cstart='coder-start'
+      alias cstop='coder-stop'
+      alias jstart='jupyter-start'
+      alias jstop='jupyter-stop'
+      alias lg='lazygit'
+  become: false

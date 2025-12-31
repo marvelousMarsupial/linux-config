@@ -1,0 +1,19 @@
+---
+- name: Include server role
+  ansible.builtin.include_role:
+    name: server
+
+- name: Import dev-server tasks
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Import npm tasks
+  ansible.builtin.import_tasks: npm.yml
+
+- name: Import binaries tasks
+  ansible.builtin.import_tasks: binaries.yml
+
+- name: Import jupyter tasks
+  ansible.builtin.import_tasks: jupyter.yml
+
+- name: Import services tasks
+  ansible.builtin.import_tasks: services.yml

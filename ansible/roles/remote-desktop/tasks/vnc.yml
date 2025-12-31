@@ -1,0 +1,58 @@
+---
+- name: Install VNC packages
+  ansible.builtin.apt:
+    name:
+      - tigervnc-standalone-server
+      - tigervnc-common
+    state: present
+
+- name: Create VNC directory
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.vnc"
+    state: directory
+  become: false
+
+- name: Create VNC xstartup
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.vnc/xstartup"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      exec sway
+  become: false
+
+- name: Create VNC config
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.vnc/config"
+    content: |
+      geometry=1920x1080
+      depth=24
+  become: false
+
+- name: Create vnc-start script
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.local/bin/vnc-start"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      vncserver :1 -localhost no
+      echo "VNC running on $(hostname -I | awk '{print $1}'):5901"
+  become: false
+
+- name: Create vnc-stop script
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.local/bin/vnc-stop"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      vncserver -kill :1
+  become: false
+
+- name: Add VNC aliases
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_env.HOME }}/.zsh_aliases"
+    marker: "# {mark} VNC ALIASES"
+    block: |
+      alias vstart='vnc-start'
+      alias vstop='vnc-stop'
+  become: false

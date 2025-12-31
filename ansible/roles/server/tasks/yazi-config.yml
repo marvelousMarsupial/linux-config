@@ -11,16 +11,16 @@
   ansible.builtin.git:
     repo: https://github.com/yazi-rs/flavors.git
     dest: /tmp/yazi-flavors
-    update: yes
+    update: true
 
 - name: Copy catppuccin-mocha flavor
   ansible.builtin.copy:
     src: /tmp/yazi-flavors/catppuccin-mocha.yazi/
     dest: "{{ ansible_env.HOME }}/.config/yazi/flavors/catppuccin-mocha.yazi/"
-    remote_src: yes
+    remote_src: true
 
 - name: Clone yazi gruvbox flavor
   ansible.builtin.git:
     repo: https://github.com/bennyyip/gruvbox-dark.yazi.git
     dest: "{{ ansible_env.HOME }}/.config/yazi/flavors/gruvbox-dark.yazi"
-    update: yes
+    update: true

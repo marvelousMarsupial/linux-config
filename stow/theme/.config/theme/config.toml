@@ -1,0 +1,103 @@
+# Theme switcher configuration
+
+[settings]
+schemes_dir = "~/.config/theme/schemes"
+templates_dir = "~/.config/theme/templates"
+cache_dir = "~/.cache/theme"
+
+# Scheme-specific overrides
+# yazi_flavor is optional - if not set, base16 colors are used directly
+
+[scheme_meta.gruvbox-dark-hard]
+scheme_slug = "gruvbox-dark-hard"
+yazi_flavor = "gruvbox-dark"
+
+[scheme_meta.catppuccin-mocha]
+scheme_slug = "catppuccin-mocha"
+yazi_flavor = "catppuccin-mocha"
+
+[scheme_meta.summerfruit-dark]
+scheme_slug = "summerfruit-dark"
+
+[scheme_meta.summerfruit-light]
+scheme_slug = "summerfruit-light"
+
+[scheme_meta.ayu-light]
+scheme_slug = "ayu-light"
+
+[scheme_meta.kanagawa]
+scheme_slug = "kanagawa"
+
+# ============ Server targets ============
+
+[[targets]]
+name = "tmux"
+template = "tmux.conf.j2"
+output = "~/.tmux.conf"
+hook = "tmux source-file ~/.tmux.conf"
+
+[[targets]]
+name = "neovim"
+template = "colorscheme.lua.j2"
+output = "~/.config/nvim/lua/plugins/colorscheme.lua"
+
+[[targets]]
+name = "yazi"
+template = "yazi-theme.toml.j2"
+output = "~/.config/yazi/theme.toml"
+
+# ============ Desktop targets ============
+
+[[targets]]
+name = "foot"
+template = "foot.ini.j2"
+output = "~/.config/foot/colors.ini"
+hook = "pkill -SIGUSR1 foot"
+
+[[targets]]
+name = "sway"
+template = "sway-colors.j2"
+output = "~/.config/sway/colors"
+hook = "swaymsg reload"
+
+[[targets]]
+name = "mako"
+template = "mako.j2"
+output = "~/.config/mako/config"
+hook = "makoctl reload"
+
+[[targets]]
+name = "fuzzel"
+template = "fuzzel.ini.j2"
+output = "~/.config/fuzzel/colors.ini"
+
+# ============ GTK targets ============
+
+[[targets]]
+name = "gtk3"
+template = "gtk3.css.j2"
+output = "~/.config/gtk-3.0/gtk.css"
+
+[[targets]]
+name = "gtk4"
+template = "gtk4.css.j2"
+output = "~/.config/gtk-4.0/gtk.css"
+
+# ============ App targets ============
+
+[[targets]]
+name = "obsidian"
+template = "obsidian.css.j2"
+output = "~/Documents/Obsidian/*/.obsidian/snippets/base16-theme.css"
+
+[[targets]]
+name = "zen"
+template = "zen-userchrome.css.j2"
+output = "~/.zen/*/chrome/userChrome.css"
+restart = "Zen Browser"
+
+[[targets]]
+name = "zen-flatpak"
+template = "zen-userchrome.css.j2"
+output = "~/.var/app/app.zen_browser.zen/.zen/*/chrome/userChrome.css"
+restart = "Zen Browser"

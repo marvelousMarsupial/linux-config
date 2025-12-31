@@ -1,0 +1,12 @@
+---
+- name: Create jupyter venv
+  ansible.builtin.command:
+    cmd: python3 -m venv {{ ansible_env.HOME }}/.venv/jupyter
+    creates: "{{ ansible_env.HOME }}/.venv/jupyter"
+  become: false
+
+- name: Install jupyterlab in venv
+  ansible.builtin.pip:
+    name: jupyterlab
+    virtualenv: "{{ ansible_env.HOME }}/.venv/jupyter"
+  become: false

@@ -1,0 +1,39 @@
+---
+# Setup Zen Browser for userChrome.css theming
+
+- name: Find Zen profile directories
+  ansible.builtin.find:
+    paths:
+      - "{{ ansible_env.HOME }}/.zen"
+      - "{{ ansible_env.HOME }}/.var/app/app.zen_browser.zen/.zen"
+    file_type: directory
+    patterns: "*.default*"
+  register: zen_profiles
+  ignore_errors: true
+
+- name: Create chrome directories in Zen profiles
+  ansible.builtin.file:
+    path: "{{ item.path }}/chrome"
+    state: directory
+  loop: "{{ zen_profiles.files | default([]) }}"
+  become: false
+
+- name: Enable userChrome.css in Zen profiles
+  ansible.builtin.copy:
+    dest: "{{ item.path }}/user.js"
+    content: |
+      // Enable custom CSS
+      user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
+  loop: "{{ zen_profiles.files | default([]) }}"
+  become: false
+
+# Setup GTK config directories
+
+- name: Create GTK config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ ansible_env.HOME }}/.config/gtk-3.0"
+    - "{{ ansible_env.HOME }}/.config/gtk-4.0"
+  become: false

@@ -1,6 +1,0 @@
----
-- name: Clone base16-shell
-  ansible.builtin.git:
-    repo: https://github.com/tinted-theming/base16-shell.git
-    dest: "{{ ansible_env.HOME }}/.local/share/base16-shell"
-    update: yes

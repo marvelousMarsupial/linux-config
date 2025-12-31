@@ -2,6 +2,8 @@
 - name: Deploy workstation
   hosts: localhost
   connection: local
-  become: yes
+  become: true
+  vars:
+    deploy_role: "{{ role | default('server') }}"
   roles:
-    - server
+    - "{{ deploy_role }}"

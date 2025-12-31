@@ -1,0 +1,16 @@
+---
+- name: Include server role
+  ansible.builtin.include_role:
+    name: server
+
+- name: Import desktop packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Import flatpak tasks
+  ansible.builtin.import_tasks: flatpak.yml
+
+- name: Import dotfiles tasks
+  ansible.builtin.import_tasks: dotfiles.yml
+
+- name: Import browser theming tasks
+  ansible.builtin.import_tasks: browser-theming.yml

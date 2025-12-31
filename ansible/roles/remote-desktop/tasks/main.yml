@@ -1,0 +1,7 @@
+---
+- name: Include desktop role
+  ansible.builtin.include_role:
+    name: desktop
+
+- name: Import VNC tasks
+  ansible.builtin.import_tasks: vnc.yml

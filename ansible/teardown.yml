@@ -1,0 +1,12 @@
+---
+- name: Teardown workstation
+  hosts: localhost
+  connection: local
+  become: true
+  vars:
+    teardown_role: "{{ role | default('server') }}"
+  tasks:
+    - name: Include teardown tasks
+      ansible.builtin.include_role:
+        name: "{{ teardown_role }}"
+        tasks_from: teardown.yml

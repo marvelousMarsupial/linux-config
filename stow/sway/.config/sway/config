@@ -1,0 +1,96 @@
+# Sway config
+
+set $mod Mod4
+set $term foot
+set $menu fuzzel
+
+# Include theme colors
+include ~/.config/sway/colors
+
+# Basic settings
+default_border pixel 2
+gaps inner 5
+focus_follows_mouse yes
+
+# Key bindings
+bindsym $mod+Return exec $term
+bindsym $mod+d exec $menu
+bindsym $mod+Shift+q kill
+bindsym $mod+Shift+c reload
+bindsym $mod+Shift+e exec swaymsg exit
+
+# Lock
+bindsym $mod+l exec swaylock -c 000000
+
+# Screenshot
+bindsym $mod+Shift+s exec grim -g "$(slurp)" - | wl-copy
+
+# USB eject
+bindsym $mod+u exec udiskie-umount -a && notify-send "USB" "All devices ejected"
+
+# Status notification
+bindsym $mod+b exec notify-send "$(date +%H:%M) | $(cat /sys/class/power_supply/BAT*/capacity 2>/dev/null || echo AC)% | $(nmcli -t -f NAME c show --active | head -1)"
+
+# Clipboard history
+bindsym $mod+v exec cliphist list | fuzzel -d | cliphist decode | wl-copy
+
+# Floating
+bindsym $mod+Shift+space floating toggle
+bindsym $mod+s sticky toggle
+
+# Scratchpad
+bindsym $mod+minus scratchpad show
+bindsym $mod+Shift+minus move scratchpad
+
+# Focus
+bindsym $mod+Left focus left
+bindsym $mod+Down focus down
+bindsym $mod+Up focus up
+bindsym $mod+Right focus right
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+# $mod+l is lock
+
+# Move
+bindsym $mod+Shift+Left move left
+bindsym $mod+Shift+Down move down
+bindsym $mod+Shift+Up move up
+bindsym $mod+Shift+Right move right
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+
+# Workspaces
+bindsym $mod+1 workspace 1
+bindsym $mod+2 workspace 2
+bindsym $mod+3 workspace 3
+bindsym $mod+4 workspace 4
+bindsym $mod+5 workspace 5
+bindsym $mod+Shift+1 move container to workspace 1
+bindsym $mod+Shift+2 move container to workspace 2
+bindsym $mod+Shift+3 move container to workspace 3
+bindsym $mod+Shift+4 move container to workspace 4
+bindsym $mod+Shift+5 move container to workspace 5
+
+# Resize mode
+mode "resize" {
+    bindsym Left resize shrink width 10px
+    bindsym Down resize grow height 10px
+    bindsym Up resize shrink height 10px
+    bindsym Right resize grow width 10px
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+}
+bindsym $mod+r mode "resize"
+
+# Autostart
+exec mako
+exec udiskie
+exec wl-paste --watch cliphist store
+exec swayidle -w \
+    timeout 300 'swaylock -c 000000' \
+    timeout 600 'swaymsg "output * dpms off"' \
+    resume 'swaymsg "output * dpms on"' \
+    before-sleep 'swaylock -c 000000'

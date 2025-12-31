@@ -9,31 +9,28 @@ alias -- -='cd -'
 # Safety
 alias cp='cp -iv'
 alias mv='mv -iv'
-alias rm='mv -t ~/.trash'
+alias rm='trash-put'
 
 # Listing
-alias l='ls -lah'
-alias lt='ls -lahtr'
-alias ls='eza'
+alias l='eza -lah'
 alias la='eza -la'
 alias ll='eza -l'
+alias lt='eza -lahT'
+alias ls='eza'
 alias tree='eza --tree'
-alias cat='batcat'
-alias bat='batcat'
+alias cat='bat'
 
-# System Info
+# System
 alias ip='ip -br -c'
 alias ports='ss -tulanp'
 alias df='df -h'
 alias free='free -h'
 alias dmesg='dmesg -T'
-
-# Process/Resource
 alias topmem='ps aux --sort=-%mem | head'
 alias topcpu='ps aux --sort=-%cpu | head'
 alias psg='ps aux | grep'
 
-# Disk Usage
+# Disk
 alias du='du -h'
 alias dud='du -d 1 -h'
 alias duf='du -sh *'
@@ -41,17 +38,40 @@ alias duf='du -sh *'
 # Network
 alias myip='curl -s ifconfig.me'
 alias ping='ping -c 5'
+alias listening='ss -tlnp'
+alias connections='ss -tnp'
 alias wgup='sudo wg-quick up wg0'
 alias wgdown='sudo wg-quick down wg0'
 
-# Quick Tools
+# Systemd
+alias sc='sudo systemctl'
+alias scs='sudo systemctl status'
+alias scr='sudo systemctl restart'
+alias sce='sudo systemctl enable --now'
+alias scd='sudo systemctl disable --now'
+alias scdr='sudo systemctl daemon-reload'
+alias jc='journalctl'
+alias jcf='journalctl -f'
+alias jce='journalctl -xe'
+
+# Quick tools
 alias v='nvim'
+alias y='yazi'
 alias t='date +%H:%M'
 alias weather='curl wttr.in'
 alias serve='python3 -m http.server'
 alias please='sudo $(fc -ln -1)'
 alias ag='alias | grep'
-alias fixusb='udiskie-umount -a'
+alias fd='fdfind'
+
+# History & Config
+alias h='history -10'
+alias hg='history | grep'
+alias reload='source ~/.zshrc'
+
+# Clipboard (wayland)
+alias clip='wl-copy'
+alias paste='wl-paste'
 
 # Archives
 alias untar='tar -xvf'
@@ -65,18 +85,22 @@ alias findf='find . -type f -name'
 alias g='git'
 alias gs='git status'
 alias ga='git add'
+alias gaa='git add -A'
 alias gc='git commit'
+alias gcm='git commit -m'
+alias gca='git commit --amend'
 alias gp='git push'
+alias gpf='git push --force-with-lease'
+alias gpl='git pull'
 alias gl='git log --oneline'
+alias glog='git log --oneline --graph --decorate'
 alias gd='git diff'
-
-# VM (virsh/libvirt)
-alias vm='virt-manager'
-alias vmlist='virsh list --all'
-alias vmstart='virsh start'
-alias vmstop='virsh shutdown'
-alias vmkill='virsh destroy'
-alias vmsnap='virsh snapshot-create-as'
+alias gco='git checkout'
+alias gb='git branch'
+alias gm='git merge'
+alias grb='git rebase'
+alias gst='git stash'
+alias gstp='git stash pop'
 
 # Global Aliases (zsh only)
 alias -g G='| grep'
@@ -87,3 +111,13 @@ alias -g W='| wc -l'
 alias -g S='| sort'
 alias -g U='| sort -u'
 alias -g J='| jq'
+
+# Suffix Aliases (zsh only - open with nvim)
+alias -s md='nvim'
+alias -s txt='nvim'
+alias -s json='nvim'
+alias -s yaml='nvim'
+alias -s yml='nvim'
+alias -s py='nvim'
+alias -s lua='nvim'
+alias -s sh='nvim'

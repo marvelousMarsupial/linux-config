@@ -1,0 +1,30 @@
+---
+# Teardown dev-server role
+
+- name: Include server teardown
+  ansible.builtin.include_tasks: "{{ role_path }}/../server/tasks/teardown.yml"
+
+- name: Remove dev-server scripts
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ ansible_env.HOME }}/.local/bin/coder-start"
+    - "{{ ansible_env.HOME }}/.local/bin/coder-stop"
+    - "{{ ansible_env.HOME }}/.local/bin/jupyter-start"
+    - "{{ ansible_env.HOME }}/.local/bin/jupyter-stop"
+  become: false
+
+- name: Remove jupyter venv
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.venv/jupyter"
+    state: absent
+  become: false
+
+- name: Remove dev-server aliases block
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_env.HOME }}/.zsh_aliases"
+    marker: "# {mark} DEV-SERVER ALIASES"
+    state: absent
+  become: false
+  ignore_errors: true

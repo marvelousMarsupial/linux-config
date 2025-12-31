@@ -5,16 +5,19 @@
       - zsh
       - zsh-autosuggestions
       - zsh-syntax-highlighting
+      - tmux
+      - git
+      - curl
+      - wget
+      - stow
+      - unzip
       - btop
       - bat
       - eza
       - fd-find
       - ripgrep
-      - git
-      - curl
-      - wget
-      - tmux
-      - stow
-      - unzip
+      - trash-cli
+      - python3-yaml
+      - python3-jinja2
     state: present
-    update_cache: yes
+    update_cache: true

@@ -1,0 +1,26 @@
+---
+# Teardown desktop role
+
+- name: Include server teardown
+  ansible.builtin.include_tasks: "{{ role_path }}/../server/tasks/teardown.yml"
+
+- name: Remove desktop stow symlinks
+  ansible.builtin.shell: |
+    cd {{ ansible_env.HOME }}/linux-config/stow
+    stow -D -t {{ ansible_env.HOME }} sway foot fuzzel mako 2>/dev/null || true
+  become: false
+  ignore_errors: true
+
+- name: Remove desktop theme files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ ansible_env.HOME }}/.config/foot/colors.ini"
+    - "{{ ansible_env.HOME }}/.config/sway/colors"
+    - "{{ ansible_env.HOME }}/.config/fuzzel/colors.ini"
+  become: false
+
+- name: Note about Flatpaks
+  ansible.builtin.debug:
+    msg: "Flatpak apps not removed. Run 'flatpak uninstall' manually."

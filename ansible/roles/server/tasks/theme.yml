@@ -1,0 +1,32 @@
+---
+- name: Install theme dependencies
+  ansible.builtin.apt:
+    name:
+      - python3-yaml
+      - python3-jinja2
+    state: present
+
+- name: Stow theme configuration
+  ansible.builtin.shell: |
+    cd {{ ansible_env.HOME }}/linux-config/stow
+    stow -t {{ ansible_env.HOME }} theme
+  args:
+    creates: "{{ ansible_env.HOME }}/.config/theme/config.toml"
+
+- name: Create app config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ ansible_env.HOME }}/.config/foot"
+    - "{{ ansible_env.HOME }}/.config/sway"
+    - "{{ ansible_env.HOME }}/.config/mako"
+    - "{{ ansible_env.HOME }}/.config/fuzzel"
+    - "{{ ansible_env.HOME }}/.config/yazi"
+    - "{{ ansible_env.HOME }}/.config/nvim/lua/plugins"
+    - "{{ ansible_env.HOME }}/.cache/theme"
+
+- name: Apply default theme
+  ansible.builtin.command:
+    cmd: "{{ ansible_env.HOME }}/.local/bin/theme apply {{ default_theme }}"
+  changed_when: true

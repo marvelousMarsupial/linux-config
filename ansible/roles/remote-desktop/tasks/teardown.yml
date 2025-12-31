@@ -1,0 +1,33 @@
+---
+# Teardown remote-desktop role
+
+- name: Include desktop teardown
+  ansible.builtin.include_tasks: "{{ role_path }}/../desktop/tasks/teardown.yml"
+
+- name: Stop VNC if running
+  ansible.builtin.shell: vncserver -kill :1 2>/dev/null || true
+  become: false
+  ignore_errors: true
+
+- name: Remove VNC config
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.vnc"
+    state: absent
+  become: false
+
+- name: Remove VNC scripts
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ ansible_env.HOME }}/.local/bin/vnc-start"
+    - "{{ ansible_env.HOME }}/.local/bin/vnc-stop"
+  become: false
+
+- name: Remove VNC aliases block
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_env.HOME }}/.zsh_aliases"
+    marker: "# {mark} VNC ALIASES"
+    state: absent
+  become: false
+  ignore_errors: true

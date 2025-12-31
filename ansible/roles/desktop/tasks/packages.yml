@@ -1,0 +1,27 @@
+---
+- name: Install desktop packages
+  ansible.builtin.apt:
+    name:
+      - sway
+      - swaylock
+      - swayidle
+      - foot
+      - fuzzel
+      - mako-notifier
+      - grim
+      - slurp
+      - wl-clipboard
+      - cliphist
+      - network-manager
+      - udiskie
+      - udisks2
+      - wireguard-tools
+      - libnotify-bin
+      - brightnessctl
+      - playerctl
+      - pipewire
+      - pipewire-pulse
+      - wireplumber
+      - xdg-desktop-portal-wlr
+      - flatpak
+    state: present

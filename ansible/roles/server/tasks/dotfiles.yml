@@ -27,4 +27,4 @@
   ansible.builtin.copy:
     src: "{{ ansible_env.HOME }}/linux-config/stow/nvim/.config/nvim/lua/"
     dest: "{{ ansible_env.HOME }}/.config/nvim/lua/"
-    remote_src: yes
+    remote_src: true

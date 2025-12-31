@@ -1,0 +1,157 @@
+#!/bin/bash
+# Dotfiles manager CLI
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ANSIBLE_DIR="$SCRIPT_DIR/ansible"
+
+usage() {
+    cat <<EOF
+Usage: dotfiles <command> [options]
+
+Commands:
+    setup <role>      Install a role (server, dev-server, desktop, remote-desktop)
+    teardown [role]   Remove current role (or specify role)
+    switch <role>     Teardown current and setup new role
+    status            Show current role and theme
+    cleanup           Remove ansible and build dependencies
+    theme             Alias for theme command (theme apply|list|current|preview)
+
+Examples:
+    dotfiles setup server
+    dotfiles switch desktop
+    dotfiles teardown
+    dotfiles cleanup
+    dotfiles theme apply kanagawa
+EOF
+}
+
+get_current_role() {
+    if [ -f ~/.cache/dotfiles/role ]; then
+        cat ~/.cache/dotfiles/role
+    else
+        echo "none"
+    fi
+}
+
+set_current_role() {
+    mkdir -p ~/.cache/dotfiles
+    echo "$1" > ~/.cache/dotfiles/role
+}
+
+cmd_setup() {
+    local role="${1:-server}"
+
+    if [[ ! "$role" =~ ^(server|dev-server|desktop|remote-desktop)$ ]]; then
+        echo "Error: Invalid role '$role'"
+        echo "Valid roles: server, dev-server, desktop, remote-desktop"
+        exit 1
+    fi
+
+    echo "==> Setting up $role..."
+
+    # Install collections if needed
+    if ! ansible-galaxy collection list | grep -q community.general; then
+        echo "==> Installing Ansible collections..."
+        ansible-galaxy collection install -r "$ANSIBLE_DIR/requirements.yml"
+    fi
+
+    # Run playbook
+    ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/playbook.yml" -e "role=$role"
+
+    set_current_role "$role"
+    echo "==> Done! Role '$role' is now active."
+}
+
+cmd_teardown() {
+    local role="${1:-$(get_current_role)}"
+
+    if [ "$role" = "none" ]; then
+        echo "No role currently installed."
+        exit 0
+    fi
+
+    echo "==> Tearing down $role..."
+    ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/teardown.yml" -e "role=$role"
+
+    set_current_role "none"
+    echo "==> Teardown complete."
+}
+
+cmd_switch() {
+    local new_role="$1"
+
+    if [ -z "$new_role" ]; then
+        echo "Error: Specify role to switch to"
+        exit 1
+    fi
+
+    local current=$(get_current_role)
+
+    if [ "$current" != "none" ]; then
+        echo "==> Switching from $current to $new_role..."
+        cmd_teardown "$current"
+    fi
+
+    cmd_setup "$new_role"
+}
+
+cmd_status() {
+    local role=$(get_current_role)
+    echo "Role: $role"
+
+    if command -v theme &> /dev/null; then
+        echo -n "Theme: "
+        theme current 2>/dev/null | head -1 || echo "not set"
+    fi
+}
+
+cmd_cleanup() {
+    echo "==> Removing build dependencies..."
+    sudo apt-get remove --purge -y ansible
+    sudo apt-get autoremove -y
+    echo "==> Cleanup complete. Dotfiles still installed, ansible removed."
+}
+
+cmd_theme() {
+    if command -v theme &> /dev/null; then
+        theme "$@"
+    else
+        echo "Theme command not found. Run 'dotfiles setup' first."
+        exit 1
+    fi
+}
+
+# Main
+case "${1:-}" in
+    setup)
+        shift
+        cmd_setup "$@"
+        ;;
+    teardown)
+        shift
+        cmd_teardown "$@"
+        ;;
+    switch)
+        shift
+        cmd_switch "$@"
+        ;;
+    status)
+        cmd_status
+        ;;
+    cleanup)
+        cmd_cleanup
+        ;;
+    theme)
+        shift
+        cmd_theme "$@"
+        ;;
+    -h|--help|help|"")
+        usage
+        ;;
+    *)
+        echo "Unknown command: $1"
+        usage
+        exit 1
+        ;;
+esac

@@ -2,19 +2,7 @@
 gitea_url: "http://git.rat"
 gitea_user: "August"
 gitea_repo: "linux-config"
-bin_base_url: "{{ gitea_url }}/{{ gitea_user }}/{{ gitea_repo }}/raw/branch/main/binaries"
+bin_base_url: >-
+  {{ gitea_url }}/{{ gitea_user }}/{{ gitea_repo }}/raw/branch/main/binaries
 
-themes:
-  - name: catppuccin
-    repo: https://github.com/catppuccin/base16.git
-  - name: gruvbox
-    repo: https://github.com/dawikur/base16-gruvbox-scheme.git
-  # rose-pine yaml format incompatible with flavours
-
-templates:
-  - name: tmux
-    repo: https://github.com/mattdavis90/base16-tmux.git
-  - name: vim
-    repo: https://github.com/tinted-theming/base16-vim.git
-
-default_theme: mocha
+default_theme: catppuccin-mocha

@@ -1,0 +1,17 @@
+---
+- name: Install development packages
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - cmake
+      - pkg-config
+      - clang
+      - clang-format
+      - gdb
+      - valgrind
+      - nodejs
+      - npm
+      - python3
+      - python3-pip
+      - python3-venv
+    state: present

@@ -1,0 +1,15 @@
+---
+- name: Add Flathub remote
+  community.general.flatpak_remote:
+    name: flathub
+    flatpakrepo_url: https://flathub.org/repo/flathub.flatpakrepo
+    state: present
+
+- name: Install Flatpak apps
+  community.general.flatpak:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - md.obsidian.Obsidian
+    - app.zen_browser.zen
+    - org.keepassxc.KeePassXC
