@@ -1,5 +1,23 @@
 ---
-gitea_url: "http://10.10.10.31:3000"
+gitea_url: "http://git.rat"
 gitea_user: "August"
 gitea_repo: "linux-config"
 bin_base_url: "{{ gitea_url }}/{{ gitea_user }}/{{ gitea_repo }}/raw/branch/main/binaries"
+
+themes:
+  - name: catppuccin
+    repo: https://github.com/catppuccin/base16.git
+  - name: gruvbox
+    repo: https://github.com/dawikur/base16-gruvbox-scheme.git
+  # rose-pine yaml format incompatible with flavours
+
+templates:
+  - name: tmux
+    repo: https://github.com/mattdavis90/base16-tmux.git
+
+default_theme: mocha
+
+# Available schemes:
+# - mocha, frappe, latte, macchiato (catppuccin)
+# - gruvbox-dark-hard, gruvbox-dark-medium, gruvbox-dark-soft
+# - gruvbox-light-hard, gruvbox-light-medium, gruvbox-light-soft

@@ -1,0 +1,17 @@
+# Flavours configuration
+shell = "bash -c '{}'"
+
+[[items]]
+file = "~/.config/starship.toml"
+template = "starship"
+rewrite = true
+
+[[items]]
+file = "~/.tmux.conf"
+template = "tmux"
+rewrite = true
+
+[[items]]
+file = "~/.config/yazi/theme.toml"
+template = "yazi"
+rewrite = true
