@@ -1,0 +1,5 @@
+---
+gitea_url: "http://10.10.10.31:3000"
+gitea_user: "August"
+gitea_repo: "linux-config"
+bin_base_url: "{{ gitea_url }}/{{ gitea_user }}/{{ gitea_repo }}/raw/branch/main/binaries"

@@ -1,0 +1,6 @@
+---
+- name: Install Flavours from repo
+  ansible.builtin.get_url:
+    url: "{{ bin_base_url }}/flavours"
+    dest: /usr/local/bin/flavours
+    mode: '0755'
