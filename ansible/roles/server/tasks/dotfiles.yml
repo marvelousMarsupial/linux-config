@@ -1,0 +1,24 @@
+---
+- name: Create trash directory
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.trash"
+    state: directory
+
+- name: Set zsh as default shell
+  ansible.builtin.user:
+    name: "{{ ansible_user_id }}"
+    shell: /bin/zsh
+
+- name: Remove existing dotfiles
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ ansible_env.HOME }}/.zshrc"
+    - "{{ ansible_env.HOME }}/.zsh_aliases"
+    - "{{ ansible_env.HOME }}/.tmux.conf"
+
+- name: Stow dotfiles
+  ansible.builtin.shell: |
+    cd {{ ansible_env.HOME }}/linux-config/stow
+    stow -t {{ ansible_env.HOME }} zsh tmux

@@ -3,4 +3,6 @@
 - import_tasks: starship.yml
 - import_tasks: yazi.yml
 - import_tasks: flavours.yml
-- import_tasks: zsh.yml
+- import_tasks: neovim.yml
+- import_tasks: lazyvim.yml
+- import_tasks: dotfiles.yml

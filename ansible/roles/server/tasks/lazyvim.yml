@@ -1,0 +1,20 @@
+---
+- name: Remove existing nvim config
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ ansible_env.HOME }}/.config/nvim"
+    - "{{ ansible_env.HOME }}/.local/share/nvim"
+    - "{{ ansible_env.HOME }}/.local/state/nvim"
+    - "{{ ansible_env.HOME }}/.cache/nvim"
+
+- name: Clone LazyVim starter
+  ansible.builtin.git:
+    repo: https://github.com/LazyVim/starter
+    dest: "{{ ansible_env.HOME }}/.config/nvim"
+
+- name: Remove LazyVim .git folder
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.config/nvim/.git"
+    state: absent

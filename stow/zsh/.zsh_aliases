@@ -1,0 +1,89 @@
+# Navigation
+alias ..='cd ..'
+alias ...='cd ../..'
+alias ....='cd ../../..'
+alias c='clear'
+alias x='exit'
+alias -- -='cd -'
+
+# Safety
+alias cp='cp -iv'
+alias mv='mv -iv'
+alias rm='mv -t ~/.trash'
+
+# Listing
+alias l='ls -lah'
+alias lt='ls -lahtr'
+alias ls='eza'
+alias la='eza -la'
+alias ll='eza -l'
+alias tree='eza --tree'
+alias cat='batcat'
+alias bat='batcat'
+
+# System Info
+alias ip='ip -br -c'
+alias ports='ss -tulanp'
+alias df='df -h'
+alias free='free -h'
+alias dmesg='dmesg -T'
+
+# Process/Resource
+alias topmem='ps aux --sort=-%mem | head'
+alias topcpu='ps aux --sort=-%cpu | head'
+alias psg='ps aux | grep'
+
+# Disk Usage
+alias du='du -h'
+alias dud='du -d 1 -h'
+alias duf='du -sh *'
+
+# Network
+alias myip='curl -s ifconfig.me'
+alias ping='ping -c 5'
+alias wgup='sudo wg-quick up wg0'
+alias wgdown='sudo wg-quick down wg0'
+
+# Quick Tools
+alias v='nvim'
+alias t='date +%H:%M'
+alias weather='curl wttr.in'
+alias serve='python3 -m http.server'
+alias please='sudo $(fc -ln -1)'
+alias ag='alias | grep'
+alias fixusb='udiskie-umount -a'
+
+# Archives
+alias untar='tar -xvf'
+alias targz='tar -czvf'
+
+# Finding
+alias findd='find . -type d -name'
+alias findf='find . -type f -name'
+
+# Git
+alias g='git'
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+alias gl='git log --oneline'
+alias gd='git diff'
+
+# VM (virsh/libvirt)
+alias vm='virt-manager'
+alias vmlist='virsh list --all'
+alias vmstart='virsh start'
+alias vmstop='virsh shutdown'
+alias vmkill='virsh destroy'
+alias vmsnap='virsh snapshot-create-as'
+
+# Global Aliases (zsh only)
+alias -g G='| grep'
+alias -g L='| less'
+alias -g H='| head'
+alias -g T='| tail'
+alias -g W='| wc -l'
+alias -g S='| sort'
+alias -g U='| sort -u'
+alias -g J='| jq'

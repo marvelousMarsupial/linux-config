@@ -1,0 +1,27 @@
+---
+- name: Create directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - "{{ ansible_env.HOME }}/.local/bin"
+    - "{{ ansible_env.HOME }}/.local"
+
+- name: Download Neovim AppImage
+  ansible.builtin.get_url:
+    url: https://github.com/neovim/neovim/releases/download/v0.11.2/nvim-linux-x86_64.appimage
+    dest: /tmp/nvim.appimage
+    mode: '0755'
+
+- name: Extract Neovim AppImage
+  ansible.builtin.shell: |
+    cd /tmp
+    ./nvim.appimage --appimage-extract
+    rm -rf {{ ansible_env.HOME }}/.local/nvim-runtime
+    mv squashfs-root {{ ansible_env.HOME }}/.local/nvim-runtime
+    rm -f {{ ansible_env.HOME }}/.local/bin/nvim
+    ln -s {{ ansible_env.HOME }}/.local/nvim-runtime/usr/bin/nvim {{ ansible_env.HOME }}/.local/bin/nvim
+    rm nvim.appimage
+  args:
+    creates: "{{ ansible_env.HOME }}/.local/nvim-runtime"
