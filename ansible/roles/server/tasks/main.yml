@@ -1,5 +1,6 @@
 ---
 - import_tasks: packages.yml
+- import_tasks: firewall.yml
 - import_tasks: starship.yml
 - import_tasks: yazi.yml
 - import_tasks: yazi-config.yml

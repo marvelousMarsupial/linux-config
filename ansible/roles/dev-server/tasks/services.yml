@@ -11,24 +11,14 @@
     mode: "0755"
     content: |
       #!/bin/bash
-      # Usage: coder-start [--public]
-      BIND="127.0.0.1"
-      [[ "$1" == "--public" ]] && BIND="0.0.0.0"
-
       if pgrep -f code-server > /dev/null; then
         echo "code-server already running"
         exit 1
       fi
 
-      code-server --bind-addr ${BIND}:8080 --auth password > /dev/null 2>&1 &
+      code-server --bind-addr 0.0.0.0:8080 --auth password > /dev/null 2>&1 &
       sleep 1
-
-      if [[ "$BIND" == "0.0.0.0" ]]; then
-        echo "code-server running at http://$(hostname -I | awk '{print $1}'):8080"
-      else
-        echo "code-server running at http://127.0.0.1:8080 (local only)"
-        echo "Use 'coder-start --public' to expose to network"
-      fi
+      echo "code-server running at http://$(hostname -I | awk '{print $1}'):8080"
       echo "Password: $(grep password ~/.config/code-server/config.yaml | awk '{print $2}')"
   become: false
 
@@ -47,25 +37,15 @@
     mode: "0755"
     content: |
       #!/bin/bash
-      # Usage: jupyter-start [--public]
-      BIND="127.0.0.1"
-      [[ "$1" == "--public" ]] && BIND="0.0.0.0"
-
       if pgrep -f jupyter-lab > /dev/null; then
         echo "jupyter-lab already running"
         exit 1
       fi
 
       source ~/.venv/jupyter/bin/activate
-      jupyter lab --ip=${BIND} --port=8888 --no-browser > /dev/null 2>&1 &
+      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser > /dev/null 2>&1 &
       sleep 2
-
-      if [[ "$BIND" == "0.0.0.0" ]]; then
-        echo "JupyterLab running at http://$(hostname -I | awk '{print $1}'):8888"
-      else
-        echo "JupyterLab running at http://127.0.0.1:8888 (local only)"
-        echo "Use 'jupyter-start --public' to expose to network"
-      fi
+      echo "JupyterLab running at http://$(hostname -I | awk '{print $1}'):8888"
       echo "Token: $(jupyter server list 2>/dev/null | grep -oP 'token=\K[a-f0-9]+')"
   become: false
 

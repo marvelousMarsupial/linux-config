@@ -3,6 +3,9 @@
   ansible.builtin.include_role:
     name: server
 
+- name: Import firewall rules
+  ansible.builtin.import_tasks: firewall.yml
+
 - name: Import dev-server tasks
   ansible.builtin.import_tasks: packages.yml
 
