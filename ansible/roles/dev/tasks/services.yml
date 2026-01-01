@@ -58,14 +58,12 @@
       pkill -f jupyter-lab && echo "jupyter-lab stopped" || echo "jupyter-lab not running"
   become: false
 
-- name: Add dev-server aliases
+- name: Add dev aliases
   ansible.builtin.blockinfile:
     path: "{{ ansible_env.HOME }}/.zsh_aliases"
-    marker: "# {mark} DEV-SERVER ALIASES"
+    marker: "# {mark} DEV ALIASES"
     block: |
-      alias cstart='coder-start'
-      alias cstop='coder-stop'
-      alias jstart='jupyter-start'
-      alias jstop='jupyter-stop'
+      alias coder='coder-start'
+      alias jupyter='jupyter-start'
       alias lg='lazygit'
   become: false
