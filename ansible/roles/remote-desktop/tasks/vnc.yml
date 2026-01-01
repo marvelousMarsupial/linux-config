@@ -35,8 +35,10 @@
     mode: "0755"
     content: |
       #!/bin/bash
-      vncserver :1 -localhost no
-      echo "VNC running on $(hostname -I | awk '{print $1}'):5901"
+      vncserver :1 -localhost yes
+      echo "VNC running on localhost:5901"
+      echo "Tunnel: ssh -L 5901:localhost:5901 $(whoami)@$(hostname -I | awk '{print $1}')"
+      echo "Then connect VNC client to: localhost:5901"
   become: false
 
 - name: Create vnc-stop script

@@ -3,8 +3,5 @@
   ansible.builtin.include_role:
     name: desktop
 
-- name: Import firewall rules
-  ansible.builtin.import_tasks: firewall.yml
-
 - name: Import VNC tasks
   ansible.builtin.import_tasks: vnc.yml

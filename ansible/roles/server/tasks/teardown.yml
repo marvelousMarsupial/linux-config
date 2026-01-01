@@ -63,6 +63,7 @@
       - python3-jinja2
       - python3-yaml
       - ufw
+      - fail2ban
     state: absent
     autoremove: true
   become: true
