@@ -50,6 +50,20 @@ def list_schemes(config: dict) -> list[str]:
     return sorted(p.stem for p in schemes_dir.glob("*.yaml"))
 
 
+def resolve_scheme(scheme_arg: str, schemes: list[str]) -> str | None:
+    """Resolve a scheme by number or name. Returns None if not found."""
+    # Try as number first
+    if scheme_arg.isdigit():
+        idx = int(scheme_arg) - 1  # 1-indexed
+        if 0 <= idx < len(schemes):
+            return schemes[idx]
+        return None
+    # Try as name
+    if scheme_arg in schemes:
+        return scheme_arg
+    return None
+
+
 def get_current_theme(config: dict) -> str | None:
     """Get the currently applied theme."""
     cache_dir = expand_path(config["settings"]["cache_dir"])
@@ -73,6 +87,85 @@ def atomic_write(path: Path, content: str) -> None:
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     tmp_path.write_text(content)
     tmp_path.rename(path)
+
+
+def in_tmux() -> bool:
+    """Check if we're running inside tmux."""
+    return "TMUX" in os.environ
+
+
+def send_osc(seq: str, tty) -> None:
+    """Send an OSC sequence, with tmux passthrough if needed."""
+    if in_tmux():
+        # Tmux requires wrapping OSC sequences for passthrough
+        # \ePtmux;\e<sequence>\e\\
+        seq = seq.replace("\033", "\033\033")
+        tty.write(f"\033Ptmux;{seq}\033\\")
+    else:
+        tty.write(seq)
+
+
+def apply_terminal_colors(scheme: dict) -> None:
+    """Apply colors to the terminal using OSC escape sequences.
+
+    OSC 4 sets indexed colors (0-15 for ANSI palette).
+    OSC 10 sets foreground, OSC 11 sets background, OSC 12 sets cursor.
+
+    Base16 to ANSI mapping:
+      0: base00 (bg)      8: base03 (bright black)
+      1: base08 (red)     9: base08 (bright red)
+      2: base0B (green)  10: base0B (bright green)
+      3: base0A (yellow) 11: base0A (bright yellow)
+      4: base0D (blue)   12: base0D (bright blue)
+      5: base0E (magenta)13: base0E (bright magenta)
+      6: base0C (cyan)   14: base0C (bright cyan)
+      7: base05 (fg)     15: base07 (bright white)
+    """
+    # Write directly to TTY to bypass pipe buffering
+    try:
+        tty = open("/dev/tty", "w")
+    except OSError:
+        # No TTY available (e.g., running in a script), skip terminal colors
+        return
+
+    # Map base16 colors to ANSI color indices
+    ansi_map = {
+        0: "base00",   # black (background)
+        1: "base08",   # red
+        2: "base0B",   # green
+        3: "base0A",   # yellow
+        4: "base0D",   # blue
+        5: "base0E",   # magenta
+        6: "base0C",   # cyan
+        7: "base05",   # white (foreground)
+        8: "base03",   # bright black (comments)
+        9: "base08",   # bright red
+        10: "base0B",  # bright green
+        11: "base0A",  # bright yellow
+        12: "base0D",  # bright blue
+        13: "base0E",  # bright magenta
+        14: "base0C",  # bright cyan
+        15: "base07",  # bright white
+    }
+
+    # Set ANSI colors 0-15
+    for idx, base_key in ansi_map.items():
+        color = scheme.get(base_key, "000000")
+        # OSC 4 ; <index> ; rgb:<rr>/<gg>/<bb> ST
+        r, g, b = color[0:2], color[2:4], color[4:6]
+        send_osc(f"\033]4;{idx};rgb:{r}/{g}/{b}\033\\", tty)
+
+    # Set special colors
+    fg = scheme.get("base05", "c0c0c0")
+    bg = scheme.get("base00", "000000")
+    cursor = scheme.get("base05", "c0c0c0")
+
+    # OSC 10 = foreground, OSC 11 = background, OSC 12 = cursor
+    send_osc(f"\033]10;rgb:{fg[0:2]}/{fg[2:4]}/{fg[4:6]}\033\\", tty)
+    send_osc(f"\033]11;rgb:{bg[0:2]}/{bg[2:4]}/{bg[4:6]}\033\\", tty)
+    send_osc(f"\033]12;rgb:{cursor[0:2]}/{cursor[2:4]}/{cursor[4:6]}\033\\", tty)
+    tty.flush()
+    tty.close()
 
 
 def run_hook(hook: str, target_name: str) -> bool:
@@ -109,6 +202,8 @@ def apply_theme(scheme_name: str, config: dict, preview: bool = False) -> None:
         "scheme": scheme.get("scheme", scheme_name),
         "scheme_slug": scheme_meta.get("scheme_slug", scheme_name),
         "yazi_flavor": scheme_meta.get("yazi_flavor"),  # None if not set
+        "nvim_colorscheme": scheme_meta.get("nvim_colorscheme"),  # None = use base16
+        "nvim_plugin": scheme_meta.get("nvim_plugin"),  # None = use tinted-vim
     }
     # Add all base16 colors (base00-base0F)
     for key, value in scheme.items():
@@ -164,6 +259,7 @@ def apply_theme(scheme_name: str, config: dict, preview: bool = False) -> None:
 
     if not preview:
         set_current_theme(scheme_name, config)
+        apply_terminal_colors(scheme)
         print(f"\nApplied: {scheme_name}")
         if needs_restart:
             print(f"Restart to apply: {', '.join(needs_restart)}")
@@ -189,8 +285,8 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # apply command
-    apply_parser = subparsers.add_parser("apply", help="Apply a color scheme")
+    # apply command (alias: a)
+    apply_parser = subparsers.add_parser("a", aliases=["apply"], help="Apply a color scheme")
     apply_parser.add_argument("scheme", help="Name of the scheme to apply")
 
     # list command
@@ -211,9 +307,9 @@ def main():
     if args.command == "list":
         schemes = list_schemes(config)
         current = get_current_theme(config)
-        for s in schemes:
+        for i, s in enumerate(schemes, 1):
             marker = " *" if s == current else ""
-            print(f"  {s}{marker}")
+            print(f"  {i}. {s}{marker}")
 
     elif args.command == "current":
         current = get_current_theme(config)
@@ -224,22 +320,24 @@ def main():
             print("No theme currently set")
             sys.exit(1)
 
-    elif args.command == "apply":
+    elif args.command in ("a", "apply"):
         schemes = list_schemes(config)
-        if args.scheme not in schemes:
+        scheme_name = resolve_scheme(args.scheme, schemes)
+        if not scheme_name:
             print(f"Unknown scheme: {args.scheme}", file=sys.stderr)
-            print(f"Available: {', '.join(schemes)}", file=sys.stderr)
+            print(f"Available: {', '.join(f'{i+1}={s}' for i, s in enumerate(schemes))}", file=sys.stderr)
             sys.exit(1)
-        apply_theme(args.scheme, config)
+        apply_theme(scheme_name, config)
 
     elif args.command == "preview":
         schemes = list_schemes(config)
-        if args.scheme not in schemes:
+        scheme_name = resolve_scheme(args.scheme, schemes)
+        if not scheme_name:
             print(f"Unknown scheme: {args.scheme}", file=sys.stderr)
-            print(f"Available: {', '.join(schemes)}", file=sys.stderr)
+            print(f"Available: {', '.join(f'{i+1}={s}' for i, s in enumerate(schemes))}", file=sys.stderr)
             sys.exit(1)
-        print_colors(args.scheme, config)
-        apply_theme(args.scheme, config, preview=True)
+        print_colors(scheme_name, config)
+        apply_theme(scheme_name, config, preview=True)
 
 
 if __name__ == "__main__":

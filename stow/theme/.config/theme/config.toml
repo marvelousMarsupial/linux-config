@@ -15,18 +15,12 @@ yazi_flavor = "gruvbox-dark"
 [scheme_meta.catppuccin-mocha]
 scheme_slug = "catppuccin-mocha"
 yazi_flavor = "catppuccin-mocha"
-
-[scheme_meta.summerfruit-dark]
-scheme_slug = "summerfruit-dark"
-
-[scheme_meta.summerfruit-light]
-scheme_slug = "summerfruit-light"
-
-[scheme_meta.ayu-light]
-scheme_slug = "ayu-light"
+nvim_colorscheme = "tokyonight-moon"
+nvim_plugin = "folke/tokyonight.nvim"
 
 [scheme_meta.kanagawa]
 scheme_slug = "kanagawa"
+yazi_flavor = "kanagawa"
 
 # ============ Server targets ============
 
