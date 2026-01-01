@@ -20,3 +20,6 @@
 
 - name: Import services tasks
   ansible.builtin.import_tasks: services.yml
+
+- name: Import caddy reverse proxy
+  ansible.builtin.import_tasks: caddy.yml

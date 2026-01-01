@@ -1,12 +1,6 @@
 ---
-- name: Allow code-server port
+- name: Allow HTTP for Caddy
   community.general.ufw:
     rule: allow
-    port: '8080'
-    proto: tcp
-
-- name: Allow JupyterLab port
-  community.general.ufw:
-    rule: allow
-    port: '8888'
+    port: '80'
     proto: tcp
