@@ -1,5 +1,5 @@
 #!/bin/bash
-# Dotfiles manager CLI
+# forge - workstation provisioning tool
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -7,36 +7,43 @@ ANSIBLE_DIR="$SCRIPT_DIR/ansible"
 
 usage() {
     cat <<EOF
-Usage: dotfiles <command> [options]
+forge - workstation provisioning tool
+
+Usage: forge <command> [options]
 
 Commands:
-    setup <role>      Install a role (server, dev-server, desktop, remote-desktop)
-    teardown [role]   Remove current role (or specify role)
-    switch <role>     Teardown current and setup new role
+    setup <role>      Install a role
+    teardown          Remove current role
+    switch <role>     Teardown current, setup new
     status            Show current role and theme
-    cleanup           Remove ansible and build dependencies
-    theme             Alias for theme command (theme apply|list|current|preview)
+    theme <cmd>       Theme switcher (apply|list|current|preview)
+    cleanup           Remove ansible post-install
+
+Roles:
+    server            Base CLI: zsh, tmux, neovim, yazi, starship
+    dev-server        + code-server, jupyter, lazygit, build tools
+    desktop           + sway, foot, flatpaks (Obsidian, Zen, KeePassXC)
+    remote-desktop    + tigervnc for headless GUI
 
 Examples:
-    dotfiles setup server
-    dotfiles switch desktop
-    dotfiles teardown
-    dotfiles cleanup
-    dotfiles theme apply kanagawa
+    forge setup server
+    forge switch desktop
+    forge theme apply kanagawa
+    forge status
 EOF
 }
 
 get_current_role() {
-    if [ -f ~/.cache/dotfiles/role ]; then
-        cat ~/.cache/dotfiles/role
+    if [ -f ~/.cache/forge/role ]; then
+        cat ~/.cache/forge/role
     else
         echo "none"
     fi
 }
 
 set_current_role() {
-    mkdir -p ~/.cache/dotfiles
-    echo "$1" > ~/.cache/dotfiles/role
+    mkdir -p ~/.cache/forge
+    echo "$1" > ~/.cache/forge/role
 }
 
 cmd_setup() {
@@ -117,7 +124,7 @@ cmd_theme() {
     if command -v theme &> /dev/null; then
         theme "$@"
     else
-        echo "Theme command not found. Run 'dotfiles setup' first."
+        echo "Theme command not found. Run 'forge setup' first."
         exit 1
     fi
 }

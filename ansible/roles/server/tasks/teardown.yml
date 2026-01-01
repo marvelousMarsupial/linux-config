@@ -31,7 +31,7 @@
     state: absent
   loop:
     - "{{ ansible_env.HOME }}/.cache/theme"
-    - "{{ ansible_env.HOME }}/.cache/dotfiles"
+    - "{{ ansible_env.HOME }}/.cache/forge"
   become: false
 
 - name: Reset shell to bash

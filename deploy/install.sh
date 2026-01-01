@@ -29,9 +29,9 @@ fi
 export PATH="$INSTALL_DIR/bin:$PATH"
 
 # Run setup via CLI
-"$INSTALL_DIR/bin/dotfiles" setup "$ROLE"
+"$INSTALL_DIR/bin/forge" setup "$ROLE"
 
 echo ""
 echo "==> Add to your PATH: export PATH=\"\$HOME/linux-config/bin:\$PATH\""
-echo "==> Then use: dotfiles status, dotfiles switch, dotfiles teardown"
+echo "==> Then use: forge status, forge switch, forge teardown"
 echo "==> Log out and back in, or run: exec zsh"
