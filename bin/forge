@@ -101,9 +101,14 @@ cmd_teardown() {
 
     role="${role:-$(get_current_role)}"
 
-    if [ "$role" = "none" ]; then
-        echo "No role currently installed."
+    if [ "$role" = "none" ] && [ "$full" = false ]; then
+        echo "No role currently installed. Use 'forge teardown server --full' to force."
         exit 0
+    fi
+
+    # Default to server if doing full teardown with no role
+    if [ "$role" = "none" ]; then
+        role="server"
     fi
 
     echo "==> Tearing down $role..."
@@ -190,6 +195,10 @@ case "${1:-}" in
         ;;
     -h|--help|help|"")
         usage
+        ;;
+    # Shorthand: forge <role> = forge setup <role>
+    server|dev-server|desktop|remote-desktop)
+        cmd_setup "$1"
         ;;
     *)
         echo "Unknown command: $1"
