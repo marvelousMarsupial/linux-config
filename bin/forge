@@ -125,6 +125,29 @@ cmd_teardown() {
     echo "==> Teardown complete."
 }
 
+get_role_chain() {
+    # Returns roles to teardown when switching FROM this role
+    # Each role only removes its own additions, but we need to know the chain
+    case "$1" in
+        remote-desktop) echo "remote-desktop desktop" ;;
+        desktop)        echo "desktop" ;;
+        dev)            echo "dev" ;;
+        server)         echo "server" ;;
+        *)              echo "" ;;
+    esac
+}
+
+get_new_role_base() {
+    # Returns the base roles included in the new role
+    case "$1" in
+        remote-desktop) echo "server desktop remote-desktop" ;;
+        desktop)        echo "server desktop" ;;
+        dev)            echo "server dev" ;;
+        server)         echo "server" ;;
+        *)              echo "" ;;
+    esac
+}
+
 cmd_switch() {
     local new_role="$1"
 
@@ -135,10 +158,30 @@ cmd_switch() {
 
     local current=$(get_current_role)
 
-    if [ "$current" != "none" ]; then
-        echo "==> Switching from $current to $new_role..."
-        cmd_teardown "$current"
+    if [ "$current" = "none" ]; then
+        cmd_setup "$new_role"
+        return
     fi
+
+    if [ "$current" = "$new_role" ]; then
+        echo "Already on $new_role. Running setup to refresh..."
+        cmd_setup "$new_role"
+        return
+    fi
+
+    echo "==> Switching from $current to $new_role..."
+
+    # Get what the new role includes
+    local new_bases=$(get_new_role_base "$new_role")
+
+    # Teardown current role chain, skipping roles included in new role
+    ensure_ansible
+    for role in $(get_role_chain "$current"); do
+        if ! echo "$new_bases" | grep -qw "$role"; then
+            echo "==> Tearing down $role..."
+            ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/teardown.yml" -e "role=$role"
+        fi
+    done
 
     cmd_setup "$new_role"
 }

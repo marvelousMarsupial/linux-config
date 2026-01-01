@@ -1,10 +1,14 @@
 ---
-# Teardown dev-server role
+# Teardown dev role (removes ONLY dev-specific additions)
 
-- name: Include server teardown
-  ansible.builtin.include_tasks: "{{ role_path }}/../server/tasks/teardown.yml"
+- name: Stop dev services
+  ansible.builtin.shell: |
+    pkill -f code-server || true
+    pkill -f jupyter-lab || true
+  become: false
+  ignore_errors: true
 
-- name: Remove dev-server scripts
+- name: Remove dev scripts
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
@@ -21,10 +25,10 @@
     state: absent
   become: false
 
-- name: Remove dev-server aliases block
+- name: Remove dev aliases block
   ansible.builtin.blockinfile:
     path: "{{ ansible_env.HOME }}/.zsh_aliases"
-    marker: "# {mark} DEV-SERVER ALIASES"
+    marker: "# {mark} DEV ALIASES"
     state: absent
   become: false
   ignore_errors: true

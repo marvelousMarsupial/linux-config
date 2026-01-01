@@ -1,8 +1,5 @@
 ---
-# Teardown remote-desktop role
-
-- name: Include desktop teardown
-  ansible.builtin.include_tasks: "{{ role_path }}/../desktop/tasks/teardown.yml"
+# Teardown remote-desktop role (removes ONLY remote-desktop-specific additions)
 
 - name: Stop VNC if running
   ansible.builtin.shell: vncserver -kill :1 2>/dev/null || true

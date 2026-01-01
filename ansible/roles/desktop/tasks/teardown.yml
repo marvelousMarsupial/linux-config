@@ -1,8 +1,5 @@
 ---
-# Teardown desktop role
-
-- name: Include server teardown
-  ansible.builtin.include_tasks: "{{ role_path }}/../server/tasks/teardown.yml"
+# Teardown desktop role (removes ONLY desktop-specific additions)
 
 - name: Remove desktop stow symlinks
   ansible.builtin.shell: |
