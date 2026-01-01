@@ -1,5 +1,5 @@
 # PATH
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/linux-config/bin:$PATH"
 export VIMRUNTIME="$HOME/.local/nvim-runtime/usr/share/nvim/runtime"
 
 # Plugins
