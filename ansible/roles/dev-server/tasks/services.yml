@@ -11,9 +11,25 @@
     mode: "0755"
     content: |
       #!/bin/bash
-      code-server --bind-addr 0.0.0.0:8080 --auth password &
-      echo "Coder running at http://$(hostname -I | awk '{print $1}'):8080"
-      echo "Password in ~/.config/code-server/config.yaml"
+      # Usage: coder-start [--public]
+      BIND="127.0.0.1"
+      [[ "$1" == "--public" ]] && BIND="0.0.0.0"
+
+      if pgrep -f code-server > /dev/null; then
+        echo "code-server already running"
+        exit 1
+      fi
+
+      code-server --bind-addr ${BIND}:8080 --auth password > /dev/null 2>&1 &
+      sleep 1
+
+      if [[ "$BIND" == "0.0.0.0" ]]; then
+        echo "code-server running at http://$(hostname -I | awk '{print $1}'):8080"
+      else
+        echo "code-server running at http://127.0.0.1:8080 (local only)"
+        echo "Use 'coder-start --public' to expose to network"
+      fi
+      echo "Password: $(grep password ~/.config/code-server/config.yaml | awk '{print $2}')"
   become: false
 
 - name: Create coder-stop script
@@ -22,7 +38,7 @@
     mode: "0755"
     content: |
       #!/bin/bash
-      pkill -f code-server
+      pkill -f code-server && echo "code-server stopped" || echo "code-server not running"
   become: false
 
 - name: Create jupyter-start script
@@ -31,9 +47,26 @@
     mode: "0755"
     content: |
       #!/bin/bash
+      # Usage: jupyter-start [--public]
+      BIND="127.0.0.1"
+      [[ "$1" == "--public" ]] && BIND="0.0.0.0"
+
+      if pgrep -f jupyter-lab > /dev/null; then
+        echo "jupyter-lab already running"
+        exit 1
+      fi
+
       source ~/.venv/jupyter/bin/activate
-      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser &
-      echo "JupyterLab at http://$(hostname -I | awk '{print $1}'):8888"
+      jupyter lab --ip=${BIND} --port=8888 --no-browser > /dev/null 2>&1 &
+      sleep 2
+
+      if [[ "$BIND" == "0.0.0.0" ]]; then
+        echo "JupyterLab running at http://$(hostname -I | awk '{print $1}'):8888"
+      else
+        echo "JupyterLab running at http://127.0.0.1:8888 (local only)"
+        echo "Use 'jupyter-start --public' to expose to network"
+      fi
+      echo "Token: $(jupyter server list 2>/dev/null | grep -oP 'token=\K[a-f0-9]+')"
   become: false
 
 - name: Create jupyter-stop script
@@ -42,7 +75,7 @@
     mode: "0755"
     content: |
       #!/bin/bash
-      pkill -f jupyter-lab
+      pkill -f jupyter-lab && echo "jupyter-lab stopped" || echo "jupyter-lab not running"
   become: false
 
 - name: Add dev-server aliases
