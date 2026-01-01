@@ -22,16 +22,68 @@
     - "{{ ansible_env.HOME }}/.zsh_aliases"
     - "{{ ansible_env.HOME }}/.config/starship.toml"
 
-- name: Remove cache directories
+- name: Remove config directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
   loop:
+    - "{{ ansible_env.HOME }}/.config/yazi"
+    - "{{ ansible_env.HOME }}/.config/nvim"
+    - "{{ ansible_env.HOME }}/.config/theme"
     - "{{ ansible_env.HOME }}/.cache/theme"
     - "{{ ansible_env.HOME }}/.cache/forge"
+    - "{{ ansible_env.HOME }}/.local/nvim-runtime"
 
 - name: Reset shell to bash
   ansible.builtin.user:
     name: "{{ ansible_env.USER }}"
     shell: /bin/bash
   become: true
+
+# Full teardown - remove installed packages
+- name: Remove installed packages (full teardown)
+  ansible.builtin.apt:
+    name:
+      - zsh
+      - zsh-autosuggestions
+      - zsh-syntax-highlighting
+      - tmux
+      - stow
+      - fzf
+      - ripgrep
+      - fd-find
+      - jq
+      - python3-pip
+      - python3-jinja2
+      - python3-yaml
+    state: absent
+    autoremove: true
+  become: true
+  when: full_teardown | default(false) | bool
+
+- name: Remove neovim (full teardown)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ ansible_env.HOME }}/.local/bin/nvim"
+    - "{{ ansible_env.HOME }}/.local/nvim-runtime"
+  when: full_teardown | default(false) | bool
+
+- name: Remove yazi (full teardown)
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.local/bin/yazi"
+    state: absent
+  when: full_teardown | default(false) | bool
+
+- name: Remove starship (full teardown)
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.local/bin/starship"
+    state: absent
+  when: full_teardown | default(false) | bool
+
+- name: Remove theme script (full teardown)
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.local/bin/theme"
+    state: absent
+  when: full_teardown | default(false) | bool

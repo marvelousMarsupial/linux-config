@@ -21,7 +21,7 @@ Usage: forge <command> [options]
 
 Commands:
     setup <role>      Install a role
-    teardown          Remove current role
+    teardown [--full] Remove current role (--full removes packages too)
     switch <role>     Teardown current, setup new
     status            Show current role and theme
     theme <cmd>       Theme switcher (apply|list|current|preview)
@@ -82,7 +82,24 @@ cmd_setup() {
 }
 
 cmd_teardown() {
-    local role="${1:-$(get_current_role)}"
+    local full=false
+    local role=""
+
+    # Parse args
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --full|-f)
+                full=true
+                shift
+                ;;
+            *)
+                role="$1"
+                shift
+                ;;
+        esac
+    done
+
+    role="${role:-$(get_current_role)}"
 
     if [ "$role" = "none" ]; then
         echo "No role currently installed."
@@ -91,7 +108,13 @@ cmd_teardown() {
 
     echo "==> Tearing down $role..."
     ensure_ansible
-    ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/teardown.yml" -e "role=$role"
+
+    if [ "$full" = true ]; then
+        echo "==> Full teardown: removing packages too..."
+        ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/teardown.yml" -e "role=$role" -e "full_teardown=true"
+    else
+        ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/teardown.yml" -e "role=$role"
+    fi
 
     set_current_role "none"
     echo "==> Teardown complete."
