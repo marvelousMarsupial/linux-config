@@ -1,26 +1,7 @@
 ---
-- name: Create yazi config directories
+# Yazi flavors are now included in stow/yazi package
+# Just ensure the config directory exists
+- name: Create yazi config directory
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ ansible_env.HOME }}/.config/yazi"
     state: directory
-  loop:
-    - "{{ ansible_env.HOME }}/.config/yazi"
-    - "{{ ansible_env.HOME }}/.config/yazi/flavors"
-
-- name: Clone yazi catppuccin-mocha flavor
-  ansible.builtin.git:
-    repo: https://github.com/yazi-rs/flavors.git
-    dest: /tmp/yazi-flavors
-    update: true
-
-- name: Copy catppuccin-mocha flavor
-  ansible.builtin.copy:
-    src: /tmp/yazi-flavors/catppuccin-mocha.yazi/
-    dest: "{{ ansible_env.HOME }}/.config/yazi/flavors/catppuccin-mocha.yazi/"
-    remote_src: true
-
-- name: Clone yazi gruvbox flavor
-  ansible.builtin.git:
-    repo: https://github.com/bennyyip/gruvbox-dark.yazi.git
-    dest: "{{ ansible_env.HOME }}/.config/yazi/flavors/gruvbox-dark.yazi"
-    update: true
