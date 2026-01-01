@@ -15,14 +15,18 @@
         echo "code-server already running"
         exit 1
       fi
-      code-server --bind-addr 127.0.0.1:8080 --auth none > /dev/null 2>&1 &
+      PORT=8080
+      while ss -tln | grep -q ":$PORT "; do
+        ((PORT++))
+      done
+      code-server --bind-addr 127.0.0.1:$PORT --auth none > /dev/null 2>&1 &
       sleep 1
       IP=$(hostname -I | awk '{print $1}')
-      echo "code-server running"
+      echo "code-server :$PORT"
       echo ""
       echo "From your laptop:"
-      echo "  ssh -L 8080:localhost:8080 $(whoami)@$IP"
-      echo "  open http://localhost:8080"
+      echo "  ssh -L $PORT:localhost:$PORT $(whoami)@$IP"
+      echo "  open http://localhost:$PORT"
   become: false
 
 - name: Create coder-stop script
@@ -44,15 +48,19 @@
         echo "jupyter-lab already running"
         exit 1
       fi
+      PORT=8888
+      while ss -tln | grep -q ":$PORT "; do
+        ((PORT++))
+      done
       source ~/.venv/jupyter/bin/activate
-      jupyter lab --ip=127.0.0.1 --port=8888 --no-browser --IdentityProvider.token='' > /dev/null 2>&1 &
+      jupyter lab --ip=127.0.0.1 --port=$PORT --no-browser --IdentityProvider.token='' > /dev/null 2>&1 &
       sleep 2
       IP=$(hostname -I | awk '{print $1}')
-      echo "jupyter running"
+      echo "jupyter :$PORT"
       echo ""
       echo "From your laptop:"
-      echo "  ssh -L 8888:localhost:8888 $(whoami)@$IP"
-      echo "  open http://localhost:8888"
+      echo "  ssh -L $PORT:localhost:$PORT $(whoami)@$IP"
+      echo "  open http://localhost:$PORT"
   become: false
 
 - name: Create jupyter-stop script
