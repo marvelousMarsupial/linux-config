@@ -56,6 +56,37 @@
       pkill -f jupyter-lab && echo "jupyter-lab stopped" || echo "jupyter-lab not running"
   become: false
 
+- name: Create dev-open script
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.local/bin/dev-open"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      PORT="${1:-3000}"
+      if grep -q "# DEV-EXPOSE" /etc/caddy/Caddyfile; then
+        echo "Already exposing a port. Run 'dev-close' first."
+        exit 1
+      fi
+      sudo sed -i '/^}$/i\
+        # DEV-EXPOSE\
+        handle_path /dev/* {\
+          reverse_proxy 127.0.0.1:'"$PORT"'\
+        }' /etc/caddy/Caddyfile
+      sudo systemctl reload caddy
+      echo "Exposed localhost:$PORT at http://$(hostname -I | awk '{print $1}')/dev"
+  become: false
+
+- name: Create dev-close script
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.local/bin/dev-close"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      sudo sed -i '/# DEV-EXPOSE/,/}/d' /etc/caddy/Caddyfile
+      sudo systemctl reload caddy
+      echo "Dev port closed"
+  become: false
+
 - name: Add dev-server aliases
   ansible.builtin.blockinfile:
     path: "{{ ansible_env.HOME }}/.zsh_aliases"
