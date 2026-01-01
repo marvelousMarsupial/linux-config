@@ -6,6 +6,14 @@
       - python3-jinja2
     state: present
 
+- name: Remove stow conflicts for theme
+  ansible.builtin.shell: |
+    [ -e "{{ item }}" ] && [ ! -L "{{ item }}" ] && rm -rf "{{ item }}" || true
+  loop:
+    - "{{ ansible_env.HOME }}/.local/bin/theme"
+    - "{{ ansible_env.HOME }}/.config/theme"
+  changed_when: false
+
 - name: Stow theme configuration
   ansible.builtin.shell: |
     cd {{ ansible_env.HOME }}/linux-config/stow
