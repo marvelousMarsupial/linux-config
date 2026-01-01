@@ -123,6 +123,8 @@ alias -s lua='nvim'
 alias -s sh='nvim'
 # BEGIN DEV ALIASES
 alias coder='coder-start'
+alias coder-stop='pkill -f code-server && echo "stopped" || echo "not running"'
 alias jupyter='jupyter-start'
+alias jupyter-stop='pkill -f jupyter-lab && echo "stopped" || echo "not running"'
 alias lg='lazygit'
 # END DEV ALIASES

@@ -70,6 +70,8 @@
     marker: "# {mark} DEV ALIASES"
     block: |
       alias coder='coder-start'
+      alias coder-stop='pkill -f code-server && echo "stopped" || echo "not running"'
       alias jupyter='jupyter-start'
+      alias jupyter-stop='pkill -f jupyter-lab && echo "stopped" || echo "not running"'
       alias lg='lazygit'
   become: false
