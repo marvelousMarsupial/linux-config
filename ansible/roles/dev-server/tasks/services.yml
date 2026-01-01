@@ -15,10 +15,9 @@
         echo "code-server already running"
         exit 1
       fi
-
       code-server --bind-addr 127.0.0.1:8080 --auth none > /dev/null 2>&1 &
       sleep 1
-      echo "code-server running at http://$(hostname -I | awk '{print $1}')/code"
+      echo "code-server running on localhost:8080"
   become: false
 
 - name: Create coder-stop script
@@ -40,11 +39,10 @@
         echo "jupyter-lab already running"
         exit 1
       fi
-
       source ~/.venv/jupyter/bin/activate
       jupyter lab --ip=127.0.0.1 --port=8888 --no-browser --IdentityProvider.token='' > /dev/null 2>&1 &
       sleep 2
-      echo "JupyterLab running at http://$(hostname -I | awk '{print $1}')/jupyter"
+      echo "JupyterLab running on localhost:8888"
   become: false
 
 - name: Create jupyter-stop script
@@ -54,62 +52,6 @@
     content: |
       #!/bin/bash
       pkill -f jupyter-lab && echo "jupyter-lab stopped" || echo "jupyter-lab not running"
-  become: false
-
-- name: Create dev-unlock script
-  ansible.builtin.copy:
-    dest: "{{ ansible_env.HOME }}/.local/bin/dev-unlock"
-    mode: "0755"
-    content: |
-      #!/bin/bash
-      MINS="${1:-15}"
-      sudo ufw allow 80/tcp
-      echo "Port 80 open for $MINS minutes"
-      cat ~/.dev-urls
-      (sleep "${MINS}m" && sudo ufw deny 80/tcp && echo -e "\nPort 80 closed") &
-  become: false
-
-- name: Create dev-lock script
-  ansible.builtin.copy:
-    dest: "{{ ansible_env.HOME }}/.local/bin/dev-lock"
-    mode: "0755"
-    content: |
-      #!/bin/bash
-      sudo ufw deny 80/tcp
-      pkill -f "sleep.*m && sudo ufw deny 80"
-      echo "Port 80 closed"
-  become: false
-
-- name: Create dev-open script
-  ansible.builtin.copy:
-    dest: "{{ ansible_env.HOME }}/.local/bin/dev-open"
-    mode: "0755"
-    content: |
-      #!/bin/bash
-      PORT="${1:-3000}"
-      KEY=$(grep -oP 'handle_path /\K[a-z0-9]+(?=/code)' /etc/caddy/Caddyfile)
-      if grep -q "# DEV-EXPOSE" /etc/caddy/Caddyfile; then
-        echo "Already exposing a port. Run 'dev-close' first."
-        exit 1
-      fi
-      sudo sed -i '/^}$/i\
-        # DEV-EXPOSE\
-        handle_path /'"$KEY"'/dev/* {\
-          reverse_proxy 127.0.0.1:'"$PORT"'\
-        }' /etc/caddy/Caddyfile
-      sudo systemctl reload caddy
-      echo "Exposed localhost:$PORT at /$KEY/dev"
-  become: false
-
-- name: Create dev-close script
-  ansible.builtin.copy:
-    dest: "{{ ansible_env.HOME }}/.local/bin/dev-close"
-    mode: "0755"
-    content: |
-      #!/bin/bash
-      sudo sed -i '/# DEV-EXPOSE/,/}/d' /etc/caddy/Caddyfile
-      sudo systemctl reload caddy
-      echo "Dev port closed"
   become: false
 
 - name: Add dev-server aliases
