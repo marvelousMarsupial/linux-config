@@ -121,10 +121,8 @@ alias -s yml='nvim'
 alias -s py='nvim'
 alias -s lua='nvim'
 alias -s sh='nvim'
-# BEGIN DEV-SERVER ALIASES
-alias cstart='coder-start'
-alias cstop='coder-stop'
-alias jstart='jupyter-start'
-alias jstop='jupyter-stop'
+# BEGIN DEV ALIASES
+alias coder='coder-start'
+alias jupyter='jupyter-start'
 alias lg='lazygit'
-# END DEV-SERVER ALIASES
+# END DEV ALIASES

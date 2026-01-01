@@ -17,9 +17,12 @@
       fi
       code-server --bind-addr 127.0.0.1:8080 --auth none > /dev/null 2>&1 &
       sleep 1
-      echo "code-server running on localhost:8080"
-      echo "Tunnel: ssh -L 8080:localhost:8080 $(whoami)@$(hostname -I | awk '{print $1}')"
-      echo "Then open: http://localhost:8080"
+      IP=$(hostname -I | awk '{print $1}')
+      echo "code-server running"
+      echo ""
+      echo "From your laptop:"
+      echo "  ssh -L 8080:localhost:8080 $(whoami)@$IP"
+      echo "  open http://localhost:8080"
   become: false
 
 - name: Create coder-stop script
@@ -44,9 +47,12 @@
       source ~/.venv/jupyter/bin/activate
       jupyter lab --ip=127.0.0.1 --port=8888 --no-browser --IdentityProvider.token='' > /dev/null 2>&1 &
       sleep 2
-      echo "JupyterLab running on localhost:8888"
-      echo "Tunnel: ssh -L 8888:localhost:8888 $(whoami)@$(hostname -I | awk '{print $1}')"
-      echo "Then open: http://localhost:8888"
+      IP=$(hostname -I | awk '{print $1}')
+      echo "jupyter running"
+      echo ""
+      echo "From your laptop:"
+      echo "  ssh -L 8888:localhost:8888 $(whoami)@$IP"
+      echo "  open http://localhost:8888"
   become: false
 
 - name: Create jupyter-stop script
