@@ -56,6 +56,30 @@
       pkill -f jupyter-lab && echo "jupyter-lab stopped" || echo "jupyter-lab not running"
   become: false
 
+- name: Create dev-unlock script
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.local/bin/dev-unlock"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      MINS="${1:-15}"
+      sudo ufw allow 80/tcp
+      echo "Port 80 open for $MINS minutes"
+      cat ~/.dev-urls
+      (sleep "${MINS}m" && sudo ufw deny 80/tcp && echo -e "\nPort 80 closed") &
+  become: false
+
+- name: Create dev-lock script
+  ansible.builtin.copy:
+    dest: "{{ ansible_env.HOME }}/.local/bin/dev-lock"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      sudo ufw deny 80/tcp
+      pkill -f "sleep.*m && sudo ufw deny 80"
+      echo "Port 80 closed"
+  become: false
+
 - name: Create dev-open script
   ansible.builtin.copy:
     dest: "{{ ansible_env.HOME }}/.local/bin/dev-open"
@@ -74,7 +98,7 @@
           reverse_proxy 127.0.0.1:'"$PORT"'\
         }' /etc/caddy/Caddyfile
       sudo systemctl reload caddy
-      echo "Exposed localhost:$PORT at http://$(hostname -I | awk '{print $1}')/$KEY/dev"
+      echo "Exposed localhost:$PORT at /$KEY/dev"
   become: false
 
 - name: Create dev-close script
