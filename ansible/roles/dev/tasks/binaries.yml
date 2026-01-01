@@ -44,3 +44,22 @@
     apt update && apt install -y gh
   args:
     creates: /usr/bin/gh
+
+- name: Get latest tea (Gitea CLI) release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/go-gitea/tea/releases/latest
+    return_content: true
+  register: tea_release
+
+- name: Download tea
+  ansible.builtin.unarchive:
+    src: >-
+      https://github.com/go-gitea/tea/releases/download/{{
+      tea_release.json.tag_name }}/tea-{{
+      tea_release.json.tag_name | regex_replace('^v', '')
+      }}-linux-amd64.tar.gz
+    dest: /usr/local/bin
+    remote_src: true
+    include:
+      - tea
+  when: ansible_architecture == "x86_64"
