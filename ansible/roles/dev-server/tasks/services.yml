@@ -63,17 +63,18 @@
     content: |
       #!/bin/bash
       PORT="${1:-3000}"
+      KEY=$(grep -oP 'handle_path /\K[a-z0-9]+(?=/code)' /etc/caddy/Caddyfile)
       if grep -q "# DEV-EXPOSE" /etc/caddy/Caddyfile; then
         echo "Already exposing a port. Run 'dev-close' first."
         exit 1
       fi
       sudo sed -i '/^}$/i\
         # DEV-EXPOSE\
-        handle_path /dev/* {\
+        handle_path /'"$KEY"'/dev/* {\
           reverse_proxy 127.0.0.1:'"$PORT"'\
         }' /etc/caddy/Caddyfile
       sudo systemctl reload caddy
-      echo "Exposed localhost:$PORT at http://$(hostname -I | awk '{print $1}')/dev"
+      echo "Exposed localhost:$PORT at http://$(hostname -I | awk '{print $1}')/$KEY/dev"
   become: false
 
 - name: Create dev-close script

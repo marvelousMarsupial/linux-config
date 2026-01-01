@@ -4,46 +4,39 @@
     name: caddy
     state: present
 
-- name: Generate dev-server password
+- name: Generate secret key
   ansible.builtin.set_fact:
-    dev_password: "{{ lookup('password', '/dev/null length=16 chars=ascii_letters,digits') }}"
-
-- name: Hash password for Caddy
-  ansible.builtin.command:
-    cmd: caddy hash-password --plaintext "{{ dev_password }}"
-  register: password_hash
-  changed_when: false
+    dev_key: "{{ lookup('password', '/dev/null length=24 chars=ascii_lowercase,digits') }}"
 
 - name: Create Caddyfile
   ansible.builtin.copy:
     dest: /etc/caddy/Caddyfile
     content: |
       :80 {
-        basicauth /* {
-          dev {{ password_hash.stdout }}
-        }
-
-        handle_path /code/* {
+        handle_path /{{ dev_key }}/code/* {
           reverse_proxy 127.0.0.1:8080
         }
 
-        handle_path /jupyter/* {
+        handle_path /{{ dev_key }}/jupyter/* {
           reverse_proxy 127.0.0.1:8888
         }
 
-        handle / {
-          respond "dev-server: /code /jupyter"
+        handle_path /{{ dev_key }}/* {
+          respond "code | jupyter"
+        }
+
+        handle /* {
+          respond "Not found" 404
         }
       }
 
-- name: Save password to file
+- name: Save access URLs
   ansible.builtin.copy:
-    dest: "{{ ansible_env.HOME }}/.dev-password"
+    dest: "{{ ansible_env.HOME }}/.dev-urls"
     mode: "0600"
     content: |
-      dev-server login
-      user: dev
-      pass: {{ dev_password }}
+      code:    http://{{ ansible_default_ipv4.address }}/{{ dev_key }}/code
+      jupyter: http://{{ ansible_default_ipv4.address }}/{{ dev_key }}/jupyter
   become: false
 
 - name: Enable and start Caddy
@@ -52,6 +45,6 @@
     enabled: true
     state: restarted
 
-- name: Show login info
+- name: Show access URLs
   ansible.builtin.debug:
-    msg: "dev-server login - user: dev, pass: {{ dev_password }} (saved to ~/.dev-password)"
+    msg: "Bookmark these URLs (saved to ~/.dev-urls)"
