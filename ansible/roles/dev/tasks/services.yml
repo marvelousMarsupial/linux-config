@@ -15,7 +15,7 @@
         echo "code-server already running"
         exit 1
       fi
-      PORT=8080
+      PORT=8000
       while ss -tln | grep -q ":$PORT "; do
         ((PORT++))
       done
@@ -48,7 +48,7 @@
         echo "jupyter-lab already running"
         exit 1
       fi
-      PORT=8888
+      PORT=9000
       while ss -tln | grep -q ":$PORT "; do
         ((PORT++))
       done
