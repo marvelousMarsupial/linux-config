@@ -5,6 +5,14 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ANSIBLE_DIR="$SCRIPT_DIR/ansible"
 
+ensure_ansible() {
+    if ! command -v ansible-playbook &> /dev/null; then
+        echo "==> Installing Ansible..."
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq ansible
+    fi
+}
+
 usage() {
     cat <<EOF
 forge - workstation provisioning tool
@@ -57,8 +65,11 @@ cmd_setup() {
 
     echo "==> Setting up $role..."
 
+    # Bootstrap ansible if needed
+    ensure_ansible
+
     # Install collections if needed
-    if ! ansible-galaxy collection list | grep -q community.general; then
+    if ! ansible-galaxy collection list 2>/dev/null | grep -q community.general; then
         echo "==> Installing Ansible collections..."
         ansible-galaxy collection install -r "$ANSIBLE_DIR/requirements.yml"
     fi
@@ -79,6 +90,7 @@ cmd_teardown() {
     fi
 
     echo "==> Tearing down $role..."
+    ensure_ansible
     ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/teardown.yml" -e "role=$role"
 
     set_current_role "none"

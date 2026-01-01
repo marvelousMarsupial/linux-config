@@ -17,6 +17,7 @@
     - "{{ ansible_env.HOME }}/.zshrc"
     - "{{ ansible_env.HOME }}/.zsh_aliases"
     - "{{ ansible_env.HOME }}/.tmux.conf"
+    - "{{ ansible_env.HOME }}/.config/yazi"
 
 - name: Stow dotfiles
   ansible.builtin.shell: |
