@@ -29,7 +29,7 @@ Commands:
 
 Roles:
     server            Base CLI: zsh, tmux, neovim, yazi, starship
-    dev-server        + code-server, jupyter, lazygit, build tools
+    dev               + code-server, jupyter, lazygit, build tools
     desktop           + sway, foot, flatpaks (Obsidian, Zen, KeePassXC)
     remote-desktop    + tigervnc for headless GUI
 
@@ -57,9 +57,9 @@ set_current_role() {
 cmd_setup() {
     local role="${1:-server}"
 
-    if [[ ! "$role" =~ ^(server|dev-server|desktop|remote-desktop)$ ]]; then
+    if [[ ! "$role" =~ ^(server|dev|desktop|remote-desktop)$ ]]; then
         echo "Error: Invalid role '$role'"
-        echo "Valid roles: server, dev-server, desktop, remote-desktop"
+        echo "Valid roles: server, dev, desktop, remote-desktop"
         exit 1
     fi
 
@@ -197,7 +197,7 @@ case "${1:-}" in
         usage
         ;;
     # Shorthand: forge <role> = forge setup <role>
-    server|dev-server|desktop|remote-desktop)
+    server|dev|desktop|remote-desktop)
         cmd_setup "$1"
         ;;
     *)
