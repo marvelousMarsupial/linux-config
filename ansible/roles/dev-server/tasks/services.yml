@@ -16,10 +16,9 @@
         exit 1
       fi
 
-      code-server --bind-addr 0.0.0.0:8080 --auth password > /dev/null 2>&1 &
+      code-server --bind-addr 0.0.0.0:8080 --auth none > /dev/null 2>&1 &
       sleep 1
       echo "code-server running at http://$(hostname -I | awk '{print $1}'):8080"
-      echo "Password: $(grep password ~/.config/code-server/config.yaml | awk '{print $2}')"
   become: false
 
 - name: Create coder-stop script
@@ -43,10 +42,9 @@
       fi
 
       source ~/.venv/jupyter/bin/activate
-      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser > /dev/null 2>&1 &
+      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --IdentityProvider.token='' > /dev/null 2>&1 &
       sleep 2
       echo "JupyterLab running at http://$(hostname -I | awk '{print $1}'):8888"
-      echo "Token: $(jupyter server list 2>/dev/null | grep -oP 'token=\K[a-f0-9]+')"
   become: false
 
 - name: Create jupyter-stop script
