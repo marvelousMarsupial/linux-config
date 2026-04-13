@@ -16,8 +16,9 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::atomic::write_atomic;
-use crate::packages::{apt_install, is_installed};
+use crate::packages::{apt_install, apt_remove, apt_update, is_installed};
 use crate::plan::{Action, Plan};
+use crate::role::PostCmd;
 
 /// What each action produced. Used by the executor's caller to print
 /// human summaries ("15 packages: 12 already installed, 3 installed").
@@ -42,12 +43,25 @@ pub fn execute(plan: &Plan, home: &Path) -> Result<Vec<ActionResult>> {
 
 fn apply_one(action: &Action, home: &Path) -> Result<ActionResult> {
     match action {
+        Action::AptUpdate => {
+            apt_update().context("refreshing apt package lists")?;
+            Ok(ActionResult::Changed)
+        }
         Action::InstallPackage(pkg) => {
             if is_installed(pkg) {
                 Ok(ActionResult::AlreadyDone)
             } else {
                 apt_install(pkg)
                     .with_context(|| format!("installing package `{pkg}`"))?;
+                Ok(ActionResult::Changed)
+            }
+        }
+        Action::RemovePackage(pkg) => {
+            if !is_installed(pkg) {
+                Ok(ActionResult::AlreadyDone)
+            } else {
+                apt_remove(pkg)
+                    .with_context(|| format!("removing package `{pkg}`"))?;
                 Ok(ActionResult::Changed)
             }
         }
@@ -61,18 +75,65 @@ fn apply_one(action: &Action, home: &Path) -> Result<ActionResult> {
                 ActionResult::AlreadyDone
             })
         }
-        Action::PostCommand(cmd) => {
-            let status = Command::new("sh")
-                .arg("-c")
-                .arg(cmd)
+        Action::RemoveFile(rel) => {
+            let dest = home.join(rel);
+            if dest.exists() || dest.symlink_metadata().is_ok() {
+                std::fs::remove_file(&dest)
+                    .with_context(|| format!("removing file {}", dest.display()))?;
+                Ok(ActionResult::Changed)
+            } else {
+                Ok(ActionResult::AlreadyDone)
+            }
+        }
+        Action::Download { url, dest, mode } => {
+            let abs = home.join(dest);
+            if abs.exists() {
+                return Ok(ActionResult::AlreadyDone);
+            }
+            if let Some(parent) = abs.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("creating {}", parent.display()))?;
+            }
+            // Using `curl` keeps the dependency list small — every Debian
+            // box has it, and it handles redirects, TLS, and resume better
+            // than hand-rolled Rust HTTP code for our scale.
+            let status = Command::new("curl")
+                .args(["-fsSL", "-o"])
+                .arg(&abs)
+                .arg(url)
                 .status()
-                .with_context(|| format!("spawning post-command `{cmd}`"))?;
+                .with_context(|| format!("spawning curl for {url}"))?;
             if !status.success() {
-                anyhow::bail!("post-command `{cmd}` exited with {status}");
+                anyhow::bail!("downloading {url} failed with status {status}");
+            }
+            if let Some(m) = mode {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&abs, std::fs::Permissions::from_mode(*m))?;
             }
             Ok(ActionResult::Changed)
         }
+        Action::PostCommand(cmd) => apply_post(cmd),
     }
+}
+
+/// Run a post-command, honoring its optional `check` for idempotency.
+/// If the check exits 0, the command is skipped.
+fn apply_post(cmd: &PostCmd) -> Result<ActionResult> {
+    if let Some(chk) = cmd.check() {
+        let chk_status = Command::new("sh").arg("-c").arg(chk).status()?;
+        if chk_status.success() {
+            return Ok(ActionResult::AlreadyDone);
+        }
+    }
+    let status = Command::new("sh")
+        .arg("-c")
+        .arg(cmd.run())
+        .status()
+        .with_context(|| format!("spawning post-command `{}`", cmd.run()))?;
+    if !status.success() {
+        anyhow::bail!("post-command `{}` exited with {status}", cmd.run());
+    }
+    Ok(ActionResult::Changed)
 }
 
 #[cfg(test)]
@@ -134,7 +195,7 @@ mod tests {
     fn post_command_success() {
         let d = tempdir().unwrap();
         let mut plan = Plan::new();
-        plan.push(Action::PostCommand("true".into()));
+        plan.push(Action::PostCommand(PostCmd::Simple("true".into())));
         let r = execute(&plan, d.path()).unwrap();
         assert_eq!(r, vec![ActionResult::Changed]);
     }
@@ -144,7 +205,7 @@ mod tests {
     fn post_command_failure_bubbles_up() {
         let d = tempdir().unwrap();
         let mut plan = Plan::new();
-        plan.push(Action::PostCommand("false".into()));
+        plan.push(Action::PostCommand(PostCmd::Simple("false".into())));
         let err = execute(&plan, d.path()).unwrap_err();
         assert!(err.to_string().contains("exited"));
     }
@@ -154,7 +215,7 @@ mod tests {
     fn failure_stops_execution() {
         let d = tempdir().unwrap();
         let mut plan = Plan::new();
-        plan.push(Action::PostCommand("false".into()));
+        plan.push(Action::PostCommand(PostCmd::Simple("false".into())));
         plan.push(Action::WriteFile {
             rel: PathBuf::from(".should-not-exist"),
             contents: b"x".to_vec(),
@@ -162,5 +223,44 @@ mod tests {
         });
         assert!(execute(&plan, d.path()).is_err());
         assert!(!d.path().join(".should-not-exist").exists());
+    }
+
+    /// A post-command with a passing `check` is skipped (AlreadyDone).
+    #[test]
+    fn post_command_check_short_circuits() {
+        let d = tempdir().unwrap();
+        let mut plan = Plan::new();
+        plan.push(Action::PostCommand(PostCmd::Checked {
+            run: "false".into(), // would fail if run
+            check: Some("true".into()), // but check passes, so we skip
+        }));
+        let r = execute(&plan, d.path()).unwrap();
+        assert_eq!(r, vec![ActionResult::AlreadyDone]);
+    }
+
+    /// A post-command with a failing `check` runs normally.
+    #[test]
+    fn post_command_check_fails_then_runs() {
+        let d = tempdir().unwrap();
+        let mut plan = Plan::new();
+        plan.push(Action::PostCommand(PostCmd::Checked {
+            run: "true".into(),
+            check: Some("false".into()), // fails → must run
+        }));
+        let r = execute(&plan, d.path()).unwrap();
+        assert_eq!(r, vec![ActionResult::Changed]);
+    }
+
+    /// RemoveFile is idempotent: twice in a row is fine, second reports AlreadyDone.
+    #[test]
+    fn remove_file_idempotent() {
+        let d = tempdir().unwrap();
+        std::fs::write(d.path().join(".zshrc"), b"x").unwrap();
+        let mut plan = Plan::new();
+        plan.push(Action::RemoveFile(PathBuf::from(".zshrc")));
+        let r1 = execute(&plan, d.path()).unwrap();
+        assert_eq!(r1, vec![ActionResult::Changed]);
+        let r2 = execute(&plan, d.path()).unwrap();
+        assert_eq!(r2, vec![ActionResult::AlreadyDone]);
     }
 }

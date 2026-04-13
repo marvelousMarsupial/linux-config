@@ -53,19 +53,47 @@ impl DotfileSource for InMemoryDotfiles {
 /// Build a plan from a resolved role config and a dotfile source.
 ///
 /// Action order within the plan:
-///   1. Packages (so everything the dotfiles and post-commands need is there)
-///   2. Files (so post-commands can read them, e.g. `chsh` needs /etc/shells)
-///   3. Post-commands
+///   1. `AptUpdate` (once, if any packages follow)
+///   2. Packages (so everything the dotfiles and post-commands need is there)
+///   3. Downloads (binaries like nvim, starship, yazi)
+///   4. Files (so post-commands can read them)
+///   5. Post-commands
 pub fn build_plan(cfg: &RoleConfig, src: &dyn DotfileSource) -> Result<Plan> {
     let mut plan = Plan::new();
 
     // --- Packages ---------------------------------------------------------
-    // Deduplicate while preserving order. A later `extends` chain might name
-    // the same package twice; installing it twice is fine but noisy.
+    // Deduplicate while preserving order. `apt-get update` runs exactly
+    // once up front if we're installing anything — the individual
+    // `InstallPackage` actions then reuse the refreshed cache without
+    // re-fetching the package lists per install.
     let mut seen_pkg = BTreeSet::new();
+    let mut pkg_actions = Vec::new();
     for p in &cfg.packages {
         if seen_pkg.insert(p.clone()) {
-            plan.push(Action::InstallPackage(p.clone()));
+            pkg_actions.push(Action::InstallPackage(p.clone()));
+        }
+    }
+    if !pkg_actions.is_empty() {
+        plan.push(Action::AptUpdate);
+        for a in pkg_actions {
+            plan.push(a);
+        }
+    }
+
+    // --- Downloads --------------------------------------------------------
+    // Each `Download` in roles.toml becomes one action. Destination paths
+    // are relative to $HOME so the embedded mirror-$HOME discipline stays
+    // consistent. The executor skips downloads whose destination already
+    // exists; re-downloading is opt-in.
+    let mut seen_dl: BTreeSet<PathBuf> = BTreeSet::new();
+    for d in &cfg.downloads {
+        let dest = PathBuf::from(d.dest.trim_start_matches("~/"));
+        if seen_dl.insert(dest.clone()) {
+            plan.push(Action::Download {
+                url: d.url.clone(),
+                dest,
+                mode: d.chmod,
+            });
         }
     }
 
@@ -116,6 +144,50 @@ pub fn build_plan(cfg: &RoleConfig, src: &dyn DotfileSource) -> Result<Plan> {
     Ok(plan)
 }
 
+/// Build a teardown plan: the same inputs as `build_plan`, but each
+/// action is inverted.
+///
+///   InstallPackage → RemovePackage
+///   WriteFile      → RemoveFile
+///   Download       → RemoveFile (at the download destination)
+///   PostCommand    → dropped (shell commands can't be automatically
+///                    reversed; if a role needs reversal it should
+///                    define its own post with the inverse command
+///                    under a `teardown_post` key, not yet implemented)
+///
+/// Order is reversed versus setup: files come out before packages so
+/// post-removal hooks have their configs around when they run.
+pub fn build_teardown_plan(cfg: &RoleConfig, src: &dyn DotfileSource) -> Result<Plan> {
+    let fwd = build_plan(cfg, src)?;
+    let mut out = Plan::new();
+
+    // Files first (reverse order, so deeper paths come out before parents
+    // — relevant when a future enhancement cleans up empty dirs).
+    let mut file_actions: Vec<Action> = fwd
+        .actions
+        .iter()
+        .filter_map(|a| match a {
+            Action::WriteFile { rel, .. } => Some(Action::RemoveFile(rel.clone())),
+            Action::Download { dest, .. } => Some(Action::RemoveFile(dest.clone())),
+            _ => None,
+        })
+        .collect();
+    file_actions.reverse();
+    for a in file_actions {
+        out.push(a);
+    }
+
+    // Then packages (in original order — dependency order doesn't matter
+    // for `apt-get remove` as much as it does for install).
+    for a in &fwd.actions {
+        if let Action::InstallPackage(p) = a {
+            out.push(Action::RemovePackage(p.clone()));
+        }
+    }
+
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,22 +211,48 @@ mod tests {
     }
 
     fn cfg(packages: &[&str], dotfiles: &[&str], post: &[&str]) -> RoleConfig {
+        use crate::role::PostCmd;
         RoleConfig {
             extends: None,
             packages: packages.iter().map(|s| s.to_string()).collect(),
             dotfiles: dotfiles.iter().map(|s| s.to_string()).collect(),
             downloads: vec![],
-            post: post.iter().map(|s| s.to_string()).collect(),
+            post: post
+                .iter()
+                .map(|s| PostCmd::Simple(s.to_string()))
+                .collect(),
         }
     }
 
     #[test]
-    fn packages_first_files_second_post_last() {
+    fn apt_update_then_packages_then_files_then_post() {
         let c = cfg(&["zsh"], &[".zshrc"], &["chsh"]);
         let plan = build_plan(&c, &sample_source()).unwrap();
-        assert!(matches!(plan.actions[0], Action::InstallPackage(_)));
-        assert!(matches!(plan.actions[1], Action::WriteFile { .. }));
-        assert!(matches!(plan.actions[2], Action::PostCommand(_)));
+        assert!(matches!(plan.actions[0], Action::AptUpdate));
+        assert!(matches!(plan.actions[1], Action::InstallPackage(_)));
+        assert!(matches!(plan.actions[2], Action::WriteFile { .. }));
+        assert!(matches!(plan.actions[3], Action::PostCommand(_)));
+    }
+
+    #[test]
+    fn apt_update_skipped_when_no_packages() {
+        // If a role declares zero packages, we shouldn't run `apt-get update`.
+        let c = cfg(&[], &[".zshrc"], &[]);
+        let plan = build_plan(&c, &sample_source()).unwrap();
+        assert!(!plan
+            .actions
+            .iter()
+            .any(|a| matches!(a, Action::AptUpdate)));
+    }
+
+    #[test]
+    fn teardown_reverses_files_and_packages_drops_post() {
+        let c = cfg(&["zsh"], &[".zshrc"], &["chsh"]);
+        let plan = build_teardown_plan(&c, &sample_source()).unwrap();
+        // One RemoveFile, one RemovePackage, no PostCommand.
+        assert_eq!(plan.summary().file_removals, 1);
+        assert_eq!(plan.summary().package_removals, 1);
+        assert_eq!(plan.summary().commands, 0);
     }
 
     #[test]

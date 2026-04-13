@@ -9,6 +9,8 @@ use anyhow::{Context, Result};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
+use crate::run::checked;
+
 pub const VM_PREFIX: &str = "forge-";
 
 pub fn qualified(name: &str) -> String {
@@ -42,17 +44,13 @@ pub enum InstanceKind {
 
 pub fn launch(name: &str, image: &str, kind: InstanceKind) -> Result<()> {
     let q = qualified(name);
-    let mut args = vec!["launch".to_string(), image.to_string(), q];
+    let mut argv: Vec<String> =
+        vec!["incus".into(), "launch".into(), image.into(), q];
     if kind == InstanceKind::Vm {
-        args.push("--vm".into());
+        argv.push("--vm".into());
     }
-    let status = Command::new("incus")
-        .args(&args)
-        .status()
-        .context("`incus launch`")?;
-    if !status.success() {
-        anyhow::bail!("`incus launch` failed");
-    }
+    let refs: Vec<&str> = argv.iter().map(|s| s.as_str()).collect();
+    checked(&refs).context("`incus launch`")?;
     Ok(())
 }
 

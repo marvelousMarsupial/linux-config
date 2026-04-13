@@ -11,6 +11,8 @@
 use anyhow::{Context, Result};
 use std::process::{Command, Stdio};
 
+use crate::run::checked;
+
 /// Fully-qualified container name: dev containers are all prefixed so
 /// `podman ps` output is easy to scan and `forge dev rm` can't accidentally
 /// hit a container you didn't create with forge.
@@ -61,7 +63,8 @@ pub fn running(name: &str) -> bool {
 /// PID 1 alive; real shells are opened via `podman exec`.
 pub fn create(name: &str, image: &str, volumes: &[(String, String)], ports: &[u16]) -> Result<()> {
     let q = qualified(name);
-    let mut args: Vec<String> = vec![
+    let mut argv: Vec<String> = vec![
+        "podman".into(),
         "run".into(),
         "-d".into(),
         "--name".into(),
@@ -70,24 +73,22 @@ pub fn create(name: &str, image: &str, volumes: &[(String, String)], ports: &[u1
         "keep-id".into(),
     ];
     for (host, ctr) in volumes {
-        args.push("-v".into());
-        args.push(format!("{host}:{ctr}"));
+        argv.push("-v".into());
+        argv.push(format!("{host}:{ctr}"));
     }
     for p in ports {
-        args.push("-p".into());
-        args.push(format!("{p}:{p}"));
+        argv.push("-p".into());
+        argv.push(format!("{p}:{p}"));
     }
-    args.push(image.to_string());
-    args.push("sleep".into());
-    args.push("infinity".into());
+    argv.push(image.to_string());
+    argv.push("sleep".into());
+    argv.push("infinity".into());
 
-    let status = Command::new("podman")
-        .args(&args)
-        .status()
-        .context("spawning `podman run`")?;
-    if !status.success() {
-        anyhow::bail!("`podman run` exited {status}");
-    }
+    // Use `checked` so if podman errors (image missing, port conflict,
+    // cgroup issue) the message surfaces podman's stderr, not just an
+    // exit code.
+    let refs: Vec<&str> = argv.iter().map(|s| s.as_str()).collect();
+    checked(&refs).context("`podman run`")?;
     Ok(())
 }
 

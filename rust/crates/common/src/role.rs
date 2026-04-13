@@ -77,7 +77,47 @@ pub struct RoleConfig {
     #[serde(default)]
     pub downloads: Vec<Download>,
     #[serde(default)]
-    pub post: Vec<String>,
+    pub post: Vec<PostCmd>,
+}
+
+/// A post-install command.
+///
+/// Two forms are accepted in `roles.toml`:
+///
+/// ```toml
+/// post = [
+///     "chsh -s /bin/zsh",                              # bare string = always run
+///     { run = "ufw enable", check = "ufw status | grep -q active" }  # skip if check exits 0
+/// ]
+/// ```
+///
+/// The checked form lets us make post-commands idempotent without
+/// teaching the executor about ufw/systemctl/git specifics — the role
+/// author writes the check.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum PostCmd {
+    Simple(String),
+    Checked {
+        run: String,
+        #[serde(default)]
+        check: Option<String>,
+    },
+}
+
+impl PostCmd {
+    pub fn run(&self) -> &str {
+        match self {
+            PostCmd::Simple(s) => s,
+            PostCmd::Checked { run, .. } => run,
+        }
+    }
+    pub fn check(&self) -> Option<&str> {
+        match self {
+            PostCmd::Simple(_) => None,
+            PostCmd::Checked { check, .. } => check.as_deref(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -173,7 +213,29 @@ packages = ["tigervnc-standalone-server"]
         let desktop = f.resolved(Role::Desktop).unwrap();
         assert_eq!(desktop.packages, vec!["zsh", "tmux", "sway", "foot"]);
         assert_eq!(desktop.dotfiles, vec!["zsh", "tmux", "sway", "foot"]);
-        assert_eq!(desktop.post, vec!["chsh -s /bin/zsh"]);
+        assert_eq!(desktop.post.len(), 1);
+        assert_eq!(desktop.post[0].run(), "chsh -s /bin/zsh");
+    }
+
+    #[test]
+    fn post_cmd_parses_simple_and_checked() {
+        let src = r#"
+[server]
+post = [
+    "chsh -s /bin/zsh",
+    { run = "ufw enable", check = "ufw status | grep -q active" },
+]
+"#;
+        let f = RolesFile::from_toml(src).unwrap();
+        let s = f.resolved(Role::Server).unwrap();
+        assert_eq!(s.post.len(), 2);
+        assert_eq!(s.post[0].run(), "chsh -s /bin/zsh");
+        assert_eq!(s.post[0].check(), None);
+        assert_eq!(s.post[1].run(), "ufw enable");
+        assert_eq!(
+            s.post[1].check(),
+            Some("ufw status | grep -q active")
+        );
     }
 
     #[test]

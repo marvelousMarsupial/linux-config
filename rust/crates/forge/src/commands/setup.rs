@@ -6,8 +6,8 @@
 
 use anyhow::Result;
 use forge_common::{
-    build_plan, diff::unified_diff, execute, home, state_file, Action, ActionResult, Role,
-    RolesFile, State,
+    build_plan, build_teardown_plan, diff::unified_diff, execute, home, state_file, Action,
+    ActionResult, Role, RolesFile, State,
 };
 use owo_colors::OwoColorize;
 
@@ -98,16 +98,81 @@ fn describe(a: &Action) -> String {
         Action::WriteFile { rel, contents, .. } => {
             format!("write {} ({} bytes)", rel.display(), contents.len())
         }
-        Action::PostCommand(c) => format!("run `{c}`"),
+        Action::PostCommand(c) => format!("run `{}`", c.run()),
+        Action::AptUpdate => "apt-get update".into(),
+        Action::RemovePackage(p) => format!("remove {p}"),
+        Action::RemoveFile(rel) => format!("remove {}", rel.display()),
+        Action::Download { url, dest, .. } => {
+            format!("download {url} → {}", dest.display())
+        }
     }
 }
 
-pub fn switch(_role: Role) -> Result<()> {
-    anyhow::bail!("forge switch: not yet implemented")
+/// `forge switch <new>` — teardown the current role, then setup the new.
+///
+/// Safe ordering: we teardown first so that overlapping files get cleaned
+/// before the new role writes its versions. If teardown fails, we still
+/// attempt setup (the user explicitly asked to end up on `new`).
+pub fn switch(new_role: Role) -> Result<()> {
+    let path = state_file()?;
+    let prev = State::load(&path).ok().and_then(|s| s.role);
+
+    if let Some(old) = prev {
+        if old == new_role {
+            cliclack::log::info(format!(
+                "already on {old}; running setup to refresh"
+            ))?;
+            return run(new_role, false, false);
+        }
+        cliclack::log::info(format!("tearing down {old} → {new_role}"))?;
+        teardown_role(old)?;
+    }
+    run(new_role, false, false)
 }
 
+/// `forge teardown` — remove whatever the current role installed.
+/// Reads `state.json` to find the current role, builds a reverse plan
+/// from its role config, executes it, and wipes the state file so the
+/// machine is ready for a fresh `forge setup`.
 pub fn teardown(_full: bool) -> Result<()> {
-    anyhow::bail!("forge teardown: not yet implemented")
+    let path = state_file()?;
+    let state = State::load(&path).unwrap_or_default();
+    let role = state
+        .role
+        .ok_or_else(|| anyhow::anyhow!("no role installed (state.json empty)"))?;
+    teardown_role(role)?;
+    // Clear role from state but preserve theme and binary_version so
+    // `forge status` can still show a meaningful before/after.
+    let cleared = State {
+        role: None,
+        theme: state.theme,
+        applied_at: None,
+        binary_version: state.binary_version,
+    };
+    cleared.save(&path)?;
+    Ok(())
+}
+
+fn teardown_role(role: Role) -> Result<()> {
+    let roles = RolesFile::from_toml(ROLES_TOML)?;
+    let cfg = roles.resolved(role)?;
+    let plan = build_teardown_plan(&cfg, &EmbeddedDotfiles)?;
+    let home_dir = home()?;
+
+    cliclack::intro(format!("forge teardown {}", role.bold()))?;
+    let s = plan.summary();
+    cliclack::log::info(format!(
+        "plan: {} files · {} packages",
+        s.file_removals, s.package_removals
+    ))?;
+
+    let results = execute(&plan, &home_dir)?;
+    let changed = results
+        .iter()
+        .filter(|r| **r == ActionResult::Changed)
+        .count();
+    cliclack::outro(format!("{changed} removed"))?;
+    Ok(())
 }
 
 pub fn diff(role: Role) -> Result<()> {

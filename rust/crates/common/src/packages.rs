@@ -9,6 +9,8 @@
 use anyhow::Result;
 use std::process::Command;
 
+use crate::run::checked;
+
 /// Return `true` if a dpkg package is installed *and* in the "ok installed"
 /// state. Packages that are half-configured, half-removed, or only unpacked
 /// return `false` so we re-run apt and force them into a healthy state.
@@ -27,23 +29,49 @@ pub fn is_installed(pkg: &str) -> bool {
     }
 }
 
-/// Install one package via `sudo apt-get install -y`. Surfaces apt's own
-/// error output on failure. Non-interactive — requires the user to have
-/// passwordless sudo or have already authenticated in this session.
+/// Refresh apt package lists. Called once per `forge setup` run by the
+/// executor so individual package installs see a fresh cache without
+/// paying the refresh cost N times.
+pub fn apt_update() -> Result<()> {
+    checked(&[
+        "sudo",
+        "DEBIAN_FRONTEND=noninteractive",
+        "apt-get",
+        "update",
+        "-y",
+    ])?;
+    Ok(())
+}
+
+/// Install one package via `sudo apt-get install -y`. Non-interactive —
+/// requires passwordless sudo or a previously-authenticated session.
+/// Surfaces apt's stderr on failure via `checked`, so errors like
+/// "Unable to locate package" aren't hidden behind a bare exit code.
 pub fn apt_install(pkg: &str) -> Result<()> {
-    let status = Command::new("sudo")
-        .args([
-            "DEBIAN_FRONTEND=noninteractive",
-            "apt-get",
-            "install",
-            "-y",
-            "--no-install-recommends",
-            pkg,
-        ])
-        .status()?;
-    if !status.success() {
-        anyhow::bail!("apt-get install {pkg} failed with status {status}");
-    }
+    checked(&[
+        "sudo",
+        "DEBIAN_FRONTEND=noninteractive",
+        "apt-get",
+        "install",
+        "-y",
+        "--no-install-recommends",
+        pkg,
+    ])?;
+    Ok(())
+}
+
+/// Uninstall one package (teardown path). Uses `remove` rather than
+/// `purge` so dotfiles the user may have customized are preserved;
+/// `forge teardown --full` would use `purge` + `autoremove`.
+pub fn apt_remove(pkg: &str) -> Result<()> {
+    checked(&[
+        "sudo",
+        "DEBIAN_FRONTEND=noninteractive",
+        "apt-get",
+        "remove",
+        "-y",
+        pkg,
+    ])?;
     Ok(())
 }
 
