@@ -128,3 +128,7 @@ alias jupyter='jupyter-start'
 alias jupyter-stop='pkill -f jupyter-lab && echo "stopped" || echo "not running"'
 alias lg='lazygit'
 # END DEV ALIASES
+# BEGIN VNC ALIASES
+alias vstart='vnc-start'
+alias vstop='vnc-stop'
+# END VNC ALIASES

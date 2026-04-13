@@ -1,6 +1,6 @@
 ---
 - name: Stow desktop dotfiles
   ansible.builtin.shell: |
-    cd {{ ansible_env.HOME }}/linux-config/stow
-    stow -t {{ ansible_env.HOME }} sway foot fuzzel mako
+    cd {{ target_home }}/linux-config/stow
+    stow -t {{ target_home }} sway foot fuzzel mako
   become: false

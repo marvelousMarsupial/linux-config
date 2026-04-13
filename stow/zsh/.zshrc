@@ -30,3 +30,8 @@ function y() {
 
 # Source aliases
 [[ -f ~/.zsh_aliases ]] && source ~/.zsh_aliases
+
+# Auto-attach to tmux on interactive login shells
+if [[ -z "$TMUX" ]] && [[ $- == *i* ]] && command -v tmux &>/dev/null; then
+  tmux attach -t main 2>/dev/null || tmux new -s main
+fi

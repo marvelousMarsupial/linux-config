@@ -8,7 +8,7 @@
 
 - name: Remove VNC config
   ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/.vnc"
+    path: "{{ target_home }}/.vnc"
     state: absent
   become: false
 
@@ -17,13 +17,13 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - "{{ ansible_env.HOME }}/.local/bin/vnc-start"
-    - "{{ ansible_env.HOME }}/.local/bin/vnc-stop"
+    - "{{ target_home }}/.local/bin/vnc-start"
+    - "{{ target_home }}/.local/bin/vnc-stop"
   become: false
 
 - name: Remove VNC aliases block
   ansible.builtin.blockinfile:
-    path: "{{ ansible_env.HOME }}/.zsh_aliases"
+    path: "{{ target_home }}/.zsh_aliases"
     marker: "# {mark} VNC ALIASES"
     state: absent
   become: false

@@ -1,12 +1,13 @@
 ---
 - name: Create trash directory
   ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/.trash"
+    path: "{{ target_home }}/.trash"
     state: directory
+  become: false
 
 - name: Set zsh as default shell
   ansible.builtin.user:
-    name: "{{ ansible_user_id }}"
+    name: "{{ target_user }}"
     shell: /bin/zsh
 
 - name: Remove existing dotfiles
@@ -14,18 +15,28 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - "{{ ansible_env.HOME }}/.zshrc"
-    - "{{ ansible_env.HOME }}/.zsh_aliases"
-    - "{{ ansible_env.HOME }}/.tmux.conf"
-    - "{{ ansible_env.HOME }}/.config/yazi"
+    - "{{ target_home }}/.zshrc"
+    - "{{ target_home }}/.zsh_aliases"
+    - "{{ target_home }}/.tmux.conf"
+    - "{{ target_home }}/.config/yazi"
+  become: false
 
 - name: Stow dotfiles
   ansible.builtin.shell: |
-    cd {{ ansible_env.HOME }}/linux-config/stow
-    stow -t {{ ansible_env.HOME }} zsh tmux yazi
+    cd {{ target_home }}/linux-config/stow
+    stow -t {{ target_home }} zsh tmux yazi
+  become: false
 
 - name: Copy nvim customizations
   ansible.builtin.copy:
-    src: "{{ ansible_env.HOME }}/linux-config/stow/nvim/.config/nvim/lua/"
-    dest: "{{ ansible_env.HOME }}/.config/nvim/lua/"
+    src: "{{ target_home }}/linux-config/stow/nvim/.config/nvim/lua/"
+    dest: "{{ target_home }}/.config/nvim/lua/"
     remote_src: true
+  become: false
+
+- name: Copy nvim lazyvim.json (enables extras)
+  ansible.builtin.copy:
+    src: "{{ target_home }}/linux-config/stow/nvim/.config/nvim/lazyvim.json"
+    dest: "{{ target_home }}/.config/nvim/lazyvim.json"
+    remote_src: true
+  become: false

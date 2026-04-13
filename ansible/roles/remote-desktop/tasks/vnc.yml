@@ -8,13 +8,13 @@
 
 - name: Create VNC directory
   ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/.vnc"
+    path: "{{ target_home }}/.vnc"
     state: directory
   become: false
 
 - name: Create VNC xstartup
   ansible.builtin.copy:
-    dest: "{{ ansible_env.HOME }}/.vnc/xstartup"
+    dest: "{{ target_home }}/.vnc/xstartup"
     mode: "0755"
     content: |
       #!/bin/bash
@@ -23,7 +23,7 @@
 
 - name: Create VNC config
   ansible.builtin.copy:
-    dest: "{{ ansible_env.HOME }}/.vnc/config"
+    dest: "{{ target_home }}/.vnc/config"
     content: |
       geometry=1920x1080
       depth=24
@@ -31,7 +31,7 @@
 
 - name: Create vnc-start script
   ansible.builtin.copy:
-    dest: "{{ ansible_env.HOME }}/.local/bin/vnc-start"
+    dest: "{{ target_home }}/.local/bin/vnc-start"
     mode: "0755"
     content: |
       #!/bin/bash
@@ -43,7 +43,7 @@
 
 - name: Create vnc-stop script
   ansible.builtin.copy:
-    dest: "{{ ansible_env.HOME }}/.local/bin/vnc-stop"
+    dest: "{{ target_home }}/.local/bin/vnc-stop"
     mode: "0755"
     content: |
       #!/bin/bash
@@ -52,7 +52,7 @@
 
 - name: Add VNC aliases
   ansible.builtin.blockinfile:
-    path: "{{ ansible_env.HOME }}/.zsh_aliases"
+    path: "{{ target_home }}/.zsh_aliases"
     marker: "# {mark} VNC ALIASES"
     block: |
       alias vstart='vnc-start'

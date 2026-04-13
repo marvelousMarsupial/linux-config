@@ -5,5 +5,7 @@
   become: true
   vars:
     deploy_role: "{{ role | default('server') }}"
+    target_user: "{{ lookup('env', 'USER') }}"
+    target_home: "{{ lookup('env', 'HOME') }}"
   roles:
     - "{{ deploy_role }}"

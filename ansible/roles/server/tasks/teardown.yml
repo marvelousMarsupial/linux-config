@@ -3,7 +3,7 @@
 
 - name: Unstow all packages
   ansible.builtin.shell: |
-    cd {{ ansible_env.HOME }}/linux-config/stow
+    cd {{ target_home }}/linux-config/stow
     for pkg in */; do
       stow -D "$pkg" 2>/dev/null || true
     done
@@ -15,28 +15,28 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - "{{ ansible_env.HOME }}/.config/nvim/lua/plugins/colorscheme.lua"
-    - "{{ ansible_env.HOME }}/.config/yazi/theme.toml"
-    - "{{ ansible_env.HOME }}/.tmux.conf"
-    - "{{ ansible_env.HOME }}/.zshrc"
-    - "{{ ansible_env.HOME }}/.zsh_aliases"
-    - "{{ ansible_env.HOME }}/.config/starship.toml"
+    - "{{ target_home }}/.config/nvim/lua/plugins/colorscheme.lua"
+    - "{{ target_home }}/.config/yazi/theme.toml"
+    - "{{ target_home }}/.tmux.conf"
+    - "{{ target_home }}/.zshrc"
+    - "{{ target_home }}/.zsh_aliases"
+    - "{{ target_home }}/.config/starship.toml"
 
 - name: Remove config directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
   loop:
-    - "{{ ansible_env.HOME }}/.config/yazi"
-    - "{{ ansible_env.HOME }}/.config/nvim"
-    - "{{ ansible_env.HOME }}/.config/theme"
-    - "{{ ansible_env.HOME }}/.cache/theme"
-    - "{{ ansible_env.HOME }}/.cache/forge"
-    - "{{ ansible_env.HOME }}/.local/nvim-runtime"
+    - "{{ target_home }}/.config/yazi"
+    - "{{ target_home }}/.config/nvim"
+    - "{{ target_home }}/.config/theme"
+    - "{{ target_home }}/.cache/theme"
+    - "{{ target_home }}/.cache/forge"
+    - "{{ target_home }}/.local/nvim-runtime"
 
 - name: Reset shell to bash
   ansible.builtin.user:
-    name: "{{ ansible_env.USER }}"
+    name: "{{ target_user }}"
     shell: /bin/bash
   become: true
 
@@ -74,24 +74,24 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - "{{ ansible_env.HOME }}/.local/bin/nvim"
-    - "{{ ansible_env.HOME }}/.local/nvim-runtime"
+    - "{{ target_home }}/.local/bin/nvim"
+    - "{{ target_home }}/.local/nvim-runtime"
   when: full_teardown | default(false) | bool
 
 - name: Remove yazi (full teardown)
   ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/.local/bin/yazi"
+    path: "{{ target_home }}/.local/bin/yazi"
     state: absent
   when: full_teardown | default(false) | bool
 
 - name: Remove starship (full teardown)
   ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/.local/bin/starship"
+    path: "{{ target_home }}/.local/bin/starship"
     state: absent
   when: full_teardown | default(false) | bool
 
 - name: Remove theme script (full teardown)
   ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/.local/bin/theme"
+    path: "{{ target_home }}/.local/bin/theme"
     state: absent
   when: full_teardown | default(false) | bool

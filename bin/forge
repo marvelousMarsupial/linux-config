@@ -75,7 +75,7 @@ cmd_setup() {
     fi
 
     # Run playbook
-    ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/playbook.yml" -e "role=$role"
+    ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/playbook.yml" -e "role=$role" -K
 
     set_current_role "$role"
     echo "==> Done! Role '$role' is now active."

@@ -4,8 +4,8 @@
 - name: Find Zen profile directories
   ansible.builtin.find:
     paths:
-      - "{{ ansible_env.HOME }}/.zen"
-      - "{{ ansible_env.HOME }}/.var/app/app.zen_browser.zen/.zen"
+      - "{{ target_home }}/.zen"
+      - "{{ target_home }}/.var/app/app.zen_browser.zen/.zen"
     file_type: directory
     patterns: "*.default*"
   register: zen_profiles
@@ -34,6 +34,6 @@
     path: "{{ item }}"
     state: directory
   loop:
-    - "{{ ansible_env.HOME }}/.config/gtk-3.0"
-    - "{{ ansible_env.HOME }}/.config/gtk-4.0"
+    - "{{ target_home }}/.config/gtk-3.0"
+    - "{{ target_home }}/.config/gtk-4.0"
   become: false

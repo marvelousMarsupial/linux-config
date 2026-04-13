@@ -3,8 +3,8 @@
 
 - name: Remove desktop stow symlinks
   ansible.builtin.shell: |
-    cd {{ ansible_env.HOME }}/linux-config/stow
-    stow -D -t {{ ansible_env.HOME }} sway foot fuzzel mako 2>/dev/null || true
+    cd {{ target_home }}/linux-config/stow
+    stow -D -t {{ target_home }} sway foot fuzzel mako 2>/dev/null || true
   become: false
   ignore_errors: true
 
@@ -13,9 +13,9 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - "{{ ansible_env.HOME }}/.config/foot/colors.ini"
-    - "{{ ansible_env.HOME }}/.config/sway/colors"
-    - "{{ ansible_env.HOME }}/.config/fuzzel/colors.ini"
+    - "{{ target_home }}/.config/foot/colors.ini"
+    - "{{ target_home }}/.config/sway/colors"
+    - "{{ target_home }}/.config/fuzzel/colors.ini"
   become: false
 
 - name: Note about Flatpaks

@@ -10,31 +10,35 @@
   ansible.builtin.shell: |
     [ -e "{{ item }}" ] && [ ! -L "{{ item }}" ] && rm -rf "{{ item }}" || true
   loop:
-    - "{{ ansible_env.HOME }}/.local/bin/theme"
-    - "{{ ansible_env.HOME }}/.config/theme"
+    - "{{ target_home }}/.local/bin/theme"
+    - "{{ target_home }}/.config/theme"
   changed_when: false
+  become: false
 
 - name: Stow theme configuration
   ansible.builtin.shell: |
-    cd {{ ansible_env.HOME }}/linux-config/stow
-    stow -t {{ ansible_env.HOME }} theme
+    cd {{ target_home }}/linux-config/stow
+    stow -t {{ target_home }} theme
   args:
-    creates: "{{ ansible_env.HOME }}/.config/theme/config.toml"
+    creates: "{{ target_home }}/.config/theme/config.toml"
+  become: false
 
 - name: Create app config directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
   loop:
-    - "{{ ansible_env.HOME }}/.config/foot"
-    - "{{ ansible_env.HOME }}/.config/sway"
-    - "{{ ansible_env.HOME }}/.config/mako"
-    - "{{ ansible_env.HOME }}/.config/fuzzel"
-    - "{{ ansible_env.HOME }}/.config/yazi"
-    - "{{ ansible_env.HOME }}/.config/nvim/lua/plugins"
-    - "{{ ansible_env.HOME }}/.cache/theme"
+    - "{{ target_home }}/.config/foot"
+    - "{{ target_home }}/.config/sway"
+    - "{{ target_home }}/.config/mako"
+    - "{{ target_home }}/.config/fuzzel"
+    - "{{ target_home }}/.config/yazi"
+    - "{{ target_home }}/.config/nvim/lua/plugins"
+    - "{{ target_home }}/.cache/theme"
+  become: false
 
 - name: Apply default theme
   ansible.builtin.command:
-    cmd: "{{ ansible_env.HOME }}/.local/bin/theme apply {{ default_theme }}"
+    cmd: "{{ target_home }}/.local/bin/theme apply {{ default_theme }}"
   changed_when: true
+  become: false

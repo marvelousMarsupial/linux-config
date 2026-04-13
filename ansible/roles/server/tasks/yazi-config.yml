@@ -3,5 +3,6 @@
 # Just ensure the config directory exists for stow
 - name: Create yazi config directory
   ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/.config/yazi"
+    path: "{{ target_home }}/.config/yazi"
     state: directory
+  become: false
