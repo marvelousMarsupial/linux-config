@@ -24,6 +24,49 @@ static DOTFILES: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../dotfiles
 pub const ROLES_TOML: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../config/roles.toml"));
 
+/// The theme targets / scheme overrides config.
+pub const THEMES_TOML: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../themes/config.toml"));
+
+/// Embedded base16 scheme YAML files. Keyed by bare filename
+/// (`kanagawa.yaml`), values are the raw YAML text.
+pub static SCHEMES: Dir<'static> =
+    include_dir!("$CARGO_MANIFEST_DIR/../../themes/schemes");
+
+/// Embedded Tera templates (`foot.ini.j2` etc.).
+pub static TEMPLATES: Dir<'static> =
+    include_dir!("$CARGO_MANIFEST_DIR/../../themes/templates");
+
+/// Template source adapter used by `theme::apply`.
+pub struct EmbeddedTemplates;
+impl forge_common::theme::TemplateSource for EmbeddedTemplates {
+    fn read(&self, name: &str) -> Option<String> {
+        TEMPLATES
+            .get_file(name)
+            .and_then(|f| f.contents_utf8().map(|s| s.to_string()))
+    }
+}
+
+/// Return the slugs of every embedded scheme (file stems).
+pub fn scheme_names() -> Vec<String> {
+    let mut out: Vec<String> = SCHEMES
+        .entries()
+        .iter()
+        .filter_map(|e| e.as_file())
+        .filter_map(|f| f.path().file_stem().and_then(|s| s.to_str()))
+        .map(|s| s.to_string())
+        .collect();
+    out.sort();
+    out
+}
+
+/// Load a scheme by slug, returning `None` if not embedded.
+pub fn load_scheme(slug: &str) -> Option<forge_common::theme::Scheme> {
+    let fname = format!("{slug}.yaml");
+    let text = SCHEMES.get_file(&fname)?.contents_utf8()?;
+    forge_common::theme::Scheme::from_yaml(text).ok()
+}
+
 /// Thin adapter that lets the planner treat the embedded `Dir` as a
 /// `DotfileSource`. Two non-trivial pieces here: the recursive walker
 /// (`include_dir` gives you `entries()` but doesn't flatten) and the

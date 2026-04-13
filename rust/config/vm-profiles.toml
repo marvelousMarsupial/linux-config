@@ -1,0 +1,25 @@
+# Incus VM / system-container profiles.
+#
+# Each profile is a "machine you want" — image to launch, container vs VM,
+# role to bootstrap once the instance is up, and optional network /
+# resource tweaks. `forge vm create <profile>` launches the instance,
+# waits for it to boot, pushes the forge binary onto it, and runs
+# `forge setup <role> --target=local` inside.
+
+[[profile]]
+name = "net-box"
+image = "images:debian/13"
+kind = "vm"            # full VM for capture/IDS that need raw sockets
+role = "net-box"
+
+[[profile]]
+name = "attack-box"
+image = "images:debian/13"
+kind = "vm"
+role = "attack-box"
+
+[[profile]]
+name = "dev-server"
+image = "images:debian/13"
+kind = "container"     # system container, lighter than a VM
+role = "dev"

@@ -46,3 +46,54 @@ dotfiles = [
 [remote-desktop]
 extends = "desktop"
 packages = ["tigervnc-standalone-server", "tigervnc-common"]
+
+# CLI-only network analysis / monitoring box.
+# Inherits server shell + tools, adds capture/monitoring/IDS stack.
+[net-box]
+extends = "server"
+packages = [
+    "tshark",
+    "tcpdump",
+    "termshark",
+    "iftop",
+    "nethogs",
+    "vnstat",
+    "bmon",
+    "iperf3",
+    "nmap",
+    "arp-scan",
+    "netdiscover",
+    "suricata",
+    "dnsutils",
+    "whois",
+    "traceroute",
+    "mtr-tiny",
+    "netcat-openbsd",
+    "socat",
+]
+
+# Offensive/CTF box. Inherits desktop GUI for Burp, Wireshark, etc.
+# Firewall is intentionally not installed so inbound tools work.
+[attack-box]
+extends = "desktop"
+packages = [
+    "wireshark",
+    "wireshark-qt",
+    "tshark",
+    "nmap",
+    "masscan",
+    "nikto",
+    "dirb",
+    "gobuster",
+    "whatweb",
+    "dnsrecon",
+    "sqlmap",
+    "wfuzz",
+    "httpie",
+    "hashcat",
+    "john",
+    "hydra",
+    "medusa",
+    "crunch",
+    "cewl",
+]

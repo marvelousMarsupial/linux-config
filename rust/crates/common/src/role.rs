@@ -14,6 +14,8 @@ pub enum Role {
     Dev,
     Desktop,
     RemoteDesktop,
+    NetBox,
+    AttackBox,
 }
 
 impl Role {
@@ -23,6 +25,8 @@ impl Role {
             Role::Dev => "dev",
             Role::Desktop => "desktop",
             Role::RemoteDesktop => "remote-desktop",
+            Role::NetBox => "net-box",
+            Role::AttackBox => "attack-box",
         }
     }
 
@@ -32,6 +36,8 @@ impl Role {
             Role::Dev,
             Role::Desktop,
             Role::RemoteDesktop,
+            Role::NetBox,
+            Role::AttackBox,
         ]
     }
 }
@@ -51,6 +57,8 @@ impl FromStr for Role {
             "dev" => Ok(Role::Dev),
             "desktop" => Ok(Role::Desktop),
             "remote-desktop" => Ok(Role::RemoteDesktop),
+            "net-box" => Ok(Role::NetBox),
+            "attack-box" => Ok(Role::AttackBox),
             other => Err(anyhow!("unknown role: {other}")),
         }
     }

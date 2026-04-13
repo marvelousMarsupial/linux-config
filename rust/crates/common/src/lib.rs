@@ -9,7 +9,11 @@ pub mod plan;
 pub mod planner;
 pub mod role;
 pub mod run;
+pub mod dev_config;
+pub mod incus;
+pub mod podman;
 pub mod state;
+pub mod theme;
 
 pub use atomic::write_atomic;
 pub use diff::unified_diff;

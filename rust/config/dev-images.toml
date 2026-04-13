@@ -1,0 +1,27 @@
+# Dev container image definitions.
+#
+# Each entry is an image forge knows how to build and a set of sane
+# defaults for creating containers from it. `forge dev build <name>`
+# runs podman build against the Containerfile, `forge dev up <name>`
+# creates (if missing) + starts + attaches a container using these defaults.
+#
+# Container names in podman are prefixed `forge-dev-` automatically.
+
+[[image]]
+name = "base"
+containerfile = "containers/base.Containerfile"
+default_volumes = [
+    { host = "~/linux-config", container = "/work/linux-config" },
+    { host = "~/.ssh", container = "/home/dev/.ssh:ro" },
+    { host = "~/.gitconfig", container = "/home/dev/.gitconfig:ro" },
+]
+default_ports = []
+
+[[image]]
+name = "rust"
+containerfile = "containers/rust.Containerfile"
+default_volumes = [
+    { host = "~/linux-config", container = "/work/linux-config" },
+    { host = "~/.cargo/registry", container = "/home/dev/.cargo/registry" },
+]
+default_ports = [3000]
