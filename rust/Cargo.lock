@@ -394,6 +394,7 @@ name = "forge"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "cliclack",
  "dirs",
@@ -413,6 +414,7 @@ dependencies = [
  "chrono",
  "dirs",
  "duct",
+ "globset",
  "serde",
  "serde_json",
  "similar",

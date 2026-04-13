@@ -23,6 +23,7 @@ dirs = "5"
 duct = "0.13"
 tempfile = "3"
 similar = "2"
+globset = "0.4"
 
 [profile.release]
 lto = "thin"

@@ -1,11 +1,14 @@
-# Role definitions. Each role can `extends` another to inherit its steps.
-# Resolution: base role's packages/dotfiles/downloads/post run first, then child's.
+# Role definitions. Each role can `extends` another; the base role's
+# steps run before the child's (packages appended, dotfiles merged).
+#
+# `dotfiles` is a list of glob patterns against the embedded dotfiles tree
+# (which mirrors $HOME). Matching files are written to $HOME/<path>, with
+# any existing files compared so idempotent reruns skip unchanged content.
 
 [server]
 packages = [
     "zsh",
     "tmux",
-    "stow",
     "fzf",
     "ripgrep",
     "fd-find",
@@ -14,11 +17,16 @@ packages = [
     "curl",
     "eza",
     "bat",
-    "ufw",
-    "fail2ban",
 ]
-dotfiles = ["zsh", "tmux", "yazi", "nvim", "theme", "starship"]
-post = ["chsh -s /bin/zsh"]
+dotfiles = [
+    ".zshrc",
+    ".zsh_aliases",
+    ".tmux.conf",
+    ".config/yazi/**",
+    ".config/nvim/**",
+    ".config/starship.toml",
+]
+post = []
 
 [dev]
 extends = "server"
@@ -27,7 +35,13 @@ packages = ["build-essential", "nodejs", "npm", "lazygit"]
 [desktop]
 extends = "server"
 packages = ["sway", "foot", "fuzzel", "mako", "wl-clipboard"]
-dotfiles = ["sway", "foot", "fuzzel", "mako"]
+dotfiles = [
+    ".config/sway/**",
+    ".config/foot/**",
+    ".config/fuzzel/**",
+    ".config/mako/**",
+    ".local/share/applications/**",
+]
 
 [remote-desktop]
 extends = "desktop"
