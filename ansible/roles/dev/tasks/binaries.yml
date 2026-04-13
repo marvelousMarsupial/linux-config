@@ -1,18 +1,4 @@
 ---
-- name: Get latest code-server release
-  ansible.builtin.uri:
-    url: https://api.github.com/repos/coder/code-server/releases/latest
-    return_content: true
-  register: codeserver_release
-
-- name: Install code-server
-  ansible.builtin.apt:
-    deb: >-
-      https://github.com/coder/code-server/releases/download/{{
-      codeserver_release.json.tag_name }}/code-server_{{
-      codeserver_release.json.tag_name | regex_replace('^v', '') }}_amd64.deb
-  when: ansible_architecture == "x86_64"
-
 - name: Get latest lazygit release
   ansible.builtin.uri:
     url: https://api.github.com/repos/jesseduffield/lazygit/releases/latest
@@ -25,12 +11,11 @@
       https://github.com/jesseduffield/lazygit/releases/download/{{
       lazygit_release.json.tag_name }}/lazygit_{{
       lazygit_release.json.tag_name | regex_replace('^v', '')
-      }}_Linux_x86_64.tar.gz
+      }}_Linux_{{ ansible_architecture | regex_replace('aarch64', 'arm64') }}.tar.gz
     dest: /usr/local/bin
     remote_src: true
     include:
       - lazygit
-  when: ansible_architecture == "x86_64"
 
 - name: Install GitHub CLI
   ansible.builtin.shell: |
@@ -47,19 +32,16 @@
 
 - name: Get latest tea (Gitea CLI) release
   ansible.builtin.uri:
-    url: https://api.github.com/repos/go-gitea/tea/releases/latest
+    url: https://gitea.com/api/v1/repos/gitea/tea/releases/latest
     return_content: true
   register: tea_release
 
 - name: Download tea
-  ansible.builtin.unarchive:
-    src: >-
-      https://github.com/go-gitea/tea/releases/download/{{
+  ansible.builtin.get_url:
+    url: >-
+      https://gitea.com/gitea/tea/releases/download/{{
       tea_release.json.tag_name }}/tea-{{
       tea_release.json.tag_name | regex_replace('^v', '')
-      }}-linux-amd64.tar.gz
-    dest: /usr/local/bin
-    remote_src: true
-    include:
-      - tea
-  when: ansible_architecture == "x86_64"
+      }}-linux-{{ arch_golang }}
+    dest: /usr/local/bin/tea
+    mode: '0755'

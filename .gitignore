@@ -1,1 +1,26 @@
+# Theme-generated files (written by `theme apply`)
+stow/nvim/.config/nvim/lua/plugins/colorscheme.lua
 stow/yazi/.config/yazi/theme.toml
+stow/foot/.config/foot/colors.ini
+stow/sway/.config/sway/colors
+stow/fuzzel/.config/fuzzel/colors.ini
+stow/gtk-3.0/.config/gtk-3.0/gtk.css
+stow/gtk-4.0/.config/gtk-4.0/gtk.css
+
+__pycache__/
+
+# npm
+node_modules/
+package-lock.json
+package.json
+
+# Local binary symlinks
+bin/nvim
+
+# Lazy.nvim lockfile
+stow/nvim/.config/nvim/lazy-lock.json
+
+# Ignore test symlinks in repo root (not in stow/)
+/.config
+/.local/
+/.tmux.conf

@@ -1,21 +1,15 @@
 ---
-- name: Install ufw and fail2ban
-  ansible.builtin.apt:
-    name:
-      - ufw
-      - fail2ban
-    state: present
-
-- name: Allow SSH through firewall
+- name: Allow ports through firewall
   community.general.ufw:
     rule: allow
-    port: '22'
+    port: "{{ item }}"
     proto: tcp
+  loop: "{{ firewall.allowed_ports }}"
 
 - name: Enable ufw
   community.general.ufw:
     state: enabled
-    policy: deny
+    policy: "{{ firewall.default_policy }}"
 
 - name: Configure fail2ban for SSH
   ansible.builtin.copy:
@@ -23,11 +17,11 @@
     content: |
       [sshd]
       enabled = true
-      port = 22
+      port = {{ ports.ssh }}
       filter = sshd
-      maxretry = 5
-      bantime = 1h
-      findtime = 10m
+      maxretry = {{ firewall.fail2ban.max_retries }}
+      bantime = {{ firewall.fail2ban.ban_time }}
+      findtime = {{ firewall.fail2ban.find_time }}
 
 - name: Enable fail2ban
   ansible.builtin.systemd:

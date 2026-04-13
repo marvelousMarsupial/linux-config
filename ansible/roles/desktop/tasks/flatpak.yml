@@ -9,7 +9,4 @@
   community.general.flatpak:
     name: "{{ item }}"
     state: present
-  loop:
-    - md.obsidian.Obsidian
-    - app.zen_browser.zen
-    - org.keepassxc.KeePassXC
+  loop: "{{ flatpak_apps }}"

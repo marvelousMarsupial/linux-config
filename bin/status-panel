@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""status-panel - system status popup with ASCII clock"""
+
+import os
+import re
+import subprocess
+from datetime import datetime
+from pathlib import Path
+
+# Source D-Bus environment for remote desktop sessions
+dbus_env = Path(f"/run/user/{os.getuid()}/dbus-env")
+if dbus_env.exists() and "DBUS_SESSION_BUS_ADDRESS" not in os.environ:
+    for line in dbus_env.read_text().splitlines():
+        if line.startswith("export DBUS_SESSION_BUS_ADDRESS="):
+            addr = line.split("=", 1)[1].strip("'\"")
+            os.environ["DBUS_SESSION_BUS_ADDRESS"] = addr
+
+
+def run(cmd: list[str]) -> str:
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        return r.stdout if r.returncode == 0 else ""
+    except FileNotFoundError:
+        return ""
+
+
+def get_clock() -> str:
+    time_str = datetime.now().strftime("%H:%M")
+    result = run(["toilet", "-f", "future", time_str])
+    return result.strip()
+
+
+def get_network() -> str:
+    wifi = run(["iwgetid", "-r"]).strip()
+    link = run(["ip", "link", "show"])
+
+    if wifi:
+        return f"📶 {wifi}"
+    elif re.search(r"(enp|eth)\w*.*UP", link):
+        return "🌐 ethernet"
+    else:
+        return "❌ offline"
+
+
+def get_vpn() -> str:
+    wg = run(["ip", "-4", "addr", "show", "wg0"])
+    if re.search(r"inet\s+\d+", wg):
+        return "🔒 vpn"
+    else:
+        return "🔓 vpn"
+
+
+def get_battery() -> str:
+    bat = Path("/sys/class/power_supply/BAT0")
+    if bat.exists():
+        try:
+            pct = (bat / "capacity").read_text().strip()
+            status = (bat / "status").read_text().strip().lower()
+            if status == "charging":
+                return f"🔌 battery: {pct}% charging"
+            elif status == "full":
+                return "🔋 battery: full"
+            else:
+                return f"🔋 battery: {pct}%"
+        except (IOError, OSError):
+            pass
+    return "⚡ power: ac"
+
+
+def main():
+    now = datetime.now()
+    date_str = now.strftime("%a %b %d")
+
+    clock = get_clock()
+    network = get_network()
+    vpn = get_vpn()
+    battery = get_battery()
+
+    lines = clock.split("\n")
+    lines.append(f"📅 {date_str}")
+    lines.append("")
+    lines.append(network)
+    lines.append(vpn)
+    lines.append(battery)
+
+    num_lines = len(lines)
+
+    subprocess.run(
+        ["fuzzel", "--dmenu", "--prompt=", f"--lines={num_lines}", "--width=18", "--font=monospace:size=20", "--selection-color=00000000", "--selection-text-color=ffffffff", "--inner-pad=20", "--line-height=25"],
+        input="\n".join(lines),
+        text=True,
+        capture_output=True
+    )
+
+
+if __name__ == "__main__":
+    main()

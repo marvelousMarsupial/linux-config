@@ -1,0 +1,19 @@
+---
+scheme: "Summer Dusk"
+author: "Custom warm theme"
+base00: "2d2a2e"  # soft warm charcoal (background)
+base01: "3a3640"  # slightly lighter (ui elements)
+base02: "4a4550"  # selection background
+base03: "7a7580"  # comments (muted lavender-grey)
+base04: "a8a3ae"  # dark foreground
+base05: "e3dfe8"  # main text (warm white)
+base06: "f0ecf5"  # light foreground
+base07: "fcfaff"  # brightest white
+base08: "f85e5e"  # coral red
+base09: "f9a03f"  # bright orange (summer sun)
+base0A: "f9d849"  # golden yellow
+base0B: "8ccf7e"  # fresh grass green
+base0C: "56d9c6"  # turquoise (ocean)
+base0D: "5eaef7"  # sky blue
+base0E: "d98ef5"  # warm magenta/orchid
+base0F: "e67e4a"  # terracotta

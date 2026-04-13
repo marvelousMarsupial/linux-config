@@ -15,19 +15,29 @@ yazi_flavor = "gruvbox-dark"
 [scheme_meta.catppuccin-mocha]
 scheme_slug = "catppuccin-mocha"
 yazi_flavor = "catppuccin-mocha"
-nvim_colorscheme = "tokyonight-moon"
+
+[scheme_meta.tokyonight-moon]
+scheme_slug = "tokyonight-moon"
 nvim_plugin = "folke/tokyonight.nvim"
 
 [scheme_meta.kanagawa]
 scheme_slug = "kanagawa"
 yazi_flavor = "kanagawa"
 
+[scheme_meta.onehalfdark-black]
+scheme_slug = "onehalfdark-black"
+nvim_plugin = "navarasu/onedark.nvim"
+nvim_colorscheme = "onedark"
+
+[scheme_meta.summer-dusk]
+scheme_slug = "summer-dusk"
+
 # ============ Server targets ============
 
 [[targets]]
 name = "tmux"
-template = "tmux.conf.j2"
-output = "~/.tmux.conf"
+template = "tmux-colors.conf.j2"
+output = "~/.config/tmux/colors.conf"
 hook = "tmux source-file ~/.tmux.conf"
 
 [[targets]]
@@ -52,7 +62,7 @@ hook = "pkill -SIGUSR1 foot"
 name = "sway"
 template = "sway-colors.j2"
 output = "~/.config/sway/colors"
-hook = "swaymsg reload"
+# hook removed - swaymsg reload can close windows; colors apply on next sway reload
 
 [[targets]]
 name = "mako"
@@ -64,6 +74,11 @@ hook = "makoctl reload"
 name = "fuzzel"
 template = "fuzzel.ini.j2"
 output = "~/.config/fuzzel/colors.ini"
+
+[[targets]]
+name = "swaylock"
+template = "swaylock.j2"
+output = "~/.config/swaylock/config"
 
 # ============ GTK targets ============
 

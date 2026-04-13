@@ -1,6 +1,43 @@
 ---
+- name: Create desktop directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+  loop:
+    - "{{ target_home }}/.local/share/applications"
+    - "{{ target_home }}/Pictures"
+    - "{{ target_home }}/vault"
+    - "{{ target_home }}/vault/daily"
+
+- name: Remove existing desktop config dirs (so stow can create symlinks)
+  ansible.builtin.file:
+    path: "{{ target_home }}/{{ item }}"
+    state: absent
+  loop: "{{ stow_cleanup.desktop }}"
+  become: true
+
 - name: Stow desktop dotfiles
   ansible.builtin.shell: |
     cd {{ target_home }}/linux-config/stow
-    stow -t {{ target_home }} sway foot fuzzel mako
-  become: false
+    stow -t {{ target_home }} {{ stow_packages.desktop | join(' ') }}
+  become_user: "{{ target_user }}"
+
+# Wallpaper: stow provides wallpaper, no need to download
+# User can replace stow/sway/.config/sway/wallpaper with their own
+
+- name: Get target user UID
+  ansible.builtin.command: id -u {{ target_user }}
+  register: target_uid
+  changed_when: false
+
+- name: Set GTK dark mode via gsettings
+  ansible.builtin.shell: |
+    gsettings set org.gnome.desktop.interface color-scheme '{{ gtk.color_scheme }}'
+    gsettings set org.gnome.desktop.interface gtk-theme '{{ gtk.theme }}'
+  become_user: "{{ target_user }}"
+  environment:
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ target_uid.stdout }}/bus"
+  ignore_errors: true

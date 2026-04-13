@@ -1,10 +1,9 @@
 ---
 # Teardown dev role (removes ONLY dev-specific additions)
 
-- name: Stop dev services
+- name: Stop dev containers
   ansible.builtin.shell: |
-    pkill -f code-server || true
-    pkill -f jupyter-lab || true
+    podman stop coder jupyter cloudbeaver 2>/dev/null || true
   become: false
   ignore_errors: true
 
@@ -13,22 +12,68 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - "{{ ansible_env.HOME }}/.local/bin/coder-start"
-    - "{{ ansible_env.HOME }}/.local/bin/coder-stop"
-    - "{{ ansible_env.HOME }}/.local/bin/jupyter-start"
-    - "{{ ansible_env.HOME }}/.local/bin/jupyter-stop"
-  become: false
-
-- name: Remove jupyter venv
-  ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/.venv/jupyter"
-    state: absent
+    - "{{ target_home }}/.local/bin/coder-start"
+    - "{{ target_home }}/.local/bin/coder-stop"
+    - "{{ target_home }}/.local/bin/jupyter-start"
+    - "{{ target_home }}/.local/bin/jupyter-stop"
+    - "{{ target_home }}/.local/bin/cloudbeaver-start"
+    - "{{ target_home }}/.local/bin/cloudbeaver-stop"
   become: false
 
 - name: Remove dev aliases block
   ansible.builtin.blockinfile:
-    path: "{{ ansible_env.HOME }}/.zsh_aliases"
+    path: "{{ target_home }}/.zsh_aliases"
     marker: "# {mark} DEV ALIASES"
     state: absent
   become: false
   ignore_errors: true
+
+- name: Remove cloudbeaver aliases block
+  ansible.builtin.blockinfile:
+    path: "{{ target_home }}/.zsh_aliases"
+    marker: "# {mark} CLOUDBEAVER ALIASES"
+    state: absent
+  become: false
+  ignore_errors: true
+
+# Full teardown - remove containers and images
+- name: Remove dev container images (full teardown)
+  ansible.builtin.shell: |
+    podman rmi docker.io/codercom/code-server:latest 2>/dev/null || true
+    podman rmi docker.io/jupyter/scipy-notebook:latest 2>/dev/null || true
+    podman rmi docker.io/dbeaver/cloudbeaver:latest 2>/dev/null || true
+  become: false
+  ignore_errors: true
+  when: full_teardown | default(false) | bool
+
+- name: Remove dev packages (full teardown)
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - cmake
+      - pkg-config
+      - clang
+      - clang-format
+      - gdb
+      - valgrind
+      - nodejs
+      - npm
+    state: absent
+    autoremove: true
+  become: true
+  ignore_errors: true
+  when: full_teardown | default(false) | bool
+
+- name: Remove lazygit (full teardown)
+  ansible.builtin.file:
+    path: /usr/local/bin/lazygit
+    state: absent
+  become: true
+  when: full_teardown | default(false) | bool
+
+- name: Remove tea (full teardown)
+  ansible.builtin.file:
+    path: /usr/local/bin/tea
+    state: absent
+  become: true
+  when: full_teardown | default(false) | bool

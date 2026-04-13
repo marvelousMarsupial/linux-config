@@ -5,4 +5,5 @@
   ansible.builtin.file:
     path: "{{ target_home }}/.config/yazi"
     state: directory
-  become: false
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"

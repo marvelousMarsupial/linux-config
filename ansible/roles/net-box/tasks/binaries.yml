@@ -1,0 +1,46 @@
+---
+# Additional network tools from GitHub releases
+
+- name: Get latest gping release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/orf/gping/releases/latest
+    return_content: true
+  register: gping_release
+
+- name: Download gping
+  ansible.builtin.unarchive:
+    src: >-
+      https://github.com/orf/gping/releases/download/{{
+      gping_release.json.tag_name }}/gping-{{
+      arch_rust }}.tar.gz
+    dest: /usr/local/bin
+    remote_src: true
+    include:
+      - gping
+
+- name: Get latest dog (DNS client) release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/ogham/dog/releases/latest
+    return_content: true
+  register: dog_release
+  failed_when: false
+
+- name: Download dog
+  ansible.builtin.unarchive:
+    src: >-
+      https://github.com/ogham/dog/releases/download/{{
+      dog_release.json.tag_name }}/dog-{{
+      dog_release.json.tag_name }}-{{ arch_rust }}.zip
+    dest: /tmp/dog
+    remote_src: true
+  when: dog_release.status == 200 and ansible_architecture == "x86_64"
+  failed_when: false
+
+- name: Install dog binary
+  ansible.builtin.copy:
+    src: /tmp/dog/bin/dog
+    dest: /usr/local/bin/dog
+    mode: '0755'
+    remote_src: true
+  when: dog_release.status == 200 and ansible_architecture == "x86_64"
+  failed_when: false

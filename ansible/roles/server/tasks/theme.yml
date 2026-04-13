@@ -10,10 +10,8 @@
   ansible.builtin.shell: |
     [ -e "{{ item }}" ] && [ ! -L "{{ item }}" ] && rm -rf "{{ item }}" || true
   loop:
-    - "{{ target_home }}/.local/bin/theme"
     - "{{ target_home }}/.config/theme"
   changed_when: false
-  become: false
 
 - name: Stow theme configuration
   ansible.builtin.shell: |
@@ -21,24 +19,17 @@
     stow -t {{ target_home }} theme
   args:
     creates: "{{ target_home }}/.config/theme/config.toml"
-  become: false
+  become_user: "{{ target_user }}"
 
-- name: Create app config directories
+- name: Create theme cache directory
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ target_home }}/.cache/theme"
     state: directory
-  loop:
-    - "{{ target_home }}/.config/foot"
-    - "{{ target_home }}/.config/sway"
-    - "{{ target_home }}/.config/mako"
-    - "{{ target_home }}/.config/fuzzel"
-    - "{{ target_home }}/.config/yazi"
-    - "{{ target_home }}/.config/nvim/lua/plugins"
-    - "{{ target_home }}/.cache/theme"
-  become: false
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
 
 - name: Apply default theme
   ansible.builtin.command:
-    cmd: "{{ target_home }}/.local/bin/theme apply {{ default_theme }}"
+    cmd: "{{ target_home }}/linux-config/bin/theme apply {{ default_theme }}"
+  become_user: "{{ target_user }}"
   changed_when: true
-  become: false

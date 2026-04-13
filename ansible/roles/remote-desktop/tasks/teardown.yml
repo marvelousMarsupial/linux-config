@@ -1,30 +1,45 @@
 ---
 # Teardown remote-desktop role (removes ONLY remote-desktop-specific additions)
 
-- name: Stop VNC if running
-  ansible.builtin.shell: vncserver -kill :1 2>/dev/null || true
+- name: Stop Sunshine if running
+  ansible.builtin.shell: pkill -f sunshine 2>/dev/null || true
   become: false
   ignore_errors: true
 
-- name: Remove VNC config
+- name: Stop PulseAudio if running
+  ansible.builtin.shell: pulseaudio --kill 2>/dev/null || true
+  become: false
+  ignore_errors: true
+
+- name: Remove Sunshine config
   ansible.builtin.file:
-    path: "{{ target_home }}/.vnc"
+    path: "{{ target_home }}/.config/sunshine"
     state: absent
   become: false
 
-- name: Remove VNC scripts
+- name: Remove headless Sway config
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ target_home }}/.config/sway/headless"
     state: absent
-  loop:
-    - "{{ target_home }}/.local/bin/vnc-start"
-    - "{{ target_home }}/.local/bin/vnc-stop"
   become: false
 
-- name: Remove VNC aliases block
+- name: Remove remote desktop aliases block
   ansible.builtin.blockinfile:
     path: "{{ target_home }}/.zsh_aliases"
-    marker: "# {mark} VNC ALIASES"
+    marker: "# {mark} REMOTE DESKTOP ALIASES"
     state: absent
   become: false
   ignore_errors: true
+
+- name: Remove WireGuard firewall rule
+  community.general.ufw:
+    rule: allow
+    port: "51820"
+    proto: udp
+    delete: true
+  ignore_errors: true
+
+# Note: Sunshine flatpak left installed (flatpak uninstall to fully remove)
+# Note: WireGuard, PulseAudio packages left installed
+# Note: ufw left enabled with SSH allowed
+# Note: WireGuard config in /etc/wireguard left intact

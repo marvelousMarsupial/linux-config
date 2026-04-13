@@ -1,42 +1,32 @@
 ---
+# Dotfiles setup - uses target_user/target_home from playbook vars
+
 - name: Create trash directory
   ansible.builtin.file:
     path: "{{ target_home }}/.trash"
     state: directory
-  become: false
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+  become: true
 
-- name: Set zsh as default shell
-  ansible.builtin.user:
-    name: "{{ target_user }}"
-    shell: /bin/zsh
-
-- name: Remove existing dotfiles
+- name: Remove existing dotfiles (so stow can create symlinks)
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ target_home }}/{{ item }}"
     state: absent
-  loop:
-    - "{{ target_home }}/.zshrc"
-    - "{{ target_home }}/.zsh_aliases"
-    - "{{ target_home }}/.tmux.conf"
-    - "{{ target_home }}/.config/yazi"
-  become: false
+  loop: "{{ stow_cleanup.server }}"
+  become: true
+
+- name: Create config directory
+  ansible.builtin.file:
+    path: "{{ target_home }}/.config"
+    state: directory
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+  become: true
 
 - name: Stow dotfiles
   ansible.builtin.shell: |
     cd {{ target_home }}/linux-config/stow
-    stow -t {{ target_home }} zsh tmux yazi
-  become: false
-
-- name: Copy nvim customizations
-  ansible.builtin.copy:
-    src: "{{ target_home }}/linux-config/stow/nvim/.config/nvim/lua/"
-    dest: "{{ target_home }}/.config/nvim/lua/"
-    remote_src: true
-  become: false
-
-- name: Copy nvim lazyvim.json (enables extras)
-  ansible.builtin.copy:
-    src: "{{ target_home }}/linux-config/stow/nvim/.config/nvim/lazyvim.json"
-    dest: "{{ target_home }}/.config/nvim/lazyvim.json"
-    remote_src: true
-  become: false
+    stow -t {{ target_home }} {{ stow_packages.server | join(' ') }}
+  become: true
+  become_user: "{{ target_user }}"

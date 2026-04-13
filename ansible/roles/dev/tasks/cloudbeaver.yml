@@ -1,0 +1,108 @@
+---
+# CloudBeaver - Web-based database management tool
+
+- name: Create CloudBeaver data directory
+  ansible.builtin.file:
+    path: "{{ target_home }}/.cloudbeaver/workspace"
+    state: directory
+    mode: "0755"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+
+- name: Ensure .local/bin exists
+  ansible.builtin.file:
+    path: "{{ target_home }}/.local/bin"
+    state: directory
+    mode: "0755"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+
+- name: Pull CloudBeaver image
+  ansible.builtin.shell: |
+    podman pull docker.io/dbeaver/cloudbeaver:latest
+  become_user: "{{ target_user }}"
+
+- name: Create cloudbeaver-start script
+  ansible.builtin.copy:
+    dest: "{{ target_home }}/.local/bin/cloudbeaver-start"
+    mode: "0755"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    content: |
+      #!/bin/bash
+
+      # Help
+      if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        echo "Usage: cloudbeaver"
+        echo ""
+        echo "Starts CloudBeaver (web-based database manager) on localhost."
+        echo ""
+        echo "Steps:"
+        echo "  1. From laptop: ssh -L 8978:localhost:8978 user@server"
+        echo "  2. On server:   cloudbeaver"
+        echo "  3. In browser:  http://localhost:8978"
+        exit 0
+      fi
+
+      # Already running?
+      if podman ps --format '{{"{{"}}.Names{{"}}"}}' | grep -q '^cloudbeaver$'; then
+        echo "cloudbeaver already running"
+        echo ""
+        PORT=$(podman port cloudbeaver 8978/tcp 2>/dev/null | cut -d: -f2)
+        IP=$(hostname -I | awk '{print $1}')
+        echo "From your laptop:"
+        echo "  ssh -L $PORT:localhost:$PORT $(whoami)@$IP"
+        echo "  open http://localhost:$PORT"
+        exit 0
+      fi
+
+      # Find open port
+      PORT=8978
+      while ss -tln | grep -q ":$PORT "; do
+        ((PORT++))
+      done
+
+      # Start CloudBeaver
+      podman run -d --name cloudbeaver --rm \
+        --userns=keep-id \
+        -p 127.0.0.1:$PORT:8978 \
+        -v ~/.cloudbeaver/workspace:/opt/cloudbeaver/workspace \
+        docker.io/dbeaver/cloudbeaver:latest > /dev/null 2>&1
+
+      sleep 3
+
+      # Check if it started
+      if ! podman ps --format '{{"{{"}}.Names{{"}}"}}' | grep -q '^cloudbeaver$'; then
+        echo "Failed to start cloudbeaver"
+        echo ""
+        podman logs cloudbeaver 2>&1 || true
+        exit 1
+      fi
+
+      # Success
+      IP=$(hostname -I | awk '{print $1}')
+      echo "cloudbeaver :$PORT"
+      echo ""
+      echo "From your laptop:"
+      echo "  ssh -L $PORT:localhost:$PORT $(whoami)@$IP"
+      echo "  open http://localhost:$PORT"
+
+- name: Create cloudbeaver-stop script
+  ansible.builtin.copy:
+    dest: "{{ target_home }}/.local/bin/cloudbeaver-stop"
+    mode: "0755"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    content: |
+      #!/bin/bash
+      podman stop cloudbeaver 2>/dev/null && echo "cloudbeaver stopped" || echo "cloudbeaver not running"
+
+- name: Add cloudbeaver aliases
+  ansible.builtin.blockinfile:
+    path: "{{ target_home }}/.zsh_aliases"
+    marker: "# {mark} CLOUDBEAVER ALIASES"
+    block: |
+      alias cloudbeaver='cloudbeaver-start'
+      alias dbeaver='cloudbeaver-start'
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"

@@ -1,0 +1,102 @@
+---
+# =============================================================================
+# Remote Desktop via wayvnc + WireGuard
+# =============================================================================
+# Access: Connect via WireGuard VPN, then VNC to 10.0.0.1:5900
+# Usage: remote-start / remote-stop
+
+# -----------------------------------------------------------------------------
+# Firewall - WireGuard only (VNC ports stay internal)
+# Skip with: skip_firewall: true (e.g., attack-box role)
+# -----------------------------------------------------------------------------
+- name: Install and configure firewall
+  when: not (skip_firewall | default(false))
+  block:
+    - name: Install ufw
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+
+    - name: Enable ufw
+      community.general.ufw:
+        state: enabled
+
+    - name: Allow SSH through firewall
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+
+    - name: Allow WireGuard through firewall
+      community.general.ufw:
+        rule: allow
+        port: "51820"
+        proto: udp
+
+# -----------------------------------------------------------------------------
+# WireGuard VPN (wireguard-tools already in server role)
+# -----------------------------------------------------------------------------
+# Note: WireGuard keys and config must be set up manually:
+#   wg genkey | tee /etc/wireguard/server_private.key | wg pubkey > /etc/wireguard/server_public.key
+#   Then create /etc/wireguard/wg0.conf and systemctl enable --now wg-quick@wg0
+
+# -----------------------------------------------------------------------------
+# VNC + Audio
+# -----------------------------------------------------------------------------
+- name: Install wayvnc and audio
+  ansible.builtin.apt:
+    name:
+      - wayvnc
+      - pulseaudio
+    state: present
+
+# -----------------------------------------------------------------------------
+# Sunshine streaming server (optional, for Moonlight)
+# -----------------------------------------------------------------------------
+- name: Install Sunshine via Flatpak
+  community.general.flatpak:
+    name: dev.lizardbyte.app.Sunshine
+    state: present
+
+- name: Grant Sunshine PulseAudio access
+  ansible.builtin.command: flatpak override --user --socket=pulseaudio dev.lizardbyte.app.Sunshine
+  become_user: "{{ target_user }}"
+  changed_when: true
+
+- name: Create Sunshine config directory
+  ansible.builtin.file:
+    path: "{{ target_home }}/.var/app/dev.lizardbyte.app.Sunshine/config/sunshine"
+    state: directory
+    mode: "0755"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+
+- name: Create Sunshine config
+  ansible.builtin.copy:
+    dest: "{{ target_home }}/.var/app/dev.lizardbyte.app.Sunshine/config/sunshine/sunshine.conf"
+    content: |
+      # Bind to all interfaces (protected by WireGuard)
+      address_family = both
+
+      # Encoder settings (software - no GPU on VPS)
+      encoder = software
+
+      # CPU encoding presets
+      sw_preset = faster
+      sw_tune = zerolatency
+    mode: "0644"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+
+# -----------------------------------------------------------------------------
+# Remote desktop aliases (scripts are in linux-config/bin/)
+# -----------------------------------------------------------------------------
+- name: Add remote desktop aliases
+  ansible.builtin.blockinfile:
+    path: "{{ target_home }}/.zsh_aliases"
+    marker: "# {mark} REMOTE DESKTOP ALIASES"
+    block: |
+      alias rstart='remote-start'
+      alias rstop='remote-stop'
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"

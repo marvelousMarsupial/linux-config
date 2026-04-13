@@ -1,0 +1,25 @@
+---
+# Attack-box inherits from remote-desktop (server → desktop → remote-desktop)
+# with firewall disabled for pentesting
+
+- name: Set attack-box flags
+  ansible.builtin.set_fact:
+    skip_firewall: true
+    skip_personal_apps: true
+
+- name: Include remote-desktop role
+  ansible.builtin.include_role:
+    name: remote-desktop
+
+- name: Import packages tasks
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Import Burp Suite tasks
+  ansible.builtin.import_tasks: burpsuite.yml
+
+# TODO: Add binary downloads (metasploit, etc.)
+# - name: Import binaries tasks
+#   ansible.builtin.import_tasks: binaries.yml
+#
+# - name: Import wordlists tasks
+#   ansible.builtin.import_tasks: wordlists.yml

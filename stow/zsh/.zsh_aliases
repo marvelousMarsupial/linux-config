@@ -1,3 +1,10 @@
+# Environment
+export EDITOR=nvim
+export VISUAL=nvim
+
+# Alias reminder (inline terminal hints + corner notification)
+export ALIAS_REMINDER=1
+
 # Navigation
 alias ..='cd ..'
 alias ...='cd ../..'
@@ -40,8 +47,11 @@ alias myip='curl -s ifconfig.me'
 alias ping='ping -c 5'
 alias listening='ss -tlnp'
 alias connections='ss -tnp'
-alias wgup='sudo wg-quick up wg0'
-alias wgdown='sudo wg-quick down wg0'
+
+# VPN (WireGuard)
+alias vpnup='vpn up'
+alias vpndown='vpn down'
+alias vpnstat='vpn status'
 
 # Systemd
 alias sc='sudo systemctl'
@@ -56,8 +66,40 @@ alias jce='journalctl -xe'
 
 # Quick tools
 alias v='nvim'
-alias y='yazi'
-alias t='date +%H:%M'
+# y defined as function in .zshrc (cd's to dir on exit)
+# Tmux helper with custom bindings help
+t() {
+  if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    command cat << 'EOF'
+tmux bindings (prefix: Ctrl+Space)
+
+Navigation (Alt + hjkl):
+  Alt-h/j/k/l     Move between panes (smart-splits aware)
+  Alt-H/J/K/L     Resize panes
+
+Pane Management:
+  Alt-v           Split + nvim
+  Alt-e           Split + yazi
+  Alt-Enter       Split + shell
+  Alt-q           Close pane
+  Alt-z           Toggle zoom
+  Alt-d           Detach
+
+Copy Mode:
+  Alt-[           Enter copy mode
+  Alt-]           Paste
+  v               Begin selection (in copy mode)
+  y               Copy to clipboard (in copy mode)
+
+Misc:
+  prefix r        Reload config
+  prefix S        Sync panes
+  F12             Toggle nested session
+EOF
+    return
+  fi
+  tmux new-session
+}
 alias weather='curl wttr.in'
 alias serve='python3 -m http.server'
 alias please='sudo $(fc -ln -1)'
@@ -121,14 +163,17 @@ alias -s yml='nvim'
 alias -s py='nvim'
 alias -s lua='nvim'
 alias -s sh='nvim'
+# BEGIN REMOTE DESKTOP ALIASES
+alias rstart='remote-start'
+alias rstop='remote-stop'
+# END REMOTE DESKTOP ALIASES
+
 # BEGIN DEV ALIASES
 alias coder='coder-start'
-alias coder-stop='pkill -f code-server && echo "stopped" || echo "not running"'
 alias jupyter='jupyter-start'
-alias jupyter-stop='pkill -f jupyter-lab && echo "stopped" || echo "not running"'
 alias lg='lazygit'
 # END DEV ALIASES
-# BEGIN VNC ALIASES
-alias vstart='vnc-start'
-alias vstop='vnc-stop'
-# END VNC ALIASES
+# BEGIN CLOUDBEAVER ALIASES
+alias cloudbeaver='cloudbeaver-start'
+alias dbeaver='cloudbeaver-start'
+# END CLOUDBEAVER ALIASES

@@ -1,0 +1,16 @@
+---
+# CTF/pentesting packages available in Debian trixie
+# For Kali-specific tools (metasploit, etc.), see binaries.yml
+
+- name: Install CTF/pentesting packages
+  ansible.builtin.apt:
+    name: "{{ packages_attackbox }}"
+    state: present
+    update_cache: true
+
+# Wordlists (separate task - large downloads)
+- name: Install wordlists
+  ansible.builtin.apt:
+    name: "{{ packages_wordlists }}"
+    state: present
+  ignore_errors: true  # May not exist on all mirrors

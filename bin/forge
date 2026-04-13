@@ -1,251 +1,206 @@
-#!/bin/bash
-# forge - workstation provisioning tool
-set -e
+#!/usr/bin/env python3
+"""forge - workstation provisioning tool"""
 
-SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ANSIBLE_DIR="$SCRIPT_DIR/ansible"
+import argparse
+import sys
 
-ensure_ansible() {
-    if ! command -v ansible-playbook &> /dev/null; then
-        echo "==> Installing Ansible..."
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq ansible
-    fi
-}
+from forge_lib import DEFAULT_IMAGE, DEV_RUNTIMES, Role
+from forge_lib.common import cmd_cleanup_home, parse_role
+from forge_lib.ansible import (
+    cmd_cleanup,
+    cmd_setup,
+    cmd_status,
+    cmd_switch,
+    cmd_teardown,
+    cmd_theme,
+)
+from forge_lib.incus import cmd_incus_create, cmd_incus_delete, cmd_incus_list
+from forge_lib.dev import (
+    cmd_dev_create,
+    cmd_dev_enter,
+    cmd_dev_list,
+    cmd_dev_rm,
+    cmd_dev_stop,
+)
 
-usage() {
-    cat <<EOF
-forge - workstation provisioning tool
 
-Usage: forge <command> [options]
-
-Commands:
-    setup <role>      Install a role
-    teardown [--full] Remove current role (--full removes packages too)
-    switch <role>     Teardown current, setup new
-    status            Show current role and theme
-    theme <cmd>       Theme switcher (apply|list|current|preview)
-    cleanup           Remove ansible post-install
-
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="forge - workstation provisioning tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
 Roles:
     server            Base CLI: zsh, tmux, neovim, yazi, starship
     dev               + code-server, jupyter, lazygit, build tools
     desktop           + sway, foot, flatpaks (Obsidian, Zen, KeePassXC)
-    remote-desktop    + tigervnc for headless GUI
+    remote-desktop    + sunshine/moonlight for headless GUI
+    net-box           + wireshark, nmap, tcpdump, network analysis
+    attack-box        + CTF tools, wordlists, exploitation frameworks
 
 Examples:
     forge setup server
     forge switch desktop
     forge theme apply kanagawa
     forge status
-EOF
-}
 
-get_current_role() {
-    if [ -f ~/.cache/forge/role ]; then
-        cat ~/.cache/forge/role
-    else
-        echo "none"
-    fi
-}
+    # Incus containers/VMs (user/hostname = role-type)
+    forge lxc attack-box              # Creates attack-box-lxc (user+hostname)
+    forge vm net-box                  # Creates net-box-vm (user+hostname)
+    forge instances                   # List all instances
 
-set_current_role() {
-    mkdir -p ~/.cache/forge
-    echo "$1" > ~/.cache/forge/role
-}
+    # Dev containers (podman) - isolated dev environments
+    forge dev create myapp python     # Python container
+    forge dev create frontend ts      # TypeScript/Node container
+    forge dev create webapp nuxt      # Nuxt/Vue container
+    forge dev create kernel c         # C development container
+    forge dev enter myapp             # Enter container shell
+    forge dev list                    # List dev containers
+    forge dev stop myapp              # Stop container
+    forge dev rm myapp                # Remove container
+"""
+    )
 
-cmd_setup() {
-    local role="${1:-server}"
+    subparsers = parser.add_subparsers(dest="command", metavar="command")
 
-    if [[ ! "$role" =~ ^(server|dev|desktop|remote-desktop)$ ]]; then
-        echo "Error: Invalid role '$role'"
-        echo "Valid roles: server, dev, desktop, remote-desktop"
-        exit 1
-    fi
+    # setup
+    p_setup = subparsers.add_parser("setup", help="Install a role")
+    p_setup.add_argument("role", nargs="?", default="server",
+                         choices=[r.value for r in Role],
+                         help="Role to install (default: server)")
 
-    echo "==> Setting up $role..."
+    # teardown
+    p_teardown = subparsers.add_parser("teardown", help="Remove current role")
+    p_teardown.add_argument("role", nargs="?", choices=[r.value for r in Role],
+                            help="Role to teardown (default: current)")
+    p_teardown.add_argument("--full", "-f", action="store_true",
+                            help="Also remove packages")
 
-    # Bootstrap ansible if needed
-    ensure_ansible
+    # switch
+    p_switch = subparsers.add_parser("switch", help="Teardown current, setup new")
+    p_switch.add_argument("role", choices=[r.value for r in Role],
+                          help="Role to switch to")
 
-    # Install collections if needed
-    if ! ansible-galaxy collection list 2>/dev/null | grep -q community.general; then
-        echo "==> Installing Ansible collections..."
-        ansible-galaxy collection install -r "$ANSIBLE_DIR/requirements.yml"
-    fi
+    # status
+    subparsers.add_parser("status", help="Show current role and theme")
 
-    # Run playbook
-    ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/playbook.yml" -e "role=$role" -K
+    # cleanup
+    subparsers.add_parser("cleanup", help="Remove ansible post-install")
 
-    set_current_role "$role"
-    echo "==> Done! Role '$role' is now active."
-}
+    # cleanup-home
+    p_cleanup_home = subparsers.add_parser("cleanup-home", help="Remove unnecessary home dir files")
+    p_cleanup_home.add_argument("--dry-run", "-n", action="store_true",
+                                help="Show what would be removed")
 
-cmd_teardown() {
-    local full=false
-    local role=""
+    # theme
+    p_theme = subparsers.add_parser("theme", help="Theme switcher")
+    p_theme.add_argument("theme_args", nargs="*", help="Arguments for theme command")
 
-    # Parse args
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --full|-f)
-                full=true
-                shift
-                ;;
-            *)
-                role="$1"
-                shift
-                ;;
-        esac
-    done
+    # lxc - create container
+    p_lxc = subparsers.add_parser("lxc", help="Create LXC container with role")
+    p_lxc.add_argument("role", choices=[r.value for r in Role],
+                       help="Role to install in container")
+    p_lxc.add_argument("--name", "-n", help="Instance name (auto-generated if not set)")
+    p_lxc.add_argument("--image", "-i", default=DEFAULT_IMAGE,
+                       help=f"Base image (default: {DEFAULT_IMAGE})")
 
-    role="${role:-$(get_current_role)}"
+    # vm - create VM
+    p_vm = subparsers.add_parser("vm", help="Create VM with role")
+    p_vm.add_argument("role", choices=[r.value for r in Role],
+                      help="Role to install in VM")
+    p_vm.add_argument("--name", "-n", help="Instance name (auto-generated if not set)")
+    p_vm.add_argument("--image", "-i", default=DEFAULT_IMAGE,
+                      help=f"Base image (default: {DEFAULT_IMAGE})")
 
-    if [ "$role" = "none" ] && [ "$full" = false ]; then
-        echo "No role currently installed. Use 'forge teardown server --full' to force."
-        exit 0
-    fi
+    # instances - list
+    subparsers.add_parser("instances", help="List incus instances")
 
-    # Default to server if doing full teardown with no role
-    if [ "$role" = "none" ]; then
-        role="server"
-    fi
+    # delete - delete instance
+    p_delete = subparsers.add_parser("delete", help="Delete incus instance")
+    p_delete.add_argument("name", help="Instance name to delete")
+    p_delete.add_argument("--force", "-f", action="store_true",
+                          help="Force delete (stop if running)")
 
-    echo "==> Tearing down $role..."
-    ensure_ansible
+    # dev - dev containers
+    p_dev = subparsers.add_parser("dev", help="Dev container management")
+    dev_subparsers = p_dev.add_subparsers(dest="dev_command", metavar="command")
 
-    if [ "$full" = true ]; then
-        echo "==> Full teardown: removing packages too..."
-        ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/teardown.yml" -e "role=$role" -e "full_teardown=true"
-    else
-        ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/teardown.yml" -e "role=$role"
-    fi
+    # dev create
+    p_dev_create = dev_subparsers.add_parser("create", help="Create dev container")
+    p_dev_create.add_argument("name", help="Container name")
+    p_dev_create.add_argument("runtime", choices=DEV_RUNTIMES,
+                              help="Runtime environment")
+    p_dev_create.add_argument("-p", "--port", action="append", dest="ports",
+                              help="Port forwarding (e.g., -p 8000 or -p 8000:8080). Can be repeated.")
+    p_dev_create.add_argument("-v", "--volume", action="append", dest="volumes",
+                              help="Volume mount (e.g., -v ./src:/workspace). Can be repeated.")
 
-    set_current_role "none"
-    echo "==> Teardown complete."
-}
+    # dev enter
+    p_dev_enter = dev_subparsers.add_parser("enter", help="Enter dev container")
+    p_dev_enter.add_argument("name", help="Container name")
 
-get_role_chain() {
-    # Returns roles to teardown when switching FROM this role
-    # Each role only removes its own additions, but we need to know the chain
-    case "$1" in
-        remote-desktop) echo "remote-desktop desktop" ;;
-        desktop)        echo "desktop" ;;
-        dev)            echo "dev" ;;
-        server)         echo "server" ;;
-        *)              echo "" ;;
-    esac
-}
+    # dev list
+    dev_subparsers.add_parser("list", help="List dev containers")
 
-get_new_role_base() {
-    # Returns the base roles included in the new role
-    case "$1" in
-        remote-desktop) echo "server desktop remote-desktop" ;;
-        desktop)        echo "server desktop" ;;
-        dev)            echo "server dev" ;;
-        server)         echo "server" ;;
-        *)              echo "" ;;
-    esac
-}
+    # dev stop
+    p_dev_stop = dev_subparsers.add_parser("stop", help="Stop dev container")
+    p_dev_stop.add_argument("name", help="Container name")
 
-cmd_switch() {
-    local new_role="$1"
+    # dev rm
+    p_dev_rm = dev_subparsers.add_parser("rm", help="Remove dev container")
+    p_dev_rm.add_argument("name", help="Container name")
+    p_dev_rm.add_argument("--force", "-f", action="store_true",
+                          help="Force remove (stop if running)")
 
-    if [ -z "$new_role" ]; then
-        echo "Error: Specify role to switch to"
-        exit 1
-    fi
+    # Handle shorthand: forge <role> = forge setup <role>
+    # But don't intercept if it's a valid subcommand (e.g., "dev" is both a role and subcommand)
+    subcommands = {"setup", "teardown", "switch", "status", "cleanup", "theme",
+                   "lxc", "vm", "instances", "delete", "dev"}
+    if len(sys.argv) > 1 and sys.argv[1] in [r.value for r in Role] and sys.argv[1] not in subcommands:
+        sys.argv.insert(1, "setup")
 
-    local current=$(get_current_role)
+    args = parser.parse_args()
 
-    if [ "$current" = "none" ]; then
-        cmd_setup "$new_role"
+    if args.command is None:
+        parser.print_help()
         return
-    fi
 
-    if [ "$current" = "$new_role" ]; then
-        echo "Already on $new_role. Running setup to refresh..."
-        cmd_setup "$new_role"
-        return
-    fi
+    if args.command == "setup":
+        cmd_setup(parse_role(args.role))
+    elif args.command == "teardown":
+        role = parse_role(args.role) if args.role else None
+        cmd_teardown(role, args.full)
+    elif args.command == "switch":
+        cmd_switch(parse_role(args.role))
+    elif args.command == "status":
+        cmd_status()
+    elif args.command == "cleanup":
+        cmd_cleanup()
+    elif args.command == "cleanup-home":
+        cmd_cleanup_home(args.dry_run)
+    elif args.command == "theme":
+        cmd_theme(args.theme_args)
+    elif args.command == "lxc":
+        cmd_incus_create("container", parse_role(args.role), args.name, args.image)
+    elif args.command == "vm":
+        cmd_incus_create("vm", parse_role(args.role), args.name, args.image)
+    elif args.command == "instances":
+        cmd_incus_list()
+    elif args.command == "delete":
+        cmd_incus_delete(args.name, args.force)
+    elif args.command == "dev":
+        if args.dev_command == "create":
+            cmd_dev_create(args.name, args.runtime, args.ports, args.volumes)
+        elif args.dev_command == "enter":
+            cmd_dev_enter(args.name)
+        elif args.dev_command == "list":
+            cmd_dev_list()
+        elif args.dev_command == "stop":
+            cmd_dev_stop(args.name)
+        elif args.dev_command == "rm":
+            cmd_dev_rm(args.name, args.force)
+        else:
+            p_dev.print_help()
 
-    echo "==> Switching from $current to $new_role..."
 
-    # Get what the new role includes
-    local new_bases=$(get_new_role_base "$new_role")
-
-    # Teardown current role chain, skipping roles included in new role
-    ensure_ansible
-    for role in $(get_role_chain "$current"); do
-        if ! echo "$new_bases" | grep -qw "$role"; then
-            echo "==> Tearing down $role..."
-            ansible-playbook -i "$ANSIBLE_DIR/inventory.yml" "$ANSIBLE_DIR/teardown.yml" -e "role=$role"
-        fi
-    done
-
-    cmd_setup "$new_role"
-}
-
-cmd_status() {
-    local role=$(get_current_role)
-    echo "Role: $role"
-
-    if command -v theme &> /dev/null; then
-        echo -n "Theme: "
-        theme current 2>/dev/null | head -1 || echo "not set"
-    fi
-}
-
-cmd_cleanup() {
-    echo "==> Removing build dependencies..."
-    sudo apt-get remove --purge -y ansible
-    sudo apt-get autoremove -y
-    echo "==> Cleanup complete. Dotfiles still installed, ansible removed."
-}
-
-cmd_theme() {
-    if command -v theme &> /dev/null; then
-        theme "$@"
-    else
-        echo "Theme command not found. Run 'forge setup' first."
-        exit 1
-    fi
-}
-
-# Main
-case "${1:-}" in
-    setup)
-        shift
-        cmd_setup "$@"
-        ;;
-    teardown)
-        shift
-        cmd_teardown "$@"
-        ;;
-    switch)
-        shift
-        cmd_switch "$@"
-        ;;
-    status)
-        cmd_status
-        ;;
-    cleanup)
-        cmd_cleanup
-        ;;
-    theme)
-        shift
-        cmd_theme "$@"
-        ;;
-    -h|--help|help|"")
-        usage
-        ;;
-    # Shorthand: forge <role> = forge setup <role>
-    server|dev|desktop|remote-desktop)
-        cmd_setup "$1"
-        ;;
-    *)
-        echo "Unknown command: $1"
-        usage
-        exit 1
-        ;;
-esac
+if __name__ == "__main__":
+    main()

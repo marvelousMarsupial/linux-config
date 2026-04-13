@@ -1,23 +1,26 @@
 ---
 - name: Install base packages
   ansible.builtin.apt:
-    name:
-      - zsh
-      - zsh-autosuggestions
-      - zsh-syntax-highlighting
-      - tmux
-      - git
-      - curl
-      - wget
-      - stow
-      - unzip
-      - btop
-      - bat
-      - eza
-      - fd-find
-      - ripgrep
-      - trash-cli
-      - python3-yaml
-      - python3-jinja2
+    name: "{{ packages_base + packages_server }}"
     state: present
     update_cache: true
+
+- name: Create podman config directory
+  ansible.builtin.file:
+    path: "{{ target_home }}/.config/containers"
+    state: directory
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    mode: "0755"
+  become: true
+
+- name: Configure podman to use cgroupfs (for VM/container compatibility)
+  ansible.builtin.copy:
+    dest: "{{ target_home }}/.config/containers/containers.conf"
+    content: |
+      [engine]
+      cgroup_manager = "cgroupfs"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    mode: "0644"
+  become: true

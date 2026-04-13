@@ -1,10 +1,25 @@
 ---
+# =============================================================================
+# Server Role - Base CLI Environment
+# =============================================================================
+# Uses these scripts from bin/ (in PATH via .zshrc):
+#   - forge           Provisioning CLI (setup/teardown/dev containers)
+#   - theme           Base16 color scheme switcher
+#   - vpn             WireGuard helper (up/down/status)
+#   - motd            Message of the day
+#   - tmux-keys       Tmux keybinding reference
+# =============================================================================
+
+- import_tasks: user.yml
 - import_tasks: packages.yml
+- import_tasks: unattended-upgrades.yml
+- import_tasks: fonts.yml
 - import_tasks: firewall.yml
 - import_tasks: starship.yml
 - import_tasks: yazi.yml
 - import_tasks: yazi-config.yml
 - import_tasks: neovim.yml
-- import_tasks: lazyvim.yml
 - import_tasks: dotfiles.yml
+- import_tasks: nvim-plugins.yml
 - import_tasks: theme.yml
+- import_tasks: incus.yml
