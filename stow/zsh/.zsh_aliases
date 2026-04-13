@@ -163,10 +163,6 @@ alias -s yml='nvim'
 alias -s py='nvim'
 alias -s lua='nvim'
 alias -s sh='nvim'
-# BEGIN REMOTE DESKTOP ALIASES
-alias rstart='remote-start'
-alias rstop='remote-stop'
-# END REMOTE DESKTOP ALIASES
 
 # BEGIN DEV ALIASES
 alias coder='coder-start'

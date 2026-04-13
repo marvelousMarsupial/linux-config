@@ -1,0 +1,17 @@
+---
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+
+      # Host-specific settings
+      hostname: archon
+
+      # User to create and configure (dotfiles go here)
+      user:
+        name: august
+        shell: /bin/zsh
+        groups:
+          - sudo
+          - video
+          - audio

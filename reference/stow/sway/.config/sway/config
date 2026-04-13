@@ -1,0 +1,348 @@
+# Sway config
+# Philosophy: tmux is your window manager. Sway just holds terminals.
+# hjkl is ALWAYS movement. Modifier determines scope.
+
+# ===========================================
+# VARIABLES
+# ===========================================
+
+set $mod Mod4
+set $term foot
+set $bin /home/august/linux-config/bin
+set $menu $bin/launcher
+
+set $left h
+set $down j
+set $up k
+set $right l
+
+# Include theme colors
+include ~/.config/sway/colors
+
+
+# ===========================================
+# MONITORS (adjust names with: swaymsg -t get_outputs)
+# ===========================================
+
+# Top monitor (curved ultrawide)
+output DP-5 resolution 2560x1080@60Hz position 0 0
+
+# Bottom monitor (4K scaled)
+output DP-6 resolution 3840x2160@30Hz position 0 1080 scale 1.5
+
+# Laptop display
+output eDP-1 resolution 1920x1200@60Hz position 2560 1080
+
+# Wallpaper (falls back to theme color if file missing)
+output * bg ~/.config/sway/wallpaper fill $base00
+
+# ===========================================
+# APPEARANCE (minimal)
+# ===========================================
+
+gaps inner 7
+gaps outer 0
+
+default_border pixel 1
+default_floating_border pixel 1
+
+# Hide borders when only one window (disabled - may not work on all sway versions)
+# smart_borders on
+
+# Hide gaps when only one window
+# smart_gaps on
+
+# ===========================================
+# INPUT
+# ===========================================
+
+input type:keyboard {
+    xkb_options ctrl:nocaps
+    repeat_delay 300
+    repeat_rate 50
+}
+
+input type:touchpad {
+    tap enabled
+    natural_scroll disabled
+    dwt enabled
+}
+
+# ===========================================
+# BEHAVIOR
+# ===========================================
+
+# New windows open side-by-side
+default_orientation horizontal
+for_window [app_id=".*"] layout splith
+
+focus_follows_mouse no
+mouse_warping none
+popup_during_fullscreen smart
+floating_modifier $mod normal
+
+# ===========================================
+# NAVIGATION (Super + hjkl or arrows)
+# ===========================================
+
+# Focus window (hjkl)
+bindsym --to-code $mod+$left focus left
+bindsym --to-code $mod+$down focus down
+bindsym --to-code $mod+$up focus up
+bindsym --to-code $mod+$right focus right
+
+# Focus window (arrows)
+bindsym $mod+Left focus left
+bindsym $mod+Down focus down
+bindsym $mod+Up focus up
+bindsym $mod+Right focus right
+
+# Move window (hjkl)
+bindsym --to-code $mod+Shift+$left move left
+bindsym --to-code $mod+Shift+$down move down
+bindsym --to-code $mod+Shift+$up move up
+bindsym --to-code $mod+Shift+$right move right
+
+# Move window (arrows)
+bindsym $mod+Shift+Left move left
+bindsym $mod+Shift+Down move down
+bindsym $mod+Shift+Up move up
+bindsym $mod+Shift+Right move right
+
+# Resize window (hjkl)
+bindsym --to-code $mod+Ctrl+$left resize shrink width 50px
+bindsym --to-code $mod+Ctrl+$right resize grow width 50px
+bindsym --to-code $mod+Ctrl+$up resize shrink height 50px
+bindsym --to-code $mod+Ctrl+$down resize grow height 50px
+
+# Resize window (arrows)
+bindsym $mod+Ctrl+Left resize shrink width 50px
+bindsym $mod+Ctrl+Right resize grow width 50px
+bindsym $mod+Ctrl+Up resize shrink height 50px
+bindsym $mod+Ctrl+Down resize grow height 50px
+
+# Focus parent container
+bindsym --to-code $mod+a focus parent
+
+# Cycle through windows (Alt+Tab)
+bindsym Alt+Tab focus next
+bindsym Alt+Shift+Tab focus prev
+
+# ===========================================
+# WORKSPACES
+# ===========================================
+
+# Switch to workspace
+bindsym $mod+1 workspace number 1
+bindsym $mod+2 workspace number 2
+bindsym $mod+3 workspace number 3
+bindsym $mod+4 workspace number 4
+bindsym $mod+5 workspace number 5
+bindsym $mod+6 workspace number 6
+bindsym $mod+7 workspace number 7
+bindsym $mod+8 workspace number 8
+bindsym $mod+9 workspace number 9
+
+# Move container to workspace
+bindsym $mod+Shift+1 move container to workspace number 1
+bindsym $mod+Shift+2 move container to workspace number 2
+bindsym $mod+Shift+3 move container to workspace number 3
+bindsym $mod+Shift+4 move container to workspace number 4
+bindsym $mod+Shift+5 move container to workspace number 5
+bindsym $mod+Shift+6 move container to workspace number 6
+bindsym $mod+Shift+7 move container to workspace number 7
+bindsym $mod+Shift+8 move container to workspace number 8
+bindsym $mod+Shift+9 move container to workspace number 9
+
+# Cycle workspaces
+bindsym $mod+Tab workspace next
+bindsym $mod+Shift+Tab workspace prev
+
+# ===========================================
+# OUTPUTS (Multi-monitor)
+# ===========================================
+
+# Focus next output
+bindsym --to-code $mod+o focus output right
+
+# Move workspace to next output
+bindsym --to-code $mod+Shift+o move workspace to output right
+
+# ===========================================
+# LAYOUT
+# ===========================================
+
+# Splits (match tmux: \ and -)
+bindsym $mod+backslash splith
+bindsym $mod+minus splitv
+
+# Fullscreen
+bindsym --to-code $mod+f fullscreen toggle
+
+# Floating
+bindsym --to-code $mod+Shift+space floating toggle
+
+# Toggle split/tabbed
+bindsym --to-code $mod+t layout toggle split
+
+# Sticky (stays on all workspaces)
+bindsym --to-code $mod+Shift+s sticky toggle
+
+# Scratchpad
+bindsym $mod+grave scratchpad show
+bindsym $mod+Shift+grave move scratchpad
+
+# ===========================================
+# APPS
+# ===========================================
+
+# Terminal (unset TMUX so new terminals start fresh tmux sessions)
+bindsym $mod+Return exec env -u TMUX $term
+
+# Launcher (Space is easy to hit)
+bindsym $mod+Space exec $menu
+
+# Browser
+bindsym --to-code $mod+b exec zen
+
+# Notes - new note
+bindsym $mod+n exec $bin/notes-toggle
+
+# Notes - open existing (fuzzel picker)
+bindsym --to-code $mod+Shift+n exec $bin/notes-picker
+
+# File manager
+bindsym --to-code $mod+e exec $term -e yazi
+
+# Password manager (pass with fuzzel picker)
+bindsym --to-code $mod+p exec $bin/pass-picker
+
+# Editor (vim)
+bindsym $mod+v exec $term -e ~/.local/bin/nvim
+
+# Chat (nheko - Matrix client)
+bindsym --to-code $mod+c exec nheko
+
+# Power menu (lock, suspend, logout, reboot, shutdown)
+bindsym --to-code $mod+x exec $bin/power-menu
+
+# ===========================================
+# WINDOW MANAGEMENT
+# ===========================================
+
+# Kill focused window
+bindsym --to-code $mod+q kill
+
+# Reload config
+bindsym --to-code $mod+Shift+c reload
+
+# Exit sway
+bindsym --to-code $mod+Shift+e exec swaymsg exit
+
+# ===========================================
+# SYSTEM
+# ===========================================
+
+# Help (keybindings cheatsheet)
+bindsym $mod+Shift+slash exec $term --app-id=keybinds -e $bin/keybinds
+
+# Lock screen
+bindsym $mod+Escape exec swaylock
+
+# VNC passthrough mode (pass all keys to remote)
+bindsym $mod+Ctrl+p mode "passthrough"
+mode "passthrough" {
+    bindsym $mod+Ctrl+p mode "default"
+}
+
+# Status OSD (time, battery, network, bluetooth)
+bindsym --to-code $mod+i exec $bin/status-panel
+
+# System monitor (btop in floating terminal)
+bindsym --to-code $mod+Shift+i exec $term --app-id=btop -e btop
+
+# Bluetooth manager
+bindsym --to-code $mod+Shift+b exec blueman-manager
+
+# WiFi menu
+bindsym --to-code $mod+w exec $bin/wifi-menu
+
+# USB eject all
+bindsym --to-code $mod+u exec udiskie-umount -a && notify-send "USB" "All devices ejected"
+
+# Clipboard history (10 items)
+bindsym --to-code $mod+Shift+v exec cliphist list | head -10 | fuzzel --dmenu | cliphist decode | wl-copy
+
+# ===========================================
+# SCREENSHOTS
+# ===========================================
+
+# Selection to clipboard (default - most common)
+bindsym Print exec grim -g "$(slurp)" - | wl-copy && notify-send "Screenshot" "Copied to clipboard"
+
+# Full screen to file
+bindsym $mod+Print exec 'f=~/Pictures/$(date +%Y%m%d_%H%M%S).png && grim "$f" && notify-send "Screenshot" "Saved to $f"'
+
+# Selection to file
+bindsym $mod+Shift+Print exec 'f=~/Pictures/$(date +%Y%m%d_%H%M%S).png && grim -g "$(slurp)" "$f" && notify-send "Screenshot" "Saved to $f"'
+
+# ===========================================
+# MEDIA / BRIGHTNESS
+# ===========================================
+
+bindsym --locked XF86MonBrightnessUp exec brightnessctl set +10%
+bindsym --locked XF86MonBrightnessDown exec brightnessctl set 10%-
+
+bindsym --locked XF86AudioRaiseVolume exec wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+
+bindsym --locked XF86AudioLowerVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
+bindsym --locked XF86AudioMute exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+bindsym --locked XF86AudioMicMute exec wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+
+bindsym --locked XF86AudioPlay exec playerctl play-pause
+bindsym --locked XF86AudioNext exec playerctl next
+bindsym --locked XF86AudioPrev exec playerctl previous
+
+# ===========================================
+# WINDOW RULES
+# ===========================================
+
+# Float utility windows
+for_window [app_id="blueman-manager"] floating enable
+for_window [app_id="pavucontrol"] floating enable
+for_window [app_id="nm-connection-editor"] floating enable
+# pass-picker terminal popup
+for_window [app_id="pass-prompt"] floating enable, resize set 720 350
+for_window [title="File Operation Progress"] floating enable
+
+# btop floating terminal (smaller window)
+for_window [app_id="btop"] floating enable, resize set 900 600
+
+# Keybindings help popup
+for_window [app_id="keybinds"] floating enable, resize set 760 720, border pixel 3
+
+# Chat (nheko) - floating
+for_window [app_id="nheko"] floating enable
+
+# Notes scratchpad (floating, sticky, small window)
+for_window [app_id="notes"] floating enable
+for_window [app_id="notes"] sticky enable
+for_window [app_id="notes"] resize set 500 400
+
+# Inhibit idle for fullscreen
+for_window [app_id=".*"] inhibit_idle fullscreen
+
+# ===========================================
+# AUTOSTART
+# ===========================================
+
+# D-Bus session (required for portals, gsettings, flatpak apps)
+exec dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway DBUS_SESSION_BUS_ADDRESS
+
+# Force dark mode for Flatpak apps (Obsidian, etc)
+exec gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+
+exec mako
+exec udiskie --tray
+exec wl-paste --watch cliphist store -max-items 10
+exec swayidle -w before-sleep 'swaylock -f'
+exec $bin/battery-monitor

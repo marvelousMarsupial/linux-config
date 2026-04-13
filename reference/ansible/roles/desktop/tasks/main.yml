@@ -1,0 +1,36 @@
+---
+# =============================================================================
+# Desktop Role - Sway Wayland GUI
+# =============================================================================
+# Sway config uses these scripts from bin/ (PATH set via environment.d):
+#   - launcher        Fuzzel wrapper ($mod+Space)
+#   - power-menu      Lock/suspend/logout ($mod+x)
+#   - status-panel    System info popup ($mod+i)
+#   - wifi-menu       WiFi selector ($mod+w)
+#   - battery-monitor Low battery warnings (autostart)
+#   - keybinds        Keybinding reference ($mod+?)
+#   - notes-toggle    Toggle notes window ($mod+n)
+#   - notes-picker    Search notes ($mod+Shift+n)
+#   - pass-picker     Password store picker ($mod+p)
+# =============================================================================
+
+- name: Include server role
+  ansible.builtin.include_role:
+    name: server
+
+- name: Import desktop packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Import flatpak tasks
+  ansible.builtin.import_tasks: flatpak.yml
+  when: not (skip_personal_apps | default(false))
+
+- name: Import apps tasks (Element, Obsidian)
+  ansible.builtin.import_tasks: apps.yml
+  when: not (skip_personal_apps | default(false))
+
+- name: Import dotfiles tasks
+  ansible.builtin.import_tasks: dotfiles.yml
+
+- name: Import browser theming tasks
+  ansible.builtin.import_tasks: browser-theming.yml

@@ -1,0 +1,102 @@
+---
+# Setup Zen Browser for userChrome.css theming
+
+- name: Find Zen profile directories
+  ansible.builtin.find:
+    paths:
+      - "{{ target_home }}/.zen"
+      - "{{ target_home }}/.var/app/app.zen_browser.zen/.zen"
+    file_type: directory
+    patterns: "*.default*"
+  register: zen_profiles
+  ignore_errors: true
+
+- name: Create chrome directories in Zen profiles
+  ansible.builtin.file:
+    path: "{{ item.path }}/chrome"
+    state: directory
+  loop: "{{ zen_profiles.files | default([]) }}"
+  become: false
+
+- name: Configure Zen browser profiles
+  ansible.builtin.copy:
+    dest: "{{ item.path }}/user.js"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    content: |
+      // Enable custom CSS
+      user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
+
+      // Skip first-run intro and welcome pages
+      user_pref("browser.startup.homepage_override.mstone", "ignore");
+      user_pref("browser.aboutwelcome.enabled", false);
+      user_pref("browser.startup.firstrunSkipsHomepage", true);
+      user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
+      user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);
+
+      // Force dark mode
+      user_pref("ui.systemUsesDarkTheme", 1);
+      user_pref("browser.in-content.dark-mode", true);
+      user_pref("layout.css.prefers-color-scheme.content-override", 0);
+      user_pref("browser.theme.content-theme", 0);
+      user_pref("browser.theme.toolbar-theme", 0);
+      user_pref("devtools.theme", "dark");
+
+      // Performance for headless/VNC
+      user_pref("gfx.webrender.all", true);
+      user_pref("layers.acceleration.force-enabled", true);
+  loop: "{{ zen_profiles.files | default([]) }}"
+
+# Portal config for dark mode
+- name: Create portal config directory
+  ansible.builtin.file:
+    path: "{{ target_home }}/.config/xdg-desktop-portal"
+    state: directory
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+
+- name: Configure desktop portals
+  ansible.builtin.copy:
+    dest: "{{ target_home }}/.config/xdg-desktop-portal/portals.conf"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    content: |
+      [preferred]
+      default=gtk
+      org.freedesktop.impl.portal.Screenshot=wlr
+      org.freedesktop.impl.portal.ScreenCast=wlr
+
+# Setup GTK dark theme
+
+- name: Create GTK config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+  loop:
+    - "{{ target_home }}/.config/gtk-3.0"
+    - "{{ target_home }}/.config/gtk-4.0"
+
+- name: Configure GTK dark theme
+  ansible.builtin.copy:
+    dest: "{{ item }}/settings.ini"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    content: |
+      [Settings]
+      gtk-application-prefer-dark-theme=1
+      gtk-theme-name=Adwaita-dark
+      gtk-icon-theme-name=Adwaita
+      gtk-font-name=Sans 10
+      gtk-cursor-theme-name=Adwaita
+  loop:
+    - "{{ target_home }}/.config/gtk-3.0"
+    - "{{ target_home }}/.config/gtk-4.0"
+
+- name: Force dark theme for flatpak apps
+  ansible.builtin.command:
+    cmd: flatpak override --user --env=GTK_THEME=Adwaita-dark
+  become: true
+  become_user: "{{ target_user }}"
+  changed_when: true

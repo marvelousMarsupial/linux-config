@@ -1,0 +1,210 @@
+---
+# Dev services - Jupyter and Code-server via podman
+
+- name: Ensure .local/bin exists
+  ansible.builtin.file:
+    path: "{{ target_home }}/.local/bin"
+    state: directory
+    mode: "0755"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+
+- name: Create notebooks directory
+  ansible.builtin.file:
+    path: "{{ target_home }}/notebooks"
+    state: directory
+    mode: "0755"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+
+- name: Pull code-server image
+  ansible.builtin.shell: |
+    podman pull docker.io/codercom/code-server:latest
+  become_user: "{{ target_user }}"
+
+- name: Pull jupyter image
+  ansible.builtin.shell: |
+    podman pull docker.io/jupyter/scipy-notebook:latest
+  become_user: "{{ target_user }}"
+
+- name: Create coder-start script
+  ansible.builtin.copy:
+    dest: "{{ target_home }}/.local/bin/coder-start"
+    mode: "0755"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    content: |
+      #!/bin/bash
+
+      # Help
+      if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        echo "Usage: coder [project-dir]"
+        echo ""
+        echo "Starts code-server (VS Code in browser) on localhost."
+        echo ""
+        echo "Arguments:"
+        echo "  project-dir  Directory to open (default: current dir)"
+        echo ""
+        echo "Steps:"
+        echo "  1. From laptop: ssh -L 8000:localhost:8000 user@server"
+        echo "  2. On server:   coder"
+        echo "  3. In browser:  http://localhost:8000"
+        exit 0
+      fi
+
+      # Project directory
+      PROJECT_DIR="${1:-$(pwd)}"
+      PROJECT_DIR=$(realpath "$PROJECT_DIR")
+
+      # Already running?
+      if podman ps --format '{{ "{{" }}.Names{{ "}}" }}' | grep -q '^coder$'; then
+        echo "coder already running"
+        echo ""
+        PORT=$(podman port coder 8080/tcp 2>/dev/null | cut -d: -f2)
+        IP=$(hostname -I | awk '{print $1}')
+        echo "From your laptop:"
+        echo "  ssh -L $PORT:localhost:$PORT $(whoami)@$IP"
+        echo "  open http://localhost:$PORT"
+        exit 0
+      fi
+
+      # Find open port
+      PORT=8000
+      while ss -tln | grep -q ":$PORT "; do
+        ((PORT++))
+      done
+
+      # Start code-server
+      podman run -d --name coder --rm \
+        --userns=keep-id \
+        -p 127.0.0.1:$PORT:8080 \
+        -v "$PROJECT_DIR:/home/coder/project" \
+        -v "$HOME/.config/code-server:/home/coder/.config/code-server" \
+        -e "DOCKER_USER=$USER" \
+        docker.io/codercom/code-server:latest \
+        --auth none --bind-addr 0.0.0.0:8080 /home/coder/project > /dev/null 2>&1
+
+      sleep 2
+
+      # Check if it started
+      if ! podman ps --format '{{ "{{" }}.Names{{ "}}" }}' | grep -q '^coder$'; then
+        echo "Failed to start coder"
+        echo ""
+        podman logs coder 2>&1 || true
+        exit 1
+      fi
+
+      # Success
+      IP=$(hostname -I | awk '{print $1}')
+      echo "coder :$PORT  ($PROJECT_DIR)"
+      echo ""
+      echo "From your laptop:"
+      echo "  ssh -L $PORT:localhost:$PORT $(whoami)@$IP"
+      echo "  open http://localhost:$PORT"
+
+- name: Create coder-stop script
+  ansible.builtin.copy:
+    dest: "{{ target_home }}/.local/bin/coder-stop"
+    mode: "0755"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    content: |
+      #!/bin/bash
+      podman stop coder 2>/dev/null && echo "coder stopped" || echo "coder not running"
+
+- name: Create jupyter-start script
+  ansible.builtin.copy:
+    dest: "{{ target_home }}/.local/bin/jupyter-start"
+    mode: "0755"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    content: |
+      #!/bin/bash
+
+      # Help
+      if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        echo "Usage: jupyter [notebook-dir]"
+        echo ""
+        echo "Starts JupyterLab on localhost."
+        echo ""
+        echo "Arguments:"
+        echo "  notebook-dir  Directory for notebooks (default: ~/notebooks)"
+        echo ""
+        echo "Steps:"
+        echo "  1. From laptop: ssh -L 9000:localhost:9000 user@server"
+        echo "  2. On server:   jupyter"
+        echo "  3. In browser:  http://localhost:9000"
+        exit 0
+      fi
+
+      # Notebook directory
+      NOTEBOOK_DIR="${1:-$HOME/notebooks}"
+      NOTEBOOK_DIR=$(realpath "$NOTEBOOK_DIR")
+      mkdir -p "$NOTEBOOK_DIR"
+
+      # Already running?
+      if podman ps --format '{{ "{{" }}.Names{{ "}}" }}' | grep -q '^jupyter$'; then
+        echo "jupyter already running"
+        echo ""
+        PORT=$(podman port jupyter 8888/tcp 2>/dev/null | cut -d: -f2)
+        IP=$(hostname -I | awk '{print $1}')
+        echo "From your laptop:"
+        echo "  ssh -L $PORT:localhost:$PORT $(whoami)@$IP"
+        echo "  open http://localhost:$PORT"
+        exit 0
+      fi
+
+      # Find open port
+      PORT=9000
+      while ss -tln | grep -q ":$PORT "; do
+        ((PORT++))
+      done
+
+      # Start jupyter
+      podman run -d --name jupyter --rm \
+        -p 127.0.0.1:$PORT:8888 \
+        -v "$NOTEBOOK_DIR:/home/jovyan/work" \
+        -e JUPYTER_ENABLE_LAB=yes \
+        -e GRANT_SUDO=yes \
+        --user root \
+        docker.io/jupyter/scipy-notebook:latest \
+        start-notebook.sh --NotebookApp.token='' --NotebookApp.password='' > /dev/null 2>&1
+
+      sleep 3
+
+      # Check if it started
+      if ! podman ps --format '{{ "{{" }}.Names{{ "}}" }}' | grep -q '^jupyter$'; then
+        echo "Failed to start jupyter"
+        echo ""
+        podman logs jupyter 2>&1 || true
+        exit 1
+      fi
+
+      # Success
+      IP=$(hostname -I | awk '{print $1}')
+      echo "jupyter :$PORT  ($NOTEBOOK_DIR)"
+      echo ""
+      echo "From your laptop:"
+      echo "  ssh -L $PORT:localhost:$PORT $(whoami)@$IP"
+      echo "  open http://localhost:$PORT"
+
+- name: Create jupyter-stop script
+  ansible.builtin.copy:
+    dest: "{{ target_home }}/.local/bin/jupyter-stop"
+    mode: "0755"
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    content: |
+      #!/bin/bash
+      podman stop jupyter 2>/dev/null && echo "jupyter stopped" || echo "jupyter not running"
+
+- name: Add dev aliases
+  ansible.builtin.blockinfile:
+    path: "{{ target_home }}/.zsh_aliases"
+    marker: "# {mark} DEV ALIASES"
+    block: |
+      alias coder='coder-start'
+      alias jupyter='jupyter-start'
+      alias lg='lazygit'
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"

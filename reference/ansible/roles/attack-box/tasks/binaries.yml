@@ -1,0 +1,92 @@
+---
+# CTF tools from GitHub releases
+
+- name: Get latest pwncat release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/calebstewart/pwncat/releases/latest
+    return_content: true
+  register: pwncat_release
+  failed_when: false
+
+- name: Install pwncat via pip
+  ansible.builtin.pip:
+    name: pwncat-cs
+    state: present
+  become: true
+
+- name: Get latest ffuf release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/ffuf/ffuf/releases/latest
+    return_content: true
+  register: ffuf_release
+
+- name: Download ffuf
+  ansible.builtin.unarchive:
+    src: >-
+      https://github.com/ffuf/ffuf/releases/download/{{
+      ffuf_release.json.tag_name }}/ffuf_{{
+      ffuf_release.json.tag_name | regex_replace('^v', '') }}_linux_{{ arch_golang }}.tar.gz
+    dest: /usr/local/bin
+    remote_src: true
+    include:
+      - ffuf
+
+- name: Get latest rustscan release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/RustScan/RustScan/releases/latest
+    return_content: true
+  register: rustscan_release
+
+- name: Download rustscan .deb
+  ansible.builtin.get_url:
+    url: >-
+      https://github.com/RustScan/RustScan/releases/download/{{
+      rustscan_release.json.tag_name }}/rustscan_{{
+      rustscan_release.json.tag_name | regex_replace('^', '') }}_{{ arch_deb }}.deb
+    dest: /tmp/rustscan.deb
+  failed_when: false
+
+- name: Install rustscan
+  ansible.builtin.apt:
+    deb: /tmp/rustscan.deb
+  failed_when: false
+
+- name: Get latest nuclei release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/projectdiscovery/nuclei/releases/latest
+    return_content: true
+  register: nuclei_release
+
+- name: Download nuclei
+  ansible.builtin.unarchive:
+    src: >-
+      https://github.com/projectdiscovery/nuclei/releases/download/{{
+      nuclei_release.json.tag_name }}/nuclei_{{
+      nuclei_release.json.tag_name | regex_replace('^v', '') }}_linux_{{ arch_golang }}.zip
+    dest: /usr/local/bin
+    remote_src: true
+    include:
+      - nuclei
+
+- name: Get latest httpx release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/projectdiscovery/httpx/releases/latest
+    return_content: true
+  register: httpx_release
+
+- name: Download httpx
+  ansible.builtin.unarchive:
+    src: >-
+      https://github.com/projectdiscovery/httpx/releases/download/{{
+      httpx_release.json.tag_name }}/httpx_{{
+      httpx_release.json.tag_name | regex_replace('^v', '') }}_linux_{{ arch_golang }}.zip
+    dest: /usr/local/bin
+    remote_src: true
+    include:
+      - httpx
+
+- name: Install impacket
+  ansible.builtin.pip:
+    name: impacket
+    state: present
+  become: true

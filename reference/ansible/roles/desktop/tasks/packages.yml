@@ -1,0 +1,12 @@
+---
+- name: Install desktop packages
+  ansible.builtin.apt:
+    name: "{{ packages_desktop }}"
+    state: present
+
+- name: Enable bluetooth service
+  become: true
+  ansible.builtin.systemd:
+    name: bluetooth
+    enabled: true
+    state: started

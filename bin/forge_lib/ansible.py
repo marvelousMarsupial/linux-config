@@ -32,7 +32,8 @@ def cmd_setup(role: Role) -> None:
         "ansible-playbook",
         "-i", str(ANSIBLE_DIR / "inventory.yml"),
         str(ANSIBLE_DIR / "playbook.yml"),
-        "-e", f"role={role.value}"
+        "-e", f"role={role.value}",
+        "-K",
     ])
 
     set_current_role(role)
@@ -66,7 +67,8 @@ def cmd_teardown(role: Optional[Role] = None, full: bool = False) -> None:
                 "-i", str(ANSIBLE_DIR / "inventory.yml"),
                 str(ANSIBLE_DIR / "teardown.yml"),
                 "-e", f"role={r.value}",
-                "-e", "full_teardown=true"
+                "-e", "full_teardown=true",
+                "-K",
             ]
             run(cmd, check=False)  # Don't stop on errors
     else:
@@ -75,7 +77,8 @@ def cmd_teardown(role: Optional[Role] = None, full: bool = False) -> None:
             "ansible-playbook",
             "-i", str(ANSIBLE_DIR / "inventory.yml"),
             str(ANSIBLE_DIR / "teardown.yml"),
-            "-e", f"role={role.value}"
+            "-e", f"role={role.value}",
+            "-K",
         ]
         run(cmd)
 
@@ -110,7 +113,8 @@ def cmd_switch(new_role: Role) -> None:
                 "ansible-playbook",
                 "-i", str(ANSIBLE_DIR / "inventory.yml"),
                 str(ANSIBLE_DIR / "teardown.yml"),
-                "-e", f"role={role.value}"
+                "-e", f"role={role.value}",
+                "-K",
             ])
 
     cmd_setup(new_role)

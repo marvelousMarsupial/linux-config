@@ -1,0 +1,18 @@
+---
+# =============================================================================
+# Remote Desktop Role - Headless Sway + VNC
+# =============================================================================
+# Uses these scripts from bin/ (in PATH via .zshrc):
+#   - remote-start    Start headless Sway + wayvnc (alias: rstart)
+#   - remote-stop     Stop remote desktop services (alias: rstop)
+# =============================================================================
+
+- name: Include desktop role
+  ansible.builtin.include_role:
+    name: desktop
+
+- name: Import packages tasks
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Import Sunshine tasks
+  ansible.builtin.import_tasks: sunshine.yml

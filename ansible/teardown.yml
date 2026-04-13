@@ -5,8 +5,6 @@
   become: true
   vars:
     teardown_role: "{{ role | default('server') }}"
-    # Instance overrides (for VMs/containers)
-    instance_user: "{{ instance_user | default(omit) }}"
     # Effective user - instance override takes precedence
     effective_user:
       name: "{{ instance_user | default(user.name) | default('root') }}"

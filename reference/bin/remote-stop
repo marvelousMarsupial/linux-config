@@ -1,0 +1,22 @@
+#!/bin/bash
+echo "Stopping remote desktop session..."
+
+echo "  Stopping wayvnc..."
+pkill -u $(id -u) wayvnc 2>/dev/null || true
+
+echo "  Stopping mako..."
+pkill -u $(id -u) mako 2>/dev/null || true
+
+echo "  Stopping Sway..."
+pkill -u $(id -u) sway 2>/dev/null || true
+
+echo "  Stopping D-Bus session..."
+pkill -u $(id -u) -f "dbus-daemon --session" 2>/dev/null || true
+
+echo "  Stopping PulseAudio..."
+pulseaudio --kill 2>/dev/null || true
+
+# Clean up socket
+rm -f "/run/user/$(id -u)/bus" 2>/dev/null || true
+
+echo "Stopped."

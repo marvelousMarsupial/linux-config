@@ -1,0 +1,443 @@
+---
+# =============================================================================
+# CENTRALIZED CONFIGURATION
+# =============================================================================
+# All configurable values for the linux-config provisioning system.
+# Override any of these in inventory.yml for host-specific settings.
+
+# -----------------------------------------------------------------------------
+# ARCHITECTURE (auto-detected, rarely need to change)
+# -----------------------------------------------------------------------------
+arch_map:
+  x86_64: amd64
+  aarch64: arm64
+
+arch_golang: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+arch_rust: >-
+  {{ 'x86_64-unknown-linux-gnu' if ansible_architecture == 'x86_64'
+  else 'aarch64-unknown-linux-gnu' }}
+arch_deb: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+arch_nvim: "{{ 'x86_64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+
+# -----------------------------------------------------------------------------
+# GIT REPOSITORY
+# -----------------------------------------------------------------------------
+gitea_url: "http://git.rat"
+gitea_user: "August"
+gitea_repo: "linux-config"
+dotfiles_repo: "{{ gitea_url }}/{{ gitea_user }}/{{ gitea_repo }}.git"
+dotfiles_branch: main
+
+# -----------------------------------------------------------------------------
+# THEME
+# -----------------------------------------------------------------------------
+# Available: gruvbox-dark-hard, catppuccin-mocha, kanagawa,
+#            tokyonight-moon, onehalfdark-black, summer-dusk
+default_theme: catppuccin-mocha
+
+# -----------------------------------------------------------------------------
+# APPLICATION VERSIONS
+# -----------------------------------------------------------------------------
+# Set to "latest" to fetch from GitHub API, or pin to specific version
+versions:
+  neovim: "v0.11.2"
+  # These use GitHub API for latest:
+  yazi: latest
+  lazygit: latest
+  obsidian: latest
+  zen_browser: latest
+
+# -----------------------------------------------------------------------------
+# SERVICE PORTS
+# -----------------------------------------------------------------------------
+ports:
+  ssh: 22
+  vnc: 5900
+  wireguard: 51820
+  coder: 8000
+  jupyter: 9000
+  cloudbeaver: 8978
+
+# -----------------------------------------------------------------------------
+# NETWORK CONFIGURATION
+# -----------------------------------------------------------------------------
+network:
+  wireguard_subnet: "10.0.0.0/24"
+  wireguard_interface: "wg0"
+  vnc_bind_address: "10.0.0.1"
+
+# -----------------------------------------------------------------------------
+# FIREWALL (UFW + fail2ban)
+# -----------------------------------------------------------------------------
+firewall:
+  default_policy: deny
+  allowed_ports:
+    - "{{ ports.ssh }}"
+  fail2ban:
+    max_retries: 5
+    ban_time: 1h
+    find_time: 10m
+
+# -----------------------------------------------------------------------------
+# UNATTENDED UPGRADES
+# -----------------------------------------------------------------------------
+unattended_upgrades:
+  update_frequency: 7
+  download_frequency: 7
+  upgrade_frequency: 7
+  auto_reboot: false
+  remove_unused: true
+
+# -----------------------------------------------------------------------------
+# PACKAGE LISTS
+# -----------------------------------------------------------------------------
+# Base packages for all roles
+packages_base:
+  - sudo
+  - zsh
+  - zsh-autosuggestions
+  - zsh-syntax-highlighting
+  - tmux
+  - git
+  - curl
+  - wget
+  - stow
+  - unzip
+  - btop
+  - bat
+  - eza
+  - fd-find
+  - ripgrep
+  - trash-cli
+  - pass
+  - fontconfig
+
+# Additional packages for server role
+packages_server:
+  - ipython3
+  - python3-yaml
+  - python3-jinja2
+  - wireguard-tools
+  - podman
+  - uidmap
+  - passt
+  - ufw
+  - fail2ban
+  - unattended-upgrades
+  - build-essential            # Needed for telescope-fzf-native nvim plugin
+
+# Development tools
+packages_dev:
+  - build-essential
+  - cmake
+  - pkg-config
+  - clang
+  - clang-format
+  - gdb
+  - valgrind
+  - nodejs
+  - npm
+  - python3
+  - python3-pip
+  - python3-venv
+
+# Desktop environment
+packages_desktop:
+  # Window manager
+  - sway
+  - swaylock
+  - swayidle
+  - swaybg
+  # Terminal and UI
+  - foot
+  - fuzzel
+  - mako-notifier
+  # Screenshot and clipboard
+  - grim
+  - slurp
+  - wl-clipboard
+  - cliphist
+  # Network
+  - network-manager
+  # Bluetooth
+  - bluez
+  - blueman
+  # Hardware
+  - udiskie
+  - udisks2
+  - libnotify-bin
+  - brightnessctl
+  - playerctl
+  # Audio
+  - pipewire
+  - pipewire-pulse
+  - wireplumber
+  # Desktop integration
+  - xdg-desktop-portal-wlr
+  - xdg-desktop-portal-gtk
+  - flatpak
+  - dconf-cli
+  - libglib2.0-bin         # Provides gsettings for dark mode
+  # X11 compatibility
+  - xwayland
+  # Theming
+  - gnome-themes-extra
+  - fonts-noto
+  # Utilities
+  - toilet
+  # Yazi previews
+  - ffmpegthumbnailer
+  - imagemagick
+  - poppler-utils
+  # Remote desktop client
+  - tigervnc-viewer
+
+# Network analysis tools (net-box role)
+packages_netbox:
+  # Traffic capture
+  - tshark
+  - tcpdump
+  - termshark
+  - tcpflow
+  - ngrep
+  # Bandwidth monitoring
+  - iftop
+  - nethogs
+  - vnstat
+  - bmon
+  - iperf3
+  - darkstat
+  # Network discovery
+  - nmap
+  - arp-scan
+  - netdiscover
+  # IDS
+  - suricata
+  # ARP monitoring
+  - arpwatch
+  - arping
+  # DNS and routing
+  - dnsutils
+  - whois
+  - traceroute
+  - mtr-tiny
+  # Network utilities
+  - netcat-openbsd
+  - socat
+  - ipcalc
+  - fping
+  - curl
+  - httpie
+  # SSL analysis
+  - openssl
+  - sslscan
+
+# Security/CTF tools (attack-box role)
+packages_attackbox:
+  # Browsers (proxy through Burp for testing)
+  - firefox-esr
+  - chromium
+  # Network capture/analysis (GUI)
+  - wireshark
+  - wireshark-qt
+  - tshark
+  # Recon
+  - nmap
+  - masscan
+  - nikto
+  - dirb
+  - gobuster
+  - whatweb
+  - dnsrecon
+  - whois
+  - dnsutils
+  # Web
+  - sqlmap
+  - wfuzz
+  - httpie
+  - curl
+  - wget
+  # Password/hash
+  - hashcat
+  - john
+  - hydra
+  - medusa
+  - crunch
+  - cewl
+  # Network
+  - netcat-openbsd
+  - socat
+  - proxychains4
+  - sshuttle
+  - tcpdump
+  - arpwatch
+  # Reversing
+  - gdb
+  - gdb-multiarch
+  - radare2
+  - binwalk
+  - foremost
+  - xxd
+  - hexedit
+  # Forensics
+  - sleuthkit
+  - exiftool
+  - testdisk
+  # Crypto
+  - openssl
+  - hashid
+  # Wireless (if hardware present)
+  - aircrack-ng
+  # Steganography
+  - steghide
+  - stegsnow
+  # Python tools
+  - ipython3
+  - python3-pwntools
+  - python3-requests
+  - python3-beautifulsoup4
+  - python3-scapy
+  - python3-impacket
+  # Java (for Burp Suite)
+  - default-jre
+
+# Wordlists (separate - large downloads)
+packages_wordlists:
+  - seclists
+  - wordlists
+
+# -----------------------------------------------------------------------------
+# FLATPAK APPLICATIONS
+# -----------------------------------------------------------------------------
+flatpak_apps:
+  - com.moonlight_stream.Moonlight
+
+# -----------------------------------------------------------------------------
+# NPM GLOBAL PACKAGES
+# -----------------------------------------------------------------------------
+npm_packages:
+  - typescript
+  - ts-node
+  - typescript-language-server
+
+# -----------------------------------------------------------------------------
+# NEOVIM LSP SERVERS (installed via Mason)
+# -----------------------------------------------------------------------------
+mason_lsp_servers:
+  - lua-language-server
+  - typescript-language-server
+  - pyright
+  - tailwindcss-language-server
+  - vue-language-server
+  - clangd
+
+# -----------------------------------------------------------------------------
+# STOW PACKAGES BY ROLE
+# -----------------------------------------------------------------------------
+stow_packages:
+  server:
+    - bash
+    - zsh
+    - tmux
+    - yazi
+    - nvim
+    - starship
+    - theme
+  desktop:
+    - environment
+    - sway
+    - foot
+    - fuzzel
+    - gtk-3.0
+    - gtk-4.0
+    - desktop-entries
+
+# Files to remove before stowing (to allow stow to create symlinks)
+stow_cleanup:
+  server:
+    - .bashrc
+    - .zshrc
+    - .zsh_aliases
+    - .zsh_alias_reminder
+    - .tmux.conf
+    - .config/yazi
+    - .config/nvim
+    - .config/starship.toml
+    - .config/theme
+  desktop:
+    - .config/environment.d
+    - .config/sway
+    - .config/foot
+    - .config/fuzzel
+    - .config/gtk-3.0
+    - .config/gtk-4.0
+
+# -----------------------------------------------------------------------------
+# CONTAINER IMAGES
+# -----------------------------------------------------------------------------
+container_images:
+  cloudbeaver: "docker.io/dbeaver/cloudbeaver:latest"
+  coder: "docker.io/codercom/code-server:latest"
+  jupyter: "docker.io/jupyter/scipy-notebook:latest"
+
+# -----------------------------------------------------------------------------
+# INSTALLATION PATHS
+# -----------------------------------------------------------------------------
+paths:
+  fonts: /usr/local/share/fonts/NerdFonts
+  burpsuite: /opt/burpsuite
+  zen_browser: /opt/zen
+  neovim: /usr/local/bin/nvim
+
+# -----------------------------------------------------------------------------
+# NERD FONT
+# -----------------------------------------------------------------------------
+nerd_font:
+  name: CaskaydiaCove
+  zip_name: CascadiaCode
+  check_file: CaskaydiaCoveNerdFont-Regular.ttf
+
+# -----------------------------------------------------------------------------
+# EXTERNAL REPOSITORIES
+# -----------------------------------------------------------------------------
+repos:
+  incus:
+    gpg_url: "https://pkgs.zabbly.com/key.asc"
+    gpg_path: "/etc/apt/keyrings/zabbly.asc"
+    url: "https://pkgs.zabbly.com/incus/stable"
+    filename: "zabbly-incus-stable"
+  github_cli:
+    gpg_url: "https://cli.github.com/packages/githubcli-archive-keyring.gpg"
+    gpg_path: "/usr/share/keyrings/githubcli-archive-keyring.gpg"
+  nodesource:
+    setup_url: "https://deb.nodesource.com/setup_lts.x"
+
+# -----------------------------------------------------------------------------
+# GITHUB RELEASE URLs (for tools installed from releases)
+# -----------------------------------------------------------------------------
+github_releases:
+  neovim: "https://github.com/neovim/neovim/releases"
+  yazi: "https://api.github.com/repos/sxyazi/yazi/releases/latest"
+  lazygit: "https://api.github.com/repos/jesseduffield/lazygit/releases/latest"
+  tea: "https://gitea.com/api/v1/repos/gitea/tea/releases/latest"
+  obsidian: "https://api.github.com/repos/obsidianmd/obsidian-releases/releases/latest"
+  zen_browser: "https://api.github.com/repos/zen-browser/desktop/releases/latest"
+  # Attack-box tools
+  ffuf: "https://api.github.com/repos/ffuf/ffuf/releases/latest"
+  rustscan: "https://api.github.com/repos/RustScan/RustScan/releases/latest"
+  nuclei: "https://api.github.com/repos/projectdiscovery/nuclei/releases/latest"
+  httpx: "https://api.github.com/repos/projectdiscovery/httpx/releases/latest"
+  gping: "https://api.github.com/repos/orf/gping/releases/latest"
+
+# -----------------------------------------------------------------------------
+# GTK SETTINGS
+# -----------------------------------------------------------------------------
+gtk:
+  color_scheme: prefer-dark
+  theme: Adwaita-dark
+
+# -----------------------------------------------------------------------------
+# SYSTEMD TIMERS
+# -----------------------------------------------------------------------------
+timers:
+  nvim_update: weekly

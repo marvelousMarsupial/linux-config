@@ -1,0 +1,17 @@
+---
+- name: Teardown workstation
+  hosts: localhost
+  connection: local
+  become: true
+  vars:
+    teardown_role: "{{ role | default('server') }}"
+    # Effective user - instance override takes precedence
+    effective_user:
+      name: "{{ instance_user | default(user.name) | default('root') }}"
+    target_user: "{{ effective_user.name }}"
+    target_home: "{{ '/home/' + effective_user.name if effective_user.name != 'root' else '/root' }}"
+  tasks:
+    - name: Include teardown tasks
+      ansible.builtin.include_role:
+        name: "{{ teardown_role }}"
+        tasks_from: teardown.yml

@@ -1,0 +1,40 @@
+---
+# Install Nerd Fonts (CaskaydiaCove = patched Cascadia Code)
+
+- name: Create system fonts directory
+  become: true
+  ansible.builtin.file:
+    path: /usr/local/share/fonts/NerdFonts
+    state: directory
+    mode: '0755'
+
+- name: Check if CaskaydiaCove is installed
+  ansible.builtin.stat:
+    path: /usr/local/share/fonts/NerdFonts/CaskaydiaCoveNerdFont-Regular.ttf
+  register: font_check
+
+- name: Download CaskaydiaCove Nerd Font
+  when: not font_check.stat.exists
+  ansible.builtin.get_url:
+    url: https://github.com/ryanoasis/nerd-fonts/releases/latest/download/CascadiaCode.zip
+    dest: /tmp/CascadiaCode.zip
+    mode: '0644'
+
+- name: Extract CaskaydiaCove Nerd Font
+  when: not font_check.stat.exists
+  become: true
+  ansible.builtin.unarchive:
+    src: /tmp/CascadiaCode.zip
+    dest: /usr/local/share/fonts/NerdFonts
+    remote_src: true
+
+- name: Update font cache
+  when: not font_check.stat.exists
+  become: true
+  ansible.builtin.command: fc-cache -fv
+  changed_when: true
+
+- name: Clean up download
+  ansible.builtin.file:
+    path: /tmp/CascadiaCode.zip
+    state: absent

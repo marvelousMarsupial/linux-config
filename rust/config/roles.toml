@@ -1,0 +1,34 @@
+# Role definitions. Each role can `extends` another to inherit its steps.
+# Resolution: base role's packages/dotfiles/downloads/post run first, then child's.
+
+[server]
+packages = [
+    "zsh",
+    "tmux",
+    "stow",
+    "fzf",
+    "ripgrep",
+    "fd-find",
+    "jq",
+    "git",
+    "curl",
+    "eza",
+    "bat",
+    "ufw",
+    "fail2ban",
+]
+dotfiles = ["zsh", "tmux", "yazi", "nvim", "theme", "starship"]
+post = ["chsh -s /bin/zsh"]
+
+[dev]
+extends = "server"
+packages = ["build-essential", "nodejs", "npm", "lazygit"]
+
+[desktop]
+extends = "server"
+packages = ["sway", "foot", "fuzzel", "mako", "wl-clipboard"]
+dotfiles = ["sway", "foot", "fuzzel", "mako"]
+
+[remote-desktop]
+extends = "desktop"
+packages = ["tigervnc-standalone-server", "tigervnc-common"]

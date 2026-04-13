@@ -1,0 +1,9 @@
+---
+- name: Install global npm packages
+  community.general.npm:
+    name: "{{ item }}"
+    global: true
+  loop:
+    - typescript
+    - ts-node
+    - typescript-language-server

@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""battery-monitor - background daemon that warns at low battery levels"""
+
+import argparse
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+DEFAULT_WARN_LEVEL = 20
+DEFAULT_CRITICAL_LEVEL = 10
+DEFAULT_CHECK_INTERVAL = 60
+
+def find_battery() -> Path | None:
+    """Find battery path in sysfs."""
+    power_supply = Path("/sys/class/power_supply")
+    for bat in power_supply.glob("BAT*"):
+        if (bat / "capacity").exists():
+            return bat
+    return None
+
+def get_battery_level(bat_path: Path) -> int | None:
+    """Get battery percentage."""
+    try:
+        return int((bat_path / "capacity").read_text().strip())
+    except (IOError, ValueError):
+        return None
+
+def get_battery_status(bat_path: Path) -> str:
+    """Get battery status (Charging, Discharging, Full)."""
+    try:
+        return (bat_path / "status").read_text().strip()
+    except IOError:
+        return ""
+
+def notify(title: str, msg: str, critical: bool = False) -> None:
+    """Send desktop notification."""
+    cmd = ["notify-send"]
+    if critical:
+        cmd.extend(["-u", "critical"])
+    else:
+        cmd.extend(["-u", "normal"])
+    cmd.extend([title, msg])
+    subprocess.run(cmd, capture_output=True)
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="battery-monitor",
+        description="Background daemon that monitors battery and sends notifications",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Runs in a loop checking battery level. Sends notifications when:
+  - Battery falls below warning level (default: 20%)
+  - Battery falls below critical level (default: 10%)
+
+Warnings reset when battery starts charging.
+Exits silently if no battery is detected (desktop systems).
+
+Usage:
+  battery-monitor &              # Run in background
+  battery-monitor --warn 25      # Warn at 25%
+  battery-monitor --interval 30  # Check every 30 seconds
+"""
+    )
+
+    parser.add_argument(
+        "-w", "--warn",
+        type=int,
+        default=DEFAULT_WARN_LEVEL,
+        metavar="PCT",
+        help=f"Warning level percentage (default: {DEFAULT_WARN_LEVEL})"
+    )
+    parser.add_argument(
+        "-c", "--critical",
+        type=int,
+        default=DEFAULT_CRITICAL_LEVEL,
+        metavar="PCT",
+        help=f"Critical level percentage (default: {DEFAULT_CRITICAL_LEVEL})"
+    )
+    parser.add_argument(
+        "-i", "--interval",
+        type=int,
+        default=DEFAULT_CHECK_INTERVAL,
+        metavar="SEC",
+        help=f"Check interval in seconds (default: {DEFAULT_CHECK_INTERVAL})"
+    )
+
+    args = parser.parse_args()
+
+    bat_path = find_battery()
+
+    # No battery = desktop, exit silently
+    if bat_path is None:
+        sys.exit(0)
+
+    warned_low = False
+    warned_critical = False
+
+    while True:
+        level = get_battery_level(bat_path)
+        status = get_battery_status(bat_path)
+
+        # Battery disappeared? Exit.
+        if level is None:
+            sys.exit(0)
+
+        # Reset warnings when charging
+        if status in ("Charging", "Full"):
+            warned_low = False
+            warned_critical = False
+        else:
+            # Critical warning
+            if level <= args.critical and not warned_critical:
+                notify("Battery Critical", f"{level}% - Plug in now!", critical=True)
+                warned_critical = True
+            # Low warning
+            elif level <= args.warn and not warned_low:
+                notify("Battery Low", f"{level}% remaining")
+                warned_low = True
+
+        time.sleep(args.interval)
+
+if __name__ == "__main__":
+    main()

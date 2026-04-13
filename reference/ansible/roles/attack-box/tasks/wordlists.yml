@@ -1,0 +1,20 @@
+---
+- name: Create wordlists directory
+  ansible.builtin.file:
+    path: /usr/share/wordlists
+    state: directory
+    mode: '0755'
+
+- name: Download rockyou.txt
+  ansible.builtin.get_url:
+    url: https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt
+    dest: /usr/share/wordlists/rockyou.txt
+    mode: '0644'
+  failed_when: false
+
+- name: Clone SecLists
+  ansible.builtin.git:
+    repo: https://github.com/danielmiessler/SecLists.git
+    dest: /usr/share/wordlists/SecLists
+    depth: 1
+  failed_when: false

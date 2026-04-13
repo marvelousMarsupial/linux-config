@@ -1,0 +1,214 @@
+//! Role definitions loaded from `roles.toml`.
+
+use anyhow::{anyhow, Context, Result};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::fmt;
+use std::path::Path;
+use std::str::FromStr;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Role {
+    Server,
+    Dev,
+    Desktop,
+    RemoteDesktop,
+}
+
+impl Role {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Role::Server => "server",
+            Role::Dev => "dev",
+            Role::Desktop => "desktop",
+            Role::RemoteDesktop => "remote-desktop",
+        }
+    }
+
+    pub fn all() -> &'static [Role] {
+        &[
+            Role::Server,
+            Role::Dev,
+            Role::Desktop,
+            Role::RemoteDesktop,
+        ]
+    }
+}
+
+impl fmt::Display for Role {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for Role {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "server" => Ok(Role::Server),
+            "dev" => Ok(Role::Dev),
+            "desktop" => Ok(Role::Desktop),
+            "remote-desktop" => Ok(Role::RemoteDesktop),
+            other => Err(anyhow!("unknown role: {other}")),
+        }
+    }
+}
+
+/// One role's configuration as authored in `roles.toml`.
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct RoleConfig {
+    #[serde(default)]
+    pub extends: Option<Role>,
+    #[serde(default)]
+    pub packages: Vec<String>,
+    #[serde(default)]
+    pub dotfiles: Vec<String>,
+    #[serde(default)]
+    pub downloads: Vec<Download>,
+    #[serde(default)]
+    pub post: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Download {
+    pub name: String,
+    pub url: String,
+    pub dest: String,
+    #[serde(default)]
+    pub extract: bool,
+    #[serde(default)]
+    pub chmod: Option<u32>,
+}
+
+/// Parsed `roles.toml` top-level document.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RolesFile {
+    #[serde(flatten)]
+    pub roles: BTreeMap<Role, RoleConfig>,
+}
+
+impl RolesFile {
+    pub fn from_toml(s: &str) -> Result<Self> {
+        toml::from_str(s).context("parsing roles.toml")
+    }
+
+    pub fn from_path(path: &Path) -> Result<Self> {
+        let s = std::fs::read_to_string(path)
+            .with_context(|| format!("reading {}", path.display()))?;
+        Self::from_toml(&s)
+    }
+
+    /// Resolve a role including its transitive `extends` chain, with the
+    /// base role's steps running before the child's.
+    pub fn resolved(&self, role: Role) -> Result<RoleConfig> {
+        let mut chain: Vec<Role> = Vec::new();
+        let mut current = Some(role);
+        while let Some(r) = current {
+            if chain.contains(&r) {
+                return Err(anyhow!("cycle in role extends at {r}"));
+            }
+            chain.push(r);
+            let cfg = self
+                .roles
+                .get(&r)
+                .ok_or_else(|| anyhow!("role {r} not defined in roles.toml"))?;
+            current = cfg.extends;
+        }
+
+        // Apply base-first so leaf overrides/appends come last.
+        let mut merged = RoleConfig::default();
+        for r in chain.iter().rev() {
+            let cfg = &self.roles[r];
+            merged.packages.extend(cfg.packages.iter().cloned());
+            merged.dotfiles.extend(cfg.dotfiles.iter().cloned());
+            merged.downloads.extend(cfg.downloads.iter().cloned());
+            merged.post.extend(cfg.post.iter().cloned());
+        }
+        merged.extends = None;
+        Ok(merged)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE: &str = r#"
+[server]
+packages = ["zsh", "tmux"]
+dotfiles = ["zsh", "tmux"]
+post = ["chsh -s /bin/zsh"]
+
+[desktop]
+extends = "server"
+packages = ["sway", "foot"]
+dotfiles = ["sway", "foot"]
+
+[remote-desktop]
+extends = "desktop"
+packages = ["tigervnc-standalone-server"]
+"#;
+
+    #[test]
+    fn parses_sample() {
+        let f = RolesFile::from_toml(SAMPLE).unwrap();
+        assert_eq!(f.roles.len(), 3);
+    }
+
+    #[test]
+    fn resolves_chain() {
+        let f = RolesFile::from_toml(SAMPLE).unwrap();
+        let desktop = f.resolved(Role::Desktop).unwrap();
+        assert_eq!(desktop.packages, vec!["zsh", "tmux", "sway", "foot"]);
+        assert_eq!(desktop.dotfiles, vec!["zsh", "tmux", "sway", "foot"]);
+        assert_eq!(desktop.post, vec!["chsh -s /bin/zsh"]);
+    }
+
+    #[test]
+    fn resolves_three_deep() {
+        let f = RolesFile::from_toml(SAMPLE).unwrap();
+        let rd = f.resolved(Role::RemoteDesktop).unwrap();
+        assert_eq!(
+            rd.packages,
+            vec!["zsh", "tmux", "sway", "foot", "tigervnc-standalone-server"]
+        );
+    }
+
+    #[test]
+    fn role_roundtrip() {
+        for r in Role::all() {
+            assert_eq!(Role::from_str(r.as_str()).unwrap(), *r);
+        }
+    }
+
+    #[test]
+    fn unknown_role_errors() {
+        assert!(Role::from_str("nope").is_err());
+    }
+
+    #[test]
+    fn missing_role_errors() {
+        let f = RolesFile::from_toml("[server]\npackages = []").unwrap();
+        assert!(f.resolved(Role::Desktop).is_err());
+    }
+
+    #[test]
+    fn cycle_detection() {
+        // Serde won't let us build a cycle via TOML deserialization easily,
+        // but we can verify the resolver fails fast if somehow given one.
+        let src = r#"
+[server]
+extends = "dev"
+
+[dev]
+extends = "server"
+"#;
+        let f = RolesFile::from_toml(src).unwrap();
+        let err = f.resolved(Role::Server).unwrap_err();
+        assert!(err.to_string().contains("cycle"));
+    }
+}
