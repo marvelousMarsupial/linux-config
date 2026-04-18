@@ -1,0 +1,153 @@
+# Role definitions. Each role can `extends` another; the base role's
+# steps run before the child's (packages appended, dotfiles merged).
+#
+# `dotfiles` is a list of glob patterns against the embedded dotfiles tree
+# (which mirrors $HOME). Matching files are written to $HOME/<path>, with
+# any existing files compared so idempotent reruns skip unchanged content.
+#
+# `downloads` fetch binaries that aren't in apt. Skipped if dest already
+# exists unless `--refresh-downloads` is passed.
+
+[server]
+packages = [
+    "zsh",
+    "zsh-autosuggestions",
+    "zsh-syntax-highlighting",
+    "tmux",
+    "fzf",
+    "ripgrep",
+    "fd-find",
+    "jq",
+    "git",
+    "curl",
+    "ca-certificates",
+    "eza",
+    "bat",
+    "unzip",
+]
+dotfiles = [
+    ".bashrc",
+    ".zshrc",
+    ".zsh_aliases",
+    ".zsh_alias_reminder",
+    ".tmux.conf",
+    ".config/yazi/**",
+    ".config/nvim/**",
+    ".config/starship.toml",
+    ".config/theme/**",
+    ".config/environment.d/**",
+]
+post = [
+    { run = "chsh -s /bin/zsh $(whoami)", check = "getent passwd $(whoami) | grep -q /bin/zsh" },
+    { run = "ln -sf $HOME/.local/nvim/bin/nvim $HOME/.local/bin/nvim", check = "test -L $HOME/.local/bin/nvim" },
+    { run = "ln -sf /usr/bin/batcat /usr/local/bin/bat", check = "test -L /usr/local/bin/bat" },
+    { run = "ln -sf /usr/bin/fdfind /usr/local/bin/fd", check = "test -L /usr/local/bin/fd" },
+    { run = "ln -sf $HOME/.local/bin/yazi /usr/local/bin/yazi", check = "test -L /usr/local/bin/yazi" },
+    { run = "ln -sf $HOME/.local/bin/ya /usr/local/bin/ya", check = "test -L /usr/local/bin/ya" },
+    { run = "ln -sf $HOME/.local/bin/starship /usr/local/bin/starship", check = "test -L /usr/local/bin/starship" },
+]
+
+[[server.downloads]]
+name = "neovim"
+url = "https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz"
+dest = "~/.local/nvim"
+extract = "tree:1"
+
+[[server.downloads]]
+name = "starship"
+url = "https://github.com/starship/starship/releases/latest/download/starship-x86_64-unknown-linux-gnu.tar.gz"
+dest = "~/.local/bin/starship"
+extract = "starship"
+chmod = 755
+
+[[server.downloads]]
+name = "yazi"
+url = "https://github.com/sxyazi/yazi/releases/latest/download/yazi-x86_64-unknown-linux-gnu.zip"
+dest = "~/.local/bin/yazi"
+extract = "*/yazi"
+chmod = 755
+
+[[server.downloads]]
+name = "ya"
+url = "https://github.com/sxyazi/yazi/releases/latest/download/yazi-x86_64-unknown-linux-gnu.zip"
+dest = "~/.local/bin/ya"
+extract = "*/ya"
+chmod = 755
+
+[dev]
+extends = "server"
+packages = ["build-essential", "nodejs", "npm"]
+
+[[dev.downloads]]
+name = "lazygit"
+url = "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_0.44.1_Linux_x86_64.tar.gz"
+dest = "~/.local/bin/lazygit"
+extract = "lazygit"
+chmod = 755
+
+[desktop]
+extends = "server"
+packages = ["sway", "foot", "fuzzel", "mako", "wl-clipboard"]
+dotfiles = [
+    ".config/sway/**",
+    ".config/foot/**",
+    ".config/fuzzel/**",
+    ".config/gtk-3.0/**",
+    ".config/gtk-4.0/**",
+    ".local/share/applications/**",
+]
+
+[remote-desktop]
+extends = "desktop"
+packages = ["tigervnc-standalone-server", "tigervnc-common"]
+
+# CLI-only network analysis / monitoring box.
+# Inherits server shell + tools, adds capture/monitoring/IDS stack.
+[net-box]
+extends = "server"
+packages = [
+    "tshark",
+    "tcpdump",
+    "termshark",
+    "iftop",
+    "nethogs",
+    "vnstat",
+    "bmon",
+    "iperf3",
+    "nmap",
+    "arp-scan",
+    "netdiscover",
+    "suricata",
+    "dnsutils",
+    "whois",
+    "traceroute",
+    "mtr-tiny",
+    "netcat-openbsd",
+    "socat",
+]
+
+# Offensive/CTF box. Inherits desktop GUI for Burp, Wireshark, etc.
+# Firewall is intentionally not installed so inbound tools work.
+[attack-box]
+extends = "desktop"
+packages = [
+    "wireshark",
+    "wireshark-qt",
+    "tshark",
+    "nmap",
+    "masscan",
+    "nikto",
+    "dirb",
+    "gobuster",
+    "whatweb",
+    "dnsrecon",
+    "sqlmap",
+    "wfuzz",
+    "httpie",
+    "hashcat",
+    "john",
+    "hydra",
+    "medusa",
+    "crunch",
+    "cewl",
+]

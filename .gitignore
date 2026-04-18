@@ -1,11 +1,14 @@
+# Rust build output
+target/
+
 # Theme-generated files (written by `theme apply`)
-stow/nvim/.config/nvim/lua/plugins/colorscheme.lua
-stow/yazi/.config/yazi/theme.toml
-stow/foot/.config/foot/colors.ini
-stow/sway/.config/sway/colors
-stow/fuzzel/.config/fuzzel/colors.ini
-stow/gtk-3.0/.config/gtk-3.0/gtk.css
-stow/gtk-4.0/.config/gtk-4.0/gtk.css
+dotfiles/.config/nvim/lua/plugins/colorscheme.lua
+dotfiles/.config/yazi/theme.toml
+dotfiles/.config/foot/colors.ini
+dotfiles/.config/sway/colors
+dotfiles/.config/fuzzel/colors.ini
+dotfiles/.config/gtk-3.0/gtk.css
+dotfiles/.config/gtk-4.0/gtk.css
 
 __pycache__/
 
@@ -18,9 +21,9 @@ package.json
 bin/nvim
 
 # Lazy.nvim lockfile
-stow/nvim/.config/nvim/lazy-lock.json
+dotfiles/.config/nvim/lazy-lock.json
 
-# Ignore test symlinks in repo root (not in stow/)
+# Ignore test symlinks in repo root (not in dotfiles/)
 /.config
 /.local/
 /.tmux.conf
