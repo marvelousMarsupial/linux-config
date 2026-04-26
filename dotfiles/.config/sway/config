@@ -232,6 +232,21 @@ bindsym --to-code $mod+p exec $bin/pass-picker
 # Editor (vim)
 bindsym $mod+v exec $term -e ~/.local/bin/nvim
 
+# Dictation - local Whisper push-to-toggle (offline, no cloud).
+#
+# First press starts a pw-record capture; second press stops the
+# recorder, POSTs the WAV to a loopback whisper-server (lazy-started
+# user systemd unit holding the small.en-q5_1 model in memory), and
+# types the transcription directly into the focused window via wtype.
+# The clipboard is intentionally left untouched.
+#
+# Mod+Ctrl+s aborts an in-flight recording. To free the ~330 MiB the
+# model holds in RAM when you're done dictating for a while, run
+# `dictate stop-server` from a terminal — the next Mod+s press
+# lazy-restarts it.
+bindsym --to-code $mod+s exec $bin/dictate
+bindsym --to-code $mod+Ctrl+s exec $bin/dictate cancel
+
 
 # Power menu (lock, suspend, logout, reboot, shutdown)
 bindsym --to-code $mod+x exec $bin/power-menu

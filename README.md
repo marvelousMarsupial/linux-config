@@ -63,6 +63,7 @@ forge vm create <profile>    # incus VM
 | `Super+e` | yazi file manager |
 | `Super+v` | nvim |
 | `Super+p` | password picker |
+| `Super+s` / `Super+Ctrl+s` | dictate (toggle / cancel) — local Whisper |
 | `Super+x` | power menu |
 | `Super+w` | wifi menu |
 | `Super+i` / `Super+Shift+i` | status panel / btop |

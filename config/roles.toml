@@ -170,6 +170,24 @@ packages = [
     "keepassxc",
     # Flatpak runtime for zen browser + obsidian
     "flatpak",
+    # Dictation stack. wtype synthesizes the Ctrl+V paste used by the
+    # `dictate` script; we deliberately route the transcription through
+    # the clipboard rather than typing char-by-char so unicode and
+    # long results land instantly. wl-clipboard (above) is what holds
+    # the text between wl-copy and the synthesized paste.
+    "wtype",
+    # Build toolchain for whisper.cpp. We compile from source rather
+    # than ship a prebuilt binary because:
+    #   * The whisper.cpp project doesn't publish official Linux
+    #     binaries — only Windows zips and the source tarball.
+    #   * Building locally lets `-DGGML_NATIVE=ON` light up AVX2 +
+    #     AVX-512 on this Tiger Lake CPU, which is meaningful for the
+    #     medium.en model where every encoder pass is several seconds.
+    # libopenblas-dev pulls in the headers for `-DGGML_BLAS=1`, which
+    # gives a measurable speedup on the encoder GEMM kernels.
+    "build-essential",
+    "cmake",
+    "libopenblas-dev",
 ]
 dotfiles = [
     ".config/sway/**",
@@ -184,6 +202,13 @@ dotfiles = [
     # "kanshi installed but unconfigured" silently broke the docked
     # layout, so the glob is required, not optional.
     ".config/kanshi/**",
+    # systemd --user units. Currently this glob ships only the
+    # whisper-server.service unit used by the `dictate` keybind.
+    # The unit deliberately has no [Install] section: it's lazy-
+    # started on first dictation by the script and stopped on
+    # demand via `dictate stop-server`, so enabling it at boot
+    # would waste ~1.7 GiB of RAM on the medium.en model load.
+    ".config/systemd/user/**",
     ".local/share/applications/**",
     ".local/bin/**",
 ]
@@ -226,6 +251,30 @@ post = [
     # Xwayland-startup ordering problem.
     { run = "flatpak override --user --socket=wayland md.obsidian.Obsidian", check = "flatpak override --user --show md.obsidian.Obsidian | grep -q 'sockets=.*wayland'" },
     { run = "flatpak override --user --socket=wayland app.zen_browser.zen", check = "flatpak override --user --show app.zen_browser.zen | grep -q 'sockets=.*wayland'" },
+    # whisper.cpp source checkout. We pin to a shallow clone in
+    # ~/.local/src/whisper.cpp so the build artifacts stay out of
+    # $HOME root and can be rebuilt independently of the model file.
+    # The `check` is presence of the `.git` dir, so reruns skip the
+    # network fetch entirely once the tree is on disk.
+    { run = "git clone --depth=1 https://github.com/ggml-org/whisper.cpp $HOME/.local/src/whisper.cpp", check = "test -d $HOME/.local/src/whisper.cpp/.git" },
+    # Build whisper.cpp with OpenBLAS + native CPU features. -DGGML_BLAS=1
+    # routes the encoder GEMMs through OpenBLAS (libopenblas-dev provides
+    # the headers); -DGGML_NATIVE=ON enables AVX2 + AVX-512 on this
+    # Tiger Lake CPU. The `check` looks for the produced `whisper-server`
+    # binary, so reruns are no-ops once the build has succeeded once.
+    { run = "cd $HOME/.local/src/whisper.cpp && cmake -B build -DGGML_BLAS=1 -DGGML_NATIVE=ON -DCMAKE_BUILD_TYPE=Release && cmake --build build -j --config Release --target whisper-server whisper-cli", check = "test -x $HOME/.local/src/whisper.cpp/build/bin/whisper-server" },
+    # Surface the built binaries on PATH via symlinks under ~/.local/bin
+    # (already in PATH from .config/environment.d/path.conf). The
+    # `dictate` script and the whisper-server systemd unit both
+    # reference these paths, not the build dir.
+    { run = "ln -sf $HOME/.local/src/whisper.cpp/build/bin/whisper-server $HOME/.local/bin/whisper-server && ln -sf $HOME/.local/src/whisper.cpp/build/bin/whisper-cli $HOME/.local/bin/whisper-cli", check = "test -L $HOME/.local/bin/whisper-server && test -L $HOME/.local/bin/whisper-cli" },
+    # Re-read user systemd units so the freshly-written
+    # ~/.config/systemd/user/whisper-server.service is visible to
+    # `systemctl --user start`. daemon-reload is a true no-op when the
+    # unit hasn't changed, so we run it unconditionally; the `|| true`
+    # swallows the harmless failure when forge runs outside a user
+    # session (e.g. an SSH provision without -t).
+    "systemctl --user daemon-reload 2>/dev/null || true",
 ]
 
 [[desktop.downloads]]
@@ -233,6 +282,31 @@ name = "caskaydia-cove-nerd-font"
 url = "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/CascadiaCode.zip"
 dest = "~/.local/share/fonts/CaskaydiaCove"
 extract = "tree:0"
+
+# Whisper small.en Q5_1-quantized GGML model (~182 MiB). The `dictate`
+# script POSTs WAV audio to whisper-server which keeps this model
+# resident; the file only needs to exist once on disk, hence no
+# `extract` field — the URL returns the raw .bin which is downloaded
+# straight to `dest`.
+#
+# Model choice rationale on this i7-1185G7 (4c/8t Tiger Lake, no GPU):
+# medium.en is roughly real-time on this CPU (~8 s of inference per
+# 10 s clip), which feels sluggish vs. mobile dictation. small.en-q5_1
+# is ~3-4x faster with a barely-detectable WER hit on dictation-style
+# speech. Q5_1 also halves the resident RAM (~330 MiB instead of
+# ~600 MiB) and is usually a touch faster than fp16 small.en on CPU
+# because GEMM throughput is memory-bandwidth-bound here.
+#
+# To switch: replace the URL filename with e.g. `ggml-base.en.bin`
+# (faster, lower quality) or `ggml-medium.en.bin` (slower, higher
+# quality), update `dest` and the `--model` arg in
+# .config/systemd/user/whisper-server.service to match, then rerun
+# `forge setup desktop && dictate stop-server` so the next dictation
+# press lazy-restarts the server with the new model.
+[[desktop.downloads]]
+name = "whisper-small-en-q5_1-model"
+url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin"
+dest = "~/.local/share/whisper.cpp/models/ggml-small.en-q5_1.bin"
 
 [remote-desktop]
 extends = "desktop"

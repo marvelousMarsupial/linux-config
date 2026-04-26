@@ -1,0 +1,42 @@
+# whisper-server.service - local whisper.cpp inference HTTP server.
+#
+# Lazy-started by `dictate` on first dictation; stopped on demand via
+# `dictate stop-server`. There is intentionally no [Install] section —
+# enabling this at boot would waste ~330 MiB of RAM on the
+# small.en-q5_1 model load before any keypress, defeating the lazy-
+# start design.
+#
+# Listens on 127.0.0.1:8127 only (loopback, no LAN exposure). The port
+# (8127) is uncommon enough to dodge collisions with the usual
+# 8000/8080/3000 dev-server squatters.
+#
+# --threads 4 matches the physical core count on this i7-1185G7
+# (Tiger Lake, 4 physical / 8 hyperthreads). BLAS GEMM kernels are
+# cache-bound, and hyperthread pairs share L1/L2 — oversubscribing
+# with `--threads 8` measurably hurts encoder throughput on this
+# CPU. If you move this unit to a different machine with a different
+# core count, retune.
+
+[Unit]
+Description=Local whisper.cpp inference HTTP server (lazy-started by dictate)
+Documentation=https://github.com/ggml-org/whisper.cpp/tree/master/examples/server
+
+[Service]
+# Type=exec waits until exec() succeeds before considering the service
+# started. That gives `systemctl --user start` a fast, accurate failure
+# when the binary or model is missing — the dictate script polls the
+# HTTP port for *readiness* separately, so we don't need Type=notify.
+Type=exec
+ExecStart=%h/.local/bin/whisper-server --model %h/.local/share/whisper.cpp/models/ggml-small.en-q5_1.bin --host 127.0.0.1 --port 8127 --threads 4
+
+# Restart=no on purpose. If the unit fails (missing model, port in use,
+# OOM), we want the failure to surface immediately to the dictate
+# script via `systemctl is-active`, not get masked by an automatic
+# restart loop that re-attempts every few seconds in the background.
+Restart=no
+
+# Send stdout / stderr to the journal so `journalctl --user -u
+# whisper-server` is the canonical place to look when a transcription
+# comes back empty or the server refuses connections.
+StandardOutput=journal
+StandardError=journal

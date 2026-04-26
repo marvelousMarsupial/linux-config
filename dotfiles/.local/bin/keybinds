@@ -33,8 +33,9 @@ CONTENT = """
    Super + e           Files               Alt + t             Toggle terminal
    Super + p           Passwords           Alt + n             New session
    Super + v           Editor              Alt + ( / )         Prev/next session
-   Super + Shift + /   This help           Alt + d             Detach
-                                           Alt + [ / ]         Copy / Paste
+   Super + s           Dictate toggle      Alt + d             Detach
+   Super + Ctrl + s    Dictate cancel      Alt + [ / ]         Copy / Paste
+   Super + Shift + /   This help
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

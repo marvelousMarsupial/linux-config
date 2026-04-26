@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+# dictate - local Whisper push-to-toggle dictation for Sway/Wayland.
+#
+# Bound to:
+#   Mod+s         toggle: start recording, or stop+transcribe+paste
+#   Mod+Ctrl+s    cancel: abort an in-flight recording without transcribing
+#
+# Subcommands:
+#   dictate              (no args) toggle record/transcribe
+#   dictate cancel       abort in-flight recording, drop the WAV
+#   dictate stop-server  stop whisper-server.service to free ~1.7 GiB RAM
+#   dictate -h | --help  this help
+#
+# Architecture
+# ------------
+# Three pieces, all running as the user (no root, no daemon at boot):
+#
+#   1. pw-record (PipeWire) captures 16 kHz mono s16 WAV into a tmpfs
+#      file under $XDG_RUNTIME_DIR/dictate/. Capturing at 16 kHz
+#      directly skips a downstream resample step in whisper-server.
+#
+#   2. whisper-server.service (user systemd unit) holds the medium.en
+#      ggml model in memory and exposes POST /inference on
+#      127.0.0.1:8127. Loading the model is several seconds on this
+#      CPU; keeping it resident makes per-shot dictation feel snappy.
+#      The unit is *not* enabled at boot — this script lazy-starts it
+#      on first use and the user stops it via `dictate stop-server`
+#      when the RAM is needed for something else.
+#
+#   3. wtype types the transcription directly into the focused window
+#      via the zwp_virtual_keyboard_v1 Wayland protocol. This works
+#      uniformly across terminals, browsers, and editors without
+#      needing per-app paste-keybind knowledge (foot uses
+#      Ctrl+Shift+V, browsers use Ctrl+V, tmux interprets Ctrl+V as a
+#      verbatim-insert prefix — synthesizing one chord can't satisfy
+#      all of them, so we type the characters instead). The user's
+#      clipboard is left untouched so dictation doesn't clobber
+#      whatever they had copied.
+#
+# State
+# -----
+# $XDG_RUNTIME_DIR/dictate/recorder.pid   PID of the running pw-record
+# $XDG_RUNTIME_DIR/dictate/recording.wav  audio buffer for the in-flight take
+#
+# A press is "are we already recording?" → check that the PID file
+# exists *and* the process is alive (`kill -0`). If the process died
+# unexpectedly (stale PID), the next press just starts a fresh
+# recording — self-healing without manual cleanup.
+
+set -u
+
+# ---- Constants -------------------------------------------------------------
+
+# Loopback-only HTTP endpoint exposed by whisper-server.service. The
+# port (8127) matches the systemd unit's --port arg; if you change one
+# you must change the other.
+WHISPER_HOST="127.0.0.1"
+WHISPER_PORT="8127"
+WHISPER_URL="http://${WHISPER_HOST}:${WHISPER_PORT}"
+
+# tmpfs-backed runtime dir — gets wiped on logout, perfect for
+# transient dictation state. Falls back to /tmp on the rare boxes
+# without XDG_RUNTIME_DIR set (e.g. running this from a bare cron).
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}/dictate"
+PID_FILE="${RUNTIME_DIR}/recorder.pid"
+WAV_FILE="${RUNTIME_DIR}/recording.wav"
+
+# Maximum seconds to wait for whisper-server to come up after a cold
+# `systemctl --user start`. medium.en model load is ~3-6 s on this
+# Tiger Lake CPU — 30 s gives plenty of headroom for first-time loads
+# off cold cache without making the user stare at "starting…" forever
+# if the unit fails outright.
+SERVER_BOOT_TIMEOUT=30
+
+mkdir -p "${RUNTIME_DIR}"
+
+# ---- Helpers ---------------------------------------------------------------
+
+# Send a desktop notification. `-a dictate` lets mako rules target our
+# notifications specifically (e.g. a shorter timeout for the
+# transcription preview). Silently no-op if notify-send is missing —
+# the keybind should still work on minimal installs.
+notify() {
+    notify-send -a dictate "${1:-Dictation}" "${2:-}" 2>/dev/null || true
+}
+
+# True iff a recorder is currently running. The PID file alone is not
+# enough: pw-record can die independently (e.g. mic unplugged), and
+# we don't want a stale PID file to lock out the next dictation press.
+is_recording() {
+    [[ -f "${PID_FILE}" ]] && kill -0 "$(cat "${PID_FILE}")" 2>/dev/null
+}
+
+# ---- Recording lifecycle ---------------------------------------------------
+
+# Spawn pw-record in the background, wait for it to actually start
+# capturing audio, then notify the user. Capture is 16 kHz mono
+# signed-16, the exact format whisper-server expects, so no resample
+# on the server side.
+#
+# The wait-for-samples step is load-bearing UX: PipeWire takes
+# ~100-300 ms after exec to negotiate the stream and start writing
+# samples, and without this gate the user sees the "🎤 Listening"
+# notification BEFORE pw-record is actually capturing — they start
+# talking, the first word or two gets dropped. Polling the WAV file
+# size past the WAV header (44 bytes) is a reliable "samples are
+# flowing" signal because pw-record only writes the header once it
+# has bound the stream.
+start_recording() {
+    # rm any stale WAV from a previous take so a partial file can't
+    # ride into the next transcription if anything below races.
+    rm -f "${WAV_FILE}"
+
+    pw-record --rate 16000 --channels 1 --format s16 "${WAV_FILE}" \
+        >/dev/null 2>&1 &
+    local pid=$!
+    echo "${pid}" > "${PID_FILE}"
+
+    # Poll for up to 1.5 s waiting for audio. 30 × 50 ms ticks; if
+    # we can't get samples in that window something is wrong (no
+    # audio device, PipeWire down) — surface it loudly instead of
+    # quietly losing more audio.
+    local i=0
+    while (( i < 30 )); do
+        # WAV header is 44 bytes; >100 means actual samples have
+        # been written, not just the header.
+        if [[ -f "${WAV_FILE}" ]] \
+            && (( $(stat -c %s "${WAV_FILE}" 2>/dev/null || echo 0) > 100 )); then
+            notify "🎤 Listening" "Mod+s to stop, Mod+Ctrl+s to cancel"
+            return 0
+        fi
+        # If pw-record exited before producing samples (no input
+        # device, permissions, busy) bail with a clear message
+        # rather than leaving a stale PID file behind.
+        if ! kill -0 "${pid}" 2>/dev/null; then
+            rm -f "${PID_FILE}"
+            notify "Dictation" "pw-record failed to start (check the default audio source)"
+            return 1
+        fi
+        sleep 0.05
+        i=$((i + 1))
+    done
+
+    # 1.5 s elapsed without audio — something's wedged.
+    kill -INT "${pid}" 2>/dev/null || true
+    rm -f "${PID_FILE}"
+    notify "Dictation" "pw-record didn't start capturing in 1.5s"
+    return 1
+}
+
+# Stop the in-flight recorder cleanly and wait for it to exit so the
+# WAV is fully flushed before any caller reads it. SIGINT (not
+# SIGKILL) is required: pw-record finalizes the WAV header on graceful
+# shutdown and would leave a truncated unreadable file on a hard kill.
+stop_recording() {
+    local pid
+    pid=$(cat "${PID_FILE}" 2>/dev/null || true)
+    rm -f "${PID_FILE}"
+
+    if [[ -z "${pid}" ]]; then
+        return 0
+    fi
+
+    kill -INT "${pid}" 2>/dev/null || true
+
+    # Bounded busy-wait. 5 s is far more than pw-record needs to flush
+    # a few seconds of 16 kHz audio, but caps the worst-case delay if
+    # the process is wedged in D-state on a flaky USB mic.
+    local waited=0
+    while kill -0 "${pid}" 2>/dev/null; do
+        sleep 0.05
+        waited=$((waited + 1))
+        if (( waited > 100 )); then
+            kill -KILL "${pid}" 2>/dev/null || true
+            break
+        fi
+    done
+}
+
+# ---- Server lifecycle ------------------------------------------------------
+
+# Lazy-start whisper-server.service if it isn't already responding,
+# then poll the HTTP port until either it answers or SERVER_BOOT_TIMEOUT
+# elapses. Returns 0 on ready, non-zero on failure (with a
+# notification already shown).
+ensure_server() {
+    # Fast path: the server is up and answering. `--max-time 0.5`
+    # bounds this check at half a second so a healthy server adds
+    # negligible latency to every dictation press.
+    if curl -sf -o /dev/null --max-time 0.5 "${WHISPER_URL}/" 2>/dev/null; then
+        return 0
+    fi
+
+    # Cold path: kick the unit. `start` is a no-op on an already-active
+    # unit, but we just confirmed it's not responding, so this will
+    # boot it from scratch (model load + bind to port).
+    if ! systemctl --user start whisper-server.service 2>/dev/null; then
+        notify "Dictation" "Failed to start whisper-server (see journalctl --user -u whisper-server)"
+        return 1
+    fi
+
+    # Poll for readiness. Two sleeps per second × SERVER_BOOT_TIMEOUT.
+    local i=0 max=$((SERVER_BOOT_TIMEOUT * 2))
+    while (( i < max )); do
+        if curl -sf -o /dev/null --max-time 0.5 "${WHISPER_URL}/" 2>/dev/null; then
+            return 0
+        fi
+        sleep 0.5
+        i=$((i + 1))
+    done
+
+    notify "Dictation" "whisper-server didn't respond in ${SERVER_BOOT_TIMEOUT}s"
+    return 1
+}
+
+# ---- Transcription + paste -------------------------------------------------
+
+# POST the WAV to /inference and print the trimmed transcription on
+# stdout. We ask for response_format=text so we don't have to parse
+# JSON in shell; whisper-server returns a plain-text body when that
+# flag is set. temperature=0.0 makes decoding deterministic — useful
+# for dictation where consistency matters more than diversity.
+transcribe() {
+    curl -sf --max-time 60 \
+        -F "file=@${WAV_FILE}" \
+        -F "response_format=text" \
+        -F "temperature=0.0" \
+        "${WHISPER_URL}/inference" \
+        | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+# Type the text directly into the focused window via wtype's stdin
+# input mode (`wtype -`). Stdin is preferable to passing the text as
+# an argv: no length cap, no chance of a leading `-` in the
+# transcription being parsed as a flag, and no leak through process
+# listings.
+type_text() {
+    printf '%s' "$1" | wtype -
+}
+
+# ---- Subcommands -----------------------------------------------------------
+
+# Default action when invoked with no args. Two states:
+#   * Idle   → start recording.
+#   * Recording → stop, transcribe, paste.
+cmd_toggle() {
+    if is_recording; then
+        stop_recording
+        notify "⏳ Transcribing"
+
+        if ! ensure_server; then
+            return 1
+        fi
+
+        local text
+        text=$(transcribe)
+
+        if [[ -z "${text}" ]]; then
+            # whisper sometimes returns "[BLANK_AUDIO]" for silence; the
+            # text-format response strips brackets to an empty string in
+            # that case. Either way: nothing useful to paste.
+            notify "Dictation" "Empty transcription"
+            return 0
+        fi
+
+        type_text "${text}"
+        notify "✓ Typed" "${text}"
+    else
+        start_recording
+    fi
+}
+
+# Abort an in-flight recording. No-op if we weren't recording so
+# stray Mod+Ctrl+s presses don't whine at the user.
+cmd_cancel() {
+    if is_recording; then
+        stop_recording
+        rm -f "${WAV_FILE}"
+        notify "✗ Cancelled"
+    fi
+}
+
+# Stop the user systemd unit holding the model in memory. Use this
+# when the laptop is RAM-pressured and dictation isn't needed for a
+# while; the next dictation press will lazy-restart the server (and
+# pay the model-load latency once).
+cmd_stop_server() {
+    if systemctl --user is-active --quiet whisper-server.service; then
+        systemctl --user stop whisper-server.service
+        notify "Dictation" "whisper-server stopped (RAM freed)"
+    else
+        notify "Dictation" "whisper-server already stopped"
+    fi
+}
+
+usage() {
+    cat <<'EOF'
+dictate - local Whisper push-to-toggle dictation.
+
+USAGE:
+  dictate              Toggle: start recording, or stop+transcribe+paste.
+  dictate cancel       Abort an in-flight recording without transcribing.
+  dictate stop-server  Stop the whisper-server systemd unit (frees ~1.7 GiB RAM).
+  dictate -h | --help  This help.
+
+KEYBINDS (sway):
+  Mod+s        toggle
+  Mod+Ctrl+s   cancel
+EOF
+}
+
+# ---- Dispatch --------------------------------------------------------------
+
+case "${1:-toggle}" in
+    toggle|"")    cmd_toggle ;;
+    cancel)       cmd_cancel ;;
+    stop-server)  cmd_stop_server ;;
+    -h|--help)    usage ;;
+    *)            echo "dictate: unknown subcommand: $1" >&2; usage >&2; exit 2 ;;
+esac

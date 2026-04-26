@@ -528,4 +528,241 @@ mod tests {
             "rustup component-add must have a `check` for idempotency"
         );
     }
+
+    /// The desktop role provisions the local Whisper dictation stack
+    /// triggered by Mod+s. There are several moving parts and they
+    /// have to land together — the `dictate` script is useless without
+    /// the model file, the model is useless without the binary, and
+    /// the binary is useless without wtype/OpenBLAS. Asserting all of
+    /// that here means a fresh `forge setup desktop` either ships a
+    /// working dictation keybind or fails the test suite, never the
+    /// confusing middle state where Mod+s pops a notification about a
+    /// missing component on the user's first dictation press.
+    ///
+    /// Specifically we assert the role has:
+    ///   * runtime packages: `wtype` (the only thing dictate strictly
+    ///     needs at runtime — wl-clipboard is no longer used since
+    ///     we type the transcription directly rather than pasting it)
+    ///   * build packages: `build-essential`, `cmake`, `libopenblas-dev`
+    ///   * a download for a whisper.cpp GGML model
+    ///   * a post-command that clones whisper.cpp (with a `check`)
+    ///   * a post-command that builds it with -DGGML_BLAS=1 (with a `check`)
+    ///   * a post-command that symlinks the built binaries onto PATH
+    #[test]
+    fn desktop_role_provisions_whisper_dictation_stack() {
+        use forge_common::plan::Action;
+        use forge_common::role::PostCmd;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Desktop).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        // Runtime + build packages required for the dictation flow.
+        // We collect the install actions once and substring-match on
+        // them rather than re-deriving the resolved package list, so
+        // the test catches an accidental package removal regardless of
+        // whether it was deleted from `desktop` or from a parent role.
+        let installed: Vec<String> = plan
+            .actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::InstallPackage(p) => Some(p.clone()),
+                _ => None,
+            })
+            .collect();
+        for required in ["wtype", "build-essential", "cmake", "libopenblas-dev"] {
+            assert!(
+                installed.iter().any(|p| p == required),
+                "desktop role must install `{required}` for dictation; installed = {installed:?}"
+            );
+        }
+
+        // Model download. We don't pin the exact filename on disk
+        // because the URL is the load-bearing part — if someone
+        // changes `dest` to keep models elsewhere, the systemd unit's
+        // --model arg can be updated to match. The URL substring
+        // ensures we're still pulling a whisper.cpp GGML English model
+        // (any of small/base/medium with optional quant suffix).
+        let model_dl = plan
+            .actions
+            .iter()
+            .find(|a| matches!(a, Action::Download { url, .. } if url.contains("ggml-") && url.contains(".en") && url.ends_with(".bin")));
+        assert!(
+            model_dl.is_some(),
+            "desktop role must download a whisper.cpp .en GGML model; actions = {:?}",
+            plan.actions
+                .iter()
+                .filter_map(|a| match a {
+                    Action::Download { url, .. } => Some(url.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        );
+
+        let post_cmds: Vec<&PostCmd> = plan
+            .actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::PostCommand(p) => Some(p),
+                _ => None,
+            })
+            .collect();
+
+        // git clone — substring on the upstream repo URL so a
+        // mirror/fork rename doesn't slip through silently.
+        let clone = post_cmds
+            .iter()
+            .find(|p| p.run().contains("git clone") && p.run().contains("whisper.cpp"))
+            .expect("desktop role must clone whisper.cpp");
+        assert!(
+            clone.check().is_some(),
+            "whisper.cpp clone post-command must have a `check` so reruns skip the network fetch"
+        );
+
+        // cmake build — assert the OpenBLAS flag is present, since
+        // dropping it silently regresses encoder throughput by a
+        // measurable amount (and there's no other signal that it
+        // happened — the binary still works, just slower).
+        let build = post_cmds
+            .iter()
+            .find(|p| p.run().contains("cmake --build") && p.run().contains("whisper.cpp"))
+            .expect("desktop role must build whisper.cpp via cmake");
+        assert!(
+            build.run().contains("-DGGML_BLAS=1"),
+            "whisper.cpp build must enable OpenBLAS via -DGGML_BLAS=1; got: {}",
+            build.run()
+        );
+        assert!(
+            build.check().is_some(),
+            "whisper.cpp build post-command must have a `check` so reruns are no-ops"
+        );
+
+        // Symlink binaries into ~/.local/bin so the dictate script
+        // and the systemd unit can reference them by short path.
+        let link = post_cmds
+            .iter()
+            .find(|p| p.run().contains("ln -sf") && p.run().contains("whisper-server"))
+            .expect("desktop role must symlink whisper-server into ~/.local/bin");
+        assert!(
+            link.run().contains("whisper-cli"),
+            "symlink post-command should also expose whisper-cli for ad-hoc use; got: {}",
+            link.run()
+        );
+        assert!(
+            link.check().is_some(),
+            "symlink post-command must have a `check` so reruns are no-ops"
+        );
+    }
+
+    /// The dictate script must ship as an embedded executable and
+    /// the whisper-server systemd unit must ship without an
+    /// [Install] section. The latter is load-bearing — adding
+    /// [Install] would make `systemctl --user enable` succeed, and
+    /// a future "let me just enable this so it survives reboot"
+    /// edit would silently waste ~1.7 GiB of RAM on every login by
+    /// loading the medium.en model before the user has pressed
+    /// any keybind.
+    #[test]
+    fn dictation_dotfiles_ship_correctly() {
+        let dictate = EmbeddedDotfiles
+            .read(Path::new(".local/bin/dictate"))
+            .expect("dictate script must be embedded under .local/bin/");
+        let dictate_str = String::from_utf8(dictate).expect("dictate script must be utf8");
+        assert!(
+            dictate_str.starts_with("#!"),
+            "dictate script must start with a shebang so the planner marks it executable"
+        );
+        // Substring-check the subcommand dispatch so a refactor that
+        // accidentally drops `cancel` or `stop-server` (both bound to
+        // user-facing actions) gets caught.
+        for sub in ["cancel", "stop-server"] {
+            assert!(
+                dictate_str.contains(sub),
+                "dictate script must implement the `{sub}` subcommand"
+            );
+        }
+
+        let unit = EmbeddedDotfiles
+            .read(Path::new(".config/systemd/user/whisper-server.service"))
+            .expect("whisper-server.service must be embedded under .config/systemd/user/");
+        let unit_str = String::from_utf8(unit).expect("whisper-server.service must be utf8");
+        // Look for an actual `[Install]` section header — a line that
+        // is exactly that string after trimming. A bare substring
+        // check would falsely trip on the inline docstring at the top
+        // of the unit file that explains *why* there's no Install
+        // section, which is the comment we most want to keep.
+        let has_install_section = unit_str.lines().map(str::trim).any(|l| l == "[Install]");
+        assert!(
+            !has_install_section,
+            "whisper-server.service must NOT have an [Install] section — the unit is lazy-started by dictate, enabling it at boot would defeat the point"
+        );
+        // The unit and the dictate script must agree on the port.
+        // 8127 is the chosen value; if you move it, change both.
+        assert!(
+            unit_str.contains("--port 8127"),
+            "whisper-server unit must bind --port 8127 to match the dictate script"
+        );
+        assert!(
+            dictate_str.contains("8127"),
+            "dictate script must reference port 8127 to match the systemd unit"
+        );
+
+        // The whisper-server unit's `--model` arg must reference the
+        // exact GGML file the desktop role downloads. A mismatch
+        // (e.g. someone changes the role to ggml-base.en.bin but
+        // leaves the unit pointing at ggml-medium.en.bin) would let
+        // `forge setup desktop` succeed silently and then make every
+        // dictation press fail with "no such file" only at first
+        // press — exactly the late-binding failure mode this test
+        // file exists to prevent.
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Desktop).unwrap();
+        let model_filename = cfg
+            .downloads
+            .iter()
+            .find_map(|d| {
+                let last = d.url.rsplit('/').next().unwrap_or("");
+                if last.starts_with("ggml-") && last.ends_with(".bin") {
+                    Some(last.to_string())
+                } else {
+                    None
+                }
+            })
+            .expect("desktop role must declare a ggml-*.bin model download");
+        assert!(
+            unit_str.contains(&model_filename),
+            "whisper-server unit's --model arg must reference `{model_filename}` (the file downloaded by the role); unit:\n{unit_str}"
+        );
+    }
+
+    /// Sway must bind Mod+s to dictate-toggle and Mod+Ctrl+s to
+    /// dictate-cancel. Without these binds the rest of the dictation
+    /// stack is dead weight — there's no other way to invoke the
+    /// script. We assert the *bindsym lines* exist (not just that the
+    /// substrings appear somewhere in the file) to catch the failure
+    /// mode where the binds get commented out during a refactor.
+    #[test]
+    fn sway_binds_dictate_toggle_and_cancel() {
+        let bytes = EmbeddedDotfiles
+            .read(Path::new(".config/sway/config"))
+            .expect("sway config should be embedded");
+        let cfg = String::from_utf8(bytes).expect("sway config should be utf8");
+
+        let toggle = cfg
+            .lines()
+            .map(str::trim_start)
+            .find(|l| l.starts_with("bindsym") && l.contains("$mod+s ") && l.contains("dictate"));
+        assert!(
+            toggle.is_some(),
+            "sway config must bind $mod+s to the dictate script"
+        );
+
+        let cancel = cfg.lines().map(str::trim_start).find(|l| {
+            l.starts_with("bindsym") && l.contains("$mod+Ctrl+s") && l.contains("dictate cancel")
+        });
+        assert!(
+            cancel.is_some(),
+            "sway config must bind $mod+Ctrl+s to `dictate cancel`"
+        );
+    }
 }

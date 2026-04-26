@@ -205,6 +205,96 @@ through apt — copy the file to `~/.config/kanshi/config` and
 respawns the daemon on every `swaymsg reload`, so the next reload also
 re-applies cleanly.
 
+**Tweak the dictation stack (desktop role, Mod+s):** the model, the
+build flags, and the systemd unit are spread across three files —
+change in lockstep or the `dictation_dotfiles_ship_correctly` and
+`desktop_role_provisions_whisper_dictation_stack` tests will catch
+the drift. To switch model size: change the URL on the
+`whisper-medium-en-model` download in `config/roles.toml` and the
+matching `--model` path in
+`dotfiles/.config/systemd/user/whisper-server.service`. To change the
+loopback port: update both the unit's `--port` and the
+`WHISPER_PORT` constant in `dotfiles/.local/bin/dictate` (the test
+asserts the two agree). To rebuild whisper.cpp from a newer upstream:
+`rm -rf ~/.local/src/whisper.cpp` and rerun `forge setup desktop` —
+the clone/build post-commands are guarded by checks that probe for
+the source dir and the built binary respectively, so a missing tree
+re-triggers them.
+
+## Dictation (Mod+s)
+
+Local Whisper push-to-toggle dictation. Three pieces, all running as
+the user, all lazy:
+
+1. **`dictate` script** (`dotfiles/.local/bin/dictate`) is the
+   keybind target. PID-file gated `pw-record` captures 16 kHz mono
+   s16 WAV into `$XDG_RUNTIME_DIR/dictate/`. On the second press it
+   SIGINTs the recorder (so pw-record finalizes the WAV header —
+   SIGKILL would leave a truncated file unreadable by the server),
+   POSTs the WAV to the local whisper-server, and types the
+   transcription directly into the focused window via `printf '%s'
+   "$text" | wtype -`. Subcommands: `cancel` (abort in-flight),
+   `stop-server` (free the model RAM).
+2. **`whisper-server.service`** is a `--user` systemd unit that
+   binds the small.en-q5_1 model on `127.0.0.1:8127`. **It has no
+   `[Install]` section by design** — the dictate script lazy-starts
+   it on first dictation, polls the port for up to 30 s during cold
+   model load, and the user stops it with `dictate stop-server`
+   when the ~330 MiB of resident RAM is needed elsewhere. Adding an
+   `[Install]` section would let `systemctl --user enable` succeed
+   and silently waste that RAM on every login. The
+   `dictation_dotfiles_ship_correctly` test enforces both that no
+   `[Install]` section ships and that the unit's `--model` arg
+   references the same GGML file the role downloads.
+3. **whisper.cpp** is built from source during `forge setup
+   desktop` (no official Linux binaries upstream). The post-command
+   uses `cmake -B build -DGGML_BLAS=1 -DGGML_NATIVE=ON --target
+   whisper-server whisper-cli` — both flags matter: BLAS routes
+   encoder GEMMs through OpenBLAS (libopenblas-dev), NATIVE lights
+   up AVX2/AVX-512 on Tiger Lake. Source lives in
+   `~/.local/src/whisper.cpp/`; `~/.local/bin/whisper-server` and
+   `whisper-cli` are symlinks into the build dir so the systemd
+   unit can use a stable short path.
+
+Four gotchas worth knowing:
+
+1. **Don't enable Vulkan on Iris Xe.** The whisper.cpp 1.8.3 release
+   notes' "12× Vulkan" headline measures Arc / Meteor Lake, not
+   Tiger Lake's Xe-LP iGPU. Real benchmarks on this exact GPU
+   (i5-1135G7 → discussions/2375) show only ~40 % over CPU+OpenBLAS
+   for the cost of dragging in a Vulkan SDK at build time. Skip it.
+2. **Capture at 16 kHz, not 48.** whisper.cpp expects 16 kHz mono
+   s16 PCM. Passing 48 kHz works (server resamples) but spends CPU
+   for no benefit. The `pw-record --rate 16000 --channels 1
+   --format s16` invocation in the dictate script is deliberate.
+3. **`--threads 4`, not `--threads 8`.** This i7-1185G7 has 4
+   physical cores and 8 hyperthreads. BLAS GEMM kernels are
+   cache-bound, and a hyperthread pair shares L1/L2 — using all 8
+   logical CPUs measurably slows the encoder vs. matching the
+   physical core count. If you ever move this stack to a CPU with a
+   different topology, retune the unit's `--threads` arg.
+4. **Don't synthesize Ctrl+V to paste — type directly.** We tried
+   `wl-copy + wtype -M ctrl v -m ctrl` and it broke in terminals:
+   `foot` binds paste to Ctrl+Shift+V, `tmux` interprets Ctrl+V as
+   a verbatim-insert prefix, and zsh's `quoted-insert` swallows it
+   too. Synthesizing one chord can't satisfy every host app.
+   `wtype -` typing the characters works uniformly and leaves the
+   user's clipboard untouched, which is also what they want.
+5. **Wait for samples before showing "Listening".** PipeWire takes
+   ~100-300 ms after `pw-record` exec to actually open the capture
+   stream and start writing samples. Without an explicit gate the
+   "🎤 Listening" notification fires before audio is flowing, the
+   user starts talking, and the first word or two get dropped.
+   `start_recording` polls the WAV file size past the 44-byte
+   header (50 ms ticks, 1.5 s cap) before notifying — that file
+   only grows once pw-record has bound the stream, so it's a
+   reliable "ready to capture" signal. The 1.5 s cap exists so a
+   missing audio device or wedged PipeWire surfaces as a clear
+   notification instead of a silent infinite wait.
+
+To pick a different model size or quant, see "Tweak the dictation
+stack" in Common tasks.
+
 ## Things that look load-bearing but aren't
 
 - **`legacy/`** is a reference snapshot of the previous Ansible/Stow/Python
