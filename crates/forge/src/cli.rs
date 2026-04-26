@@ -39,9 +39,7 @@ pub enum Command {
     /// Show current role, theme, and applied timestamp.
     Status,
     /// Preview what `setup` or `sync` would change.
-    Diff {
-        role: Role,
-    },
+    Diff { role: Role },
     /// Color scheme switcher.
     Theme {
         #[command(subcommand)]

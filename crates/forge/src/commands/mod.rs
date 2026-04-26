@@ -11,7 +11,13 @@ pub mod vm;
 
 pub fn dispatch(cli: Cli) -> Result<()> {
     match cli.command {
-        Command::Setup { role, dry_run, diff, target, refresh_downloads } => match target {
+        Command::Setup {
+            role,
+            dry_run,
+            diff,
+            target,
+            refresh_downloads,
+        } => match target {
             Target::Local => setup::run(role, dry_run, diff, refresh_downloads),
             Target::Container(name) => target::setup_in_container(&name, role),
             Target::Vm(name) => target::setup_in_vm(&name, role),

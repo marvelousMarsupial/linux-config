@@ -19,7 +19,9 @@ fn maybe_sudo() -> &'static [&'static str] {
     // the env var is cheaper than spawning a process on every apt call.
     let is_root = std::env::var("EUID")
         .unwrap_or_else(|_| {
-            Command::new("id").arg("-u").output()
+            Command::new("id")
+                .arg("-u")
+                .output()
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                 .unwrap_or_default()
         })
@@ -27,7 +29,11 @@ fn maybe_sudo() -> &'static [&'static str] {
         .parse::<u32>()
         .map(|uid| uid == 0)
         .unwrap_or(false);
-    if is_root { &[] } else { &["sudo"] }
+    if is_root {
+        &[]
+    } else {
+        &["sudo"]
+    }
 }
 
 /// Return `true` if a dpkg package is installed *and* in the "ok installed"
@@ -53,7 +59,13 @@ pub fn is_installed(pkg: &str) -> bool {
 /// paying the refresh cost N times.
 pub fn apt_update() -> Result<()> {
     let mut cmd: Vec<&str> = maybe_sudo().to_vec();
-    cmd.extend(["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update", "-y"]);
+    cmd.extend([
+        "env",
+        "DEBIAN_FRONTEND=noninteractive",
+        "apt-get",
+        "update",
+        "-y",
+    ]);
     checked(&cmd)?;
     Ok(())
 }
@@ -62,7 +74,15 @@ pub fn apt_update() -> Result<()> {
 /// sudo (or root). Surfaces apt's stderr on failure via `checked`.
 pub fn apt_install(pkg: &str) -> Result<()> {
     let mut cmd: Vec<&str> = maybe_sudo().to_vec();
-    cmd.extend(["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "--no-install-recommends", pkg]);
+    cmd.extend([
+        "env",
+        "DEBIAN_FRONTEND=noninteractive",
+        "apt-get",
+        "install",
+        "-y",
+        "--no-install-recommends",
+        pkg,
+    ]);
     checked(&cmd)?;
     Ok(())
 }
@@ -71,7 +91,14 @@ pub fn apt_install(pkg: &str) -> Result<()> {
 /// `purge` so dotfiles the user may have customized are preserved.
 pub fn apt_remove(pkg: &str) -> Result<()> {
     let mut cmd: Vec<&str> = maybe_sudo().to_vec();
-    cmd.extend(["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "remove", "-y", pkg]);
+    cmd.extend([
+        "env",
+        "DEBIAN_FRONTEND=noninteractive",
+        "apt-get",
+        "remove",
+        "-y",
+        pkg,
+    ]);
     checked(&cmd)?;
     Ok(())
 }

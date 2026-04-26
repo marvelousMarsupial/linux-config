@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=WiFi
 Comment=Connect to wireless networks
-Exec=wifi-menu
+Exec=/home/august/.local/bin/wifi-menu
 Icon=network-wireless
 Type=Application
 Categories=Network;

@@ -1,3 +1,9 @@
+# PATH - set BEFORE the sway auto-exec so sway and every child it spawns
+# (.desktop files run by fuzzel, scripts called from binds, etc.) inherit
+# ~/.local/bin and the sbin paths. Without this our binds hit "command not
+# found" because Debian's default PATH for non-root users is bare bones.
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/sbin:/bin"
+
 # Auto-start Sway on tty1 (desktop role only)
 if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" = "1" ] && command -v sway >/dev/null; then
   exec sway
@@ -22,8 +28,6 @@ fi
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 
-# PATH - our scripts first, then .local/bin for pip/cargo/etc
-export PATH="$HOME/linux-config/bin:$HOME/.local/bin:$PATH"
 export PASSWORD_STORE_DIR="$HOME/.password-store"
 
 export PASSWORD_STORE_CLIP_CMD="wl-copy"

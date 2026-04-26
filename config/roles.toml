@@ -40,11 +40,11 @@ dotfiles = [
 post = [
     { run = "chsh -s /bin/zsh $(whoami)", check = "getent passwd $(whoami) | grep -q /bin/zsh" },
     { run = "ln -sf $HOME/.local/nvim/bin/nvim $HOME/.local/bin/nvim", check = "test -L $HOME/.local/bin/nvim" },
-    { run = "ln -sf /usr/bin/batcat /usr/local/bin/bat", check = "test -L /usr/local/bin/bat" },
-    { run = "ln -sf /usr/bin/fdfind /usr/local/bin/fd", check = "test -L /usr/local/bin/fd" },
-    { run = "ln -sf $HOME/.local/bin/yazi /usr/local/bin/yazi", check = "test -L /usr/local/bin/yazi" },
-    { run = "ln -sf $HOME/.local/bin/ya /usr/local/bin/ya", check = "test -L /usr/local/bin/ya" },
-    { run = "ln -sf $HOME/.local/bin/starship /usr/local/bin/starship", check = "test -L /usr/local/bin/starship" },
+    { run = "sudo ln -sf /usr/bin/batcat /usr/local/bin/bat", check = "test -L /usr/local/bin/bat" },
+    { run = "sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd", check = "test -L /usr/local/bin/fd" },
+    { run = "sudo ln -sf $HOME/.local/bin/yazi /usr/local/bin/yazi", check = "test -L /usr/local/bin/yazi" },
+    { run = "sudo ln -sf $HOME/.local/bin/ya /usr/local/bin/ya", check = "test -L /usr/local/bin/ya" },
+    { run = "sudo ln -sf $HOME/.local/bin/starship /usr/local/bin/starship", check = "test -L /usr/local/bin/starship" },
 ]
 
 [[server.downloads]]
@@ -77,6 +77,33 @@ chmod = 755
 [dev]
 extends = "server"
 packages = ["build-essential", "nodejs", "npm"]
+# Rust toolchain installed via rustup rather than Debian's `cargo` apt
+# package because:
+#   * clippy and rustfmt aren't shipped by the apt package, but they're
+#     required for `cargo test + clippy + fmt --check` to be a working
+#     gate during day-to-day development.
+#   * rust-analyzer (the LSP) is also a rustup component, so getting it
+#     here keeps neovim's lsp config working out of the box.
+#   * The container/rust.Containerfile already uses this exact rustup
+#     install pattern; matching it on the host means the dev container
+#     and the host agree on toolchain version.
+# `--no-modify-path` is important: rustup-init by default appends a
+# cargo-env source line to ~/.profile / ~/.zshrc / ~/.bashrc, but PATH
+# in this repo is managed declaratively through the dotfiles tree (see
+# dotfiles/.config/environment.d/path.conf and the shell rcs). Letting
+# rustup-init edit those files would create drift between disk and the
+# embedded versions and forge would keep "fixing" it on every rerun.
+post = [
+    # First step: install rustup itself plus the stable toolchain and
+    # rust-analyzer. The `check` is a presence test on the rustup binary
+    # — if the install ran successfully before, it's a no-op now.
+    { run = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --no-modify-path --component rust-analyzer", check = "test -x $HOME/.cargo/bin/rustup" },
+    # Second step: add clippy + rustfmt as separate components. rustup
+    # makes this idempotent on its own (`component add` is a no-op when
+    # the component is up to date), but the `check` short-circuits the
+    # whole thing without spawning a process at all.
+    { run = "$HOME/.cargo/bin/rustup component add clippy rustfmt", check = "test -x $HOME/.cargo/bin/cargo-clippy && test -x $HOME/.cargo/bin/rustfmt" },
+]
 
 [[dev.downloads]]
 name = "lazygit"
@@ -87,15 +114,125 @@ chmod = 755
 
 [desktop]
 extends = "server"
-packages = ["sway", "foot", "fuzzel", "mako", "wl-clipboard"]
+packages = [
+    # Compositor + core
+    "sway",
+    "swaylock",
+    "swayidle",
+    "foot",
+    "fuzzel",
+    "mako-notifier",
+    "wl-clipboard",
+    "cliphist",
+    # kanshi: monitor hotplug daemon. Watches sway's output events and
+    # applies one of the profiles in ~/.config/kanshi/config based on
+    # which displays are currently connected. This is what makes "plug
+    # in two externals and have the laptop screen turn off, unplug
+    # them and the laptop screen comes back" work without manual
+    # `swaymsg output ...` invocations.
+    "kanshi",
+    # Qt5 wayland plugin — KeePassXC needs it. Without it, Qt apps fail
+    # with "Could not find the Qt platform plugin wayland" and exit
+    # silently when launched from fuzzel. Skipping qt6-wayland for now
+    # (no Qt6 apps in the role and it pulls in ~40MB of Qt6 runtime).
+    "qtwayland5",
+    # X11 fallback for legacy/Electron apps that don't speak Wayland.
+    "xwayland",
+    # Provides `gtk-launch`, used by sway binds to invoke .desktop entries
+    # (the most reliable way to launch flatpak apps with their --command/
+    # --file-forwarding flags applied).
+    "libgtk-3-bin",
+    # Notifications, fonts, icons
+    "fontconfig",
+    "libnotify-bin",
+    "hicolor-icon-theme",
+    "adwaita-icon-theme",
+    # Network + power + media
+    "network-manager",
+    "wireless-tools",
+    "brightnessctl",
+    "playerctl",
+    "wireplumber",
+    "udiskie",
+    # Bluetooth
+    "bluez",
+    "blueman",
+    # Screenshots
+    "grim",
+    "slurp",
+    # Portals (file pickers, screen share for Flatpak apps)
+    "xdg-desktop-portal-gtk",
+    # Status panel ASCII clock + system monitor
+    "toilet",
+    "btop",
+    # Password managers
+    "pass",
+    "keepassxc",
+    # Flatpak runtime for zen browser + obsidian
+    "flatpak",
+]
 dotfiles = [
     ".config/sway/**",
     ".config/foot/**",
     ".config/fuzzel/**",
     ".config/gtk-3.0/**",
     ".config/gtk-4.0/**",
+    # kanshi monitor-hotplug profiles. Without this glob the role
+    # installs the kanshi binary but ships no profile file, leaving
+    # the daemon idle and forcing sway's static output config (which
+    # we have since deliberately removed) to take over. The combo of
+    # "kanshi installed but unconfigured" silently broke the docked
+    # layout, so the glob is required, not optional.
+    ".config/kanshi/**",
     ".local/share/applications/**",
+    ".local/bin/**",
 ]
+post = [
+    { run = "fc-cache -f ~/.local/share/fonts", check = "fc-list | grep -qi 'CaskaydiaCove Nerd Font'" },
+    # NetworkManager: required by wifi-menu (bound to $mod+w) and by
+    # nm-applet status integrations. Debian's network-manager apt
+    # postinst usually enables this for us, but `--now` guarantees the
+    # daemon is running on first boot too — without it, wifi-menu just
+    # notifies "NetworkManager not running" and exits, which has been a
+    # confusing failure mode on fresh installs in the past.
+    # The `check` is `is-active` rather than `is-enabled` so that a
+    # manually-stopped daemon (e.g. during debugging) gets restarted on
+    # the next forge rerun instead of being silently left down.
+    { run = "sudo systemctl enable --now NetworkManager", check = "systemctl is-active --quiet NetworkManager" },
+    # systemd-logind lid-switch behavior. The defaults already match
+    # what we want (suspend on lid close when undocked, ignore when
+    # docked — i.e. when an external display is connected), but the
+    # values in /etc/systemd/logind.conf ship commented-out, so a stray
+    # admin edit could silently flip them. Pinning them via a drop-in
+    # at /etc/systemd/logind.conf.d/sway-lid.conf locks the behavior in
+    # and makes intent explicit; reload picks the new values up
+    # without a logout.
+    #
+    # The combined effect:
+    #   * lid close + no externals       → suspend (HandleLidSwitch)
+    #   * lid close + externals plugged  → no-op  (HandleLidSwitchDocked)
+    # That, paired with kanshi's `docked` profile turning eDP-1 off,
+    # is what makes "close the laptop while docked, keep working on
+    # the externals" feel right.
+    { run = "sudo mkdir -p /etc/systemd/logind.conf.d && printf '[Login]\\nHandleLidSwitch=suspend\\nHandleLidSwitchExternalPower=suspend\\nHandleLidSwitchDocked=ignore\\n' | sudo tee /etc/systemd/logind.conf.d/sway-lid.conf >/dev/null && sudo systemctl reload systemd-logind", check = "test -f /etc/systemd/logind.conf.d/sway-lid.conf" },
+    { run = "flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo", check = "flatpak remotes | grep -q '^flathub'" },
+    { run = "flatpak install -y --noninteractive flathub app.zen_browser.zen", check = "flatpak list --app | grep -q app.zen_browser.zen" },
+    { run = "flatpak install -y --noninteractive flathub md.obsidian.Obsidian", check = "flatpak list --app | grep -q md.obsidian.Obsidian" },
+    # Grant Wayland socket access to Electron flatpaks. Their default
+    # manifests only ship x11 socket, which means they need Xwayland —
+    # and Xwayland only runs if sway started AFTER the xwayland binary
+    # was installed. Granting wayland directly + passing
+    # --ozone-platform-hint=auto in the sway bind sidesteps the whole
+    # Xwayland-startup ordering problem.
+    { run = "flatpak override --user --socket=wayland md.obsidian.Obsidian", check = "flatpak override --user --show md.obsidian.Obsidian | grep -q 'sockets=.*wayland'" },
+    { run = "flatpak override --user --socket=wayland app.zen_browser.zen", check = "flatpak override --user --show app.zen_browser.zen | grep -q 'sockets=.*wayland'" },
+]
+
+[[desktop.downloads]]
+name = "caskaydia-cove-nerd-font"
+url = "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/CascadiaCode.zip"
+dest = "~/.local/share/fonts/CaskaydiaCove"
+extract = "tree:0"
 
 [remote-desktop]
 extends = "desktop"

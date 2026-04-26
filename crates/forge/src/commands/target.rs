@@ -32,7 +32,11 @@ pub fn setup_in_container(name: &str, role: Role) -> Result<()> {
     let q = podman::qualified(name);
     let self_path = std::env::current_exe().context("resolving own binary path")?;
 
-    cliclack::intro(format!("forge setup {} → container {}", role.bold(), name.bold()))?;
+    cliclack::intro(format!(
+        "forge setup {} → container {}",
+        role.bold(),
+        name.bold()
+    ))?;
 
     let spinner = cliclack::spinner();
     spinner.start("copying forge binary");

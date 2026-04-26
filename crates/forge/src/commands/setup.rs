@@ -130,9 +130,7 @@ pub fn switch(new_role: Role, dry_run: bool) -> Result<()> {
 
     if let Some(old) = prev {
         if old == new_role {
-            cliclack::log::info(format!(
-                "already on {old}; running setup to refresh"
-            ))?;
+            cliclack::log::info(format!("already on {old}; running setup to refresh"))?;
             return run(new_role, dry_run, false, false);
         }
         cliclack::log::info(format!("tearing down {old} → {new_role}"))?;

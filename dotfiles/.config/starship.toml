@@ -1,0 +1,95 @@
+# Starship prompt config.
+#
+# Two-line layout:
+#   path  branch[git status] [lang versions] [duration]
+#   ❯
+#
+# Glyphs assume a Nerd Font (CaskaydiaCove ships with the desktop role).
+# Colors come from the active terminal palette — base16 theme drives foot's
+# ANSI colors and starship inherits them.
+
+format = """
+$username\
+$hostname\
+$directory\
+$git_branch\
+$git_status\
+$python\
+$nodejs\
+$rust\
+$cmd_duration\
+$line_break\
+$character"""
+
+add_newline = true
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+vimcmd_symbol = "[❮](bold green)"
+
+[username]
+style_user = "yellow bold"
+style_root = "red bold"
+format = "[$user]($style) "
+show_always = false  # only over SSH or as root
+
+[hostname]
+ssh_only = true
+format = "[@$hostname](bold blue) "
+
+[directory]
+truncation_length = 3
+truncate_to_repo = true
+style = "bold cyan"
+format = "[$path]($style)[$read_only]($read_only_style) "
+read_only = " "
+read_only_style = "red"
+
+[directory.substitutions]
+"~/linux-config" = " linux-config"
+"~/vault" = " vault"
+"~/Documents" = " Documents"
+"~/Downloads" = " Downloads"
+
+[git_branch]
+symbol = " "
+style = "bold purple"
+format = "[$symbol$branch]($style) "
+
+[git_status]
+style = "bold red"
+format = "([$all_status$ahead_behind]($style) )"
+conflicted = "="
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕⇡${ahead_count}⇣${behind_count}"
+untracked = "?${count}"
+stashed = "$${count}"
+modified = "!${count}"
+staged = "+${count}"
+renamed = "»${count}"
+deleted = "✘${count}"
+
+[python]
+symbol = " "
+style = "yellow"
+format = "[${symbol}${pyenv_prefix}(${version} )(\\($virtualenv\\) )]($style)"
+
+[nodejs]
+symbol = " "
+style = "green"
+format = "[$symbol($version )]($style)"
+
+[rust]
+symbol = " "
+style = "red"
+format = "[$symbol($version )]($style)"
+
+[package]
+disabled = true  # noisy in any repo with a Cargo.toml/package.json
+
+[cmd_duration]
+min_time = 2_000
+style = "yellow"
+format = "[took $duration]($style) "

@@ -197,7 +197,11 @@ pub fn apply(
         }
     }
 
-    Ok(ApplyReport { changed, hooks, restarts })
+    Ok(ApplyReport {
+        changed,
+        hooks,
+        restarts,
+    })
 }
 
 /// Applying a theme returns the list of files written, hooks to run, and
@@ -346,8 +350,14 @@ base0F: "d27e99"
         let report = apply(&scheme, &cfg, &templates, d.path()).unwrap();
         assert_eq!(report.changed.len(), 2);
         assert_eq!(report.hooks, vec!["tmux source".to_string()]);
-        assert_eq!(std::fs::read_to_string(d.path().join("tmux")).unwrap(), "bg=#1f1f28");
-        assert_eq!(std::fs::read_to_string(d.path().join("foot")).unwrap(), "fg=#dcd7ba");
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("tmux")).unwrap(),
+            "bg=#1f1f28"
+        );
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("foot")).unwrap(),
+            "fg=#dcd7ba"
+        );
     }
 
     #[test]

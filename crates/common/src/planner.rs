@@ -130,10 +130,18 @@ pub fn build_plan(cfg: &RoleConfig, src: &dyn DotfileSource) -> Result<Plan> {
         let contents = src
             .read(&rel)
             .ok_or_else(|| anyhow::anyhow!("dotfile vanished from source: {}", rel.display()))?;
+        // Files with a shebang are scripts — write them executable so binds
+        // like `exec ~/.local/bin/wifi-menu` actually run instead of erroring
+        // with EACCES. include_dir doesn't preserve the source's +x bit.
+        let mode = if contents.starts_with(b"#!") {
+            Some(0o755)
+        } else {
+            None
+        };
         plan.push(Action::WriteFile {
             rel,
             contents,
-            mode: None,
+            mode,
         });
     }
 
@@ -204,16 +212,13 @@ mod tests {
         InMemoryDotfiles(vec![
             (PathBuf::from(".zshrc"), b"zsh!".to_vec()),
             (PathBuf::from(".tmux.conf"), b"tmux!".to_vec()),
-            (
-                PathBuf::from(".config/foot/foot.ini"),
-                b"foot!".to_vec(),
-            ),
-            (
-                PathBuf::from(".config/foot/colors.ini"),
-                b"colors".to_vec(),
-            ),
+            (PathBuf::from(".config/foot/foot.ini"), b"foot!".to_vec()),
+            (PathBuf::from(".config/foot/colors.ini"), b"colors".to_vec()),
             (PathBuf::from(".config/nvim/init.lua"), b"vim".to_vec()),
-            (PathBuf::from(".local/share/applications/x.desktop"), b"x".to_vec()),
+            (
+                PathBuf::from(".local/share/applications/x.desktop"),
+                b"x".to_vec(),
+            ),
         ])
     }
 
@@ -259,10 +264,7 @@ mod tests {
         // If a role declares zero packages, we shouldn't run `apt-get update`.
         let c = cfg(&[], &[".zshrc"], &[]);
         let plan = build_plan(&c, &sample_source()).unwrap();
-        assert!(!plan
-            .actions
-            .iter()
-            .any(|a| matches!(a, Action::AptUpdate)));
+        assert!(!plan.actions.iter().any(|a| matches!(a, Action::AptUpdate)));
     }
 
     #[test]
@@ -345,11 +347,7 @@ mod tests {
     fn glob_matches_across_extends_deduped_via_resolver() {
         // After `RolesFile::resolved()` merges a chain, the planner sees
         // duplicates in `dotfiles` — the glob matching + BTreeSet handle it.
-        let c = cfg(
-            &[],
-            &[".zshrc", ".zshrc", ".tmux.conf"],
-            &[],
-        );
+        let c = cfg(&[], &[".zshrc", ".zshrc", ".tmux.conf"], &[]);
         let plan = build_plan(&c, &sample_source()).unwrap();
         assert_eq!(plan.summary().files, 2);
     }

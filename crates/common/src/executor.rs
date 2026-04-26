@@ -63,8 +63,7 @@ fn apply_one(action: &Action, home: &Path, opts: &ExecOpts) -> Result<ActionResu
             if is_installed(pkg) {
                 Ok(ActionResult::AlreadyDone)
             } else {
-                apt_install(pkg)
-                    .with_context(|| format!("installing package `{pkg}`"))?;
+                apt_install(pkg).with_context(|| format!("installing package `{pkg}`"))?;
                 Ok(ActionResult::Changed)
             }
         }
@@ -72,12 +71,15 @@ fn apply_one(action: &Action, home: &Path, opts: &ExecOpts) -> Result<ActionResu
             if !is_installed(pkg) {
                 Ok(ActionResult::AlreadyDone)
             } else {
-                apt_remove(pkg)
-                    .with_context(|| format!("removing package `{pkg}`"))?;
+                apt_remove(pkg).with_context(|| format!("removing package `{pkg}`"))?;
                 Ok(ActionResult::Changed)
             }
         }
-        Action::WriteFile { rel, contents, mode } => {
+        Action::WriteFile {
+            rel,
+            contents,
+            mode,
+        } => {
             let dest = home.join(rel);
             let changed = write_atomic(&dest, contents, *mode)
                 .with_context(|| format!("writing dotfile {}", dest.display()))?;
@@ -97,7 +99,12 @@ fn apply_one(action: &Action, home: &Path, opts: &ExecOpts) -> Result<ActionResu
                 Ok(ActionResult::AlreadyDone)
             }
         }
-        Action::Download { url, dest, mode, extract } => {
+        Action::Download {
+            url,
+            dest,
+            mode,
+            extract,
+        } => {
             let abs = home.join(dest);
             if abs.exists() && !opts.refresh_downloads {
                 return Ok(ActionResult::AlreadyDone);
@@ -142,7 +149,9 @@ fn download_raw(url: &str, dest: &Path) -> Result<()> {
 ///   at `dest` (e.g. `"starship"`, `"*/yazi"`).
 fn download_and_extract(url: &str, dest: &Path, pattern: &str) -> Result<()> {
     if let Some(n) = pattern.strip_prefix("tree:") {
-        let strip: u32 = n.parse().with_context(|| format!("invalid strip count in `{pattern}`"))?;
+        let strip: u32 = n
+            .parse()
+            .with_context(|| format!("invalid strip count in `{pattern}`"))?;
         return download_and_extract_tree(url, dest, strip);
     }
     download_and_extract_file(url, dest, pattern)
@@ -156,14 +165,15 @@ fn download_and_extract_tree(url: &str, dest: &Path, strip: u32) -> Result<()> {
     let archive = tmp.path().join("archive");
     download_raw(url, &archive)?;
 
-    std::fs::create_dir_all(dest)
-        .with_context(|| format!("creating {}", dest.display()))?;
+    std::fs::create_dir_all(dest).with_context(|| format!("creating {}", dest.display()))?;
 
     if url.ends_with(".tar.gz") || url.ends_with(".tgz") {
         let status = Command::new("tar")
-            .arg("xzf").arg(&archive)
-            .arg("-C").arg(dest)
-            .arg(&format!("--strip-components={strip}"))
+            .arg("xzf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(dest)
+            .arg(format!("--strip-components={strip}"))
             .status()
             .context("extracting tar.gz")?;
         if !status.success() {
@@ -173,7 +183,10 @@ fn download_and_extract_tree(url: &str, dest: &Path, strip: u32) -> Result<()> {
         // unzip doesn't have --strip-components; extract to tmp then move.
         let inner = tmp.path().join("inner");
         let status = Command::new("unzip")
-            .arg("-q").arg(&archive).arg("-d").arg(&inner)
+            .arg("-q")
+            .arg(&archive)
+            .arg("-d")
+            .arg(&inner)
             .status()
             .context("extracting zip")?;
         if !status.success() {
@@ -192,8 +205,9 @@ fn download_and_extract_tree(url: &str, dest: &Path, strip: u32) -> Result<()> {
         for entry in std::fs::read_dir(&root)? {
             let e = entry?;
             let target = dest.join(e.file_name());
-            std::fs::rename(e.path(), &target)
-                .with_context(|| format!("moving {} to {}", e.path().display(), target.display()))?;
+            move_path(&e.path(), &target).with_context(|| {
+                format!("moving {} to {}", e.path().display(), target.display())
+            })?;
         }
     } else {
         anyhow::bail!("unknown archive format for {url}");
@@ -209,15 +223,23 @@ fn download_and_extract_file(url: &str, dest: &Path, pattern: &str) -> Result<()
 
     if url.ends_with(".tar.gz") || url.ends_with(".tgz") {
         let status = Command::new("tar")
-            .arg("xzf").arg(&archive).arg("-C").arg(tmp.path())
-            .status().context("extracting tar.gz")?;
+            .arg("xzf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(tmp.path())
+            .status()
+            .context("extracting tar.gz")?;
         if !status.success() {
             anyhow::bail!("tar extraction failed for {url}");
         }
     } else if url.ends_with(".zip") {
         let status = Command::new("unzip")
-            .arg("-q").arg(&archive).arg("-d").arg(tmp.path())
-            .status().context("extracting zip")?;
+            .arg("-q")
+            .arg(&archive)
+            .arg("-d")
+            .arg(tmp.path())
+            .status()
+            .context("extracting zip")?;
         if !status.success() {
             anyhow::bail!("unzip failed for {url}");
         }
@@ -240,11 +262,45 @@ fn download_and_extract_file(url: &str, dest: &Path, pattern: &str) -> Result<()
         }
     }
 
-    let src = found.ok_or_else(|| {
-        anyhow::anyhow!("no file matching `{pattern}` in archive from {url}")
-    })?;
+    let src = found
+        .ok_or_else(|| anyhow::anyhow!("no file matching `{pattern}` in archive from {url}"))?;
     std::fs::copy(&src, dest)
         .with_context(|| format!("moving extracted file to {}", dest.display()))?;
+    Ok(())
+}
+
+/// Move `src` to `dst`, falling back to copy+remove when the two paths
+/// live on different filesystems (e.g. extracting from /tmp tmpfs into
+/// $HOME on disk — `rename(2)` returns EXDEV).
+fn move_path(src: &Path, dst: &Path) -> Result<()> {
+    match std::fs::rename(src, dst) {
+        Ok(()) => Ok(()),
+        Err(e) if e.raw_os_error() == Some(18) => {
+            if src.is_dir() {
+                copy_dir_all(src, dst)?;
+                std::fs::remove_dir_all(src)?;
+            } else {
+                std::fs::copy(src, dst)?;
+                std::fs::remove_file(src)?;
+            }
+            Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let e = entry?;
+        let from = e.path();
+        let to = dst.join(e.file_name());
+        if e.file_type()?.is_dir() {
+            copy_dir_all(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)?;
+        }
+    }
     Ok(())
 }
 
@@ -382,7 +438,7 @@ mod tests {
         let d = tempdir().unwrap();
         let mut plan = Plan::new();
         plan.push(Action::PostCommand(PostCmd::Checked {
-            run: "false".into(), // would fail if run
+            run: "false".into(),        // would fail if run
             check: Some("true".into()), // but check passes, so we skip
         }));
         let r = execute(&plan, d.path()).unwrap();
@@ -434,12 +490,7 @@ mod tests {
         assert!(status.success());
 
         let dest = d.path().join("extracted");
-        download_and_extract(
-            &format!("file://{}", archive.display()),
-            &dest,
-            "mybinary",
-        )
-        .unwrap();
+        download_and_extract(&format!("file://{}", archive.display()), &dest, "mybinary").unwrap();
         assert!(dest.exists());
         assert_eq!(std::fs::read(&dest).unwrap(), b"#!/bin/sh\necho hi");
     }
@@ -462,12 +513,7 @@ mod tests {
             .unwrap();
 
         let dest = d.path().join("yazi");
-        download_and_extract(
-            &format!("file://{}", archive.display()),
-            &dest,
-            "*/yazi",
-        )
-        .unwrap();
+        download_and_extract(&format!("file://{}", archive.display()), &dest, "*/yazi").unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"yazi-bin");
     }
 
@@ -488,12 +534,8 @@ mod tests {
             .unwrap();
 
         let dest = d.path().join("nope");
-        let err = download_and_extract(
-            &format!("file://{}", archive.display()),
-            &dest,
-            "missing*",
-        )
-        .unwrap_err();
+        let err = download_and_extract(&format!("file://{}", archive.display()), &dest, "missing*")
+            .unwrap_err();
         assert!(err.to_string().contains("no file matching"));
     }
 }

@@ -82,14 +82,7 @@ fn create(profile_name: &str) -> Result<()> {
     cliclack::log::info(format!("provisioning role {}", p.role))?;
     let q = incus::qualified(&p.name);
     let status = std::process::Command::new("incus")
-        .args([
-            "exec",
-            &q,
-            "--",
-            "/usr/local/bin/forge",
-            "setup",
-            &p.role,
-        ])
+        .args(["exec", &q, "--", "/usr/local/bin/forge", "setup", &p.role])
         .status()?;
     if !status.success() {
         anyhow::bail!("provisioning exited with {status}");

@@ -19,8 +19,10 @@ use owo_colors::OwoColorize;
 use crate::cli::DevCmd;
 
 /// The embedded dev-images.toml, compiled into the binary.
-const DEV_IMAGES_TOML: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../config/dev-images.toml"));
+const DEV_IMAGES_TOML: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../config/dev-images.toml"
+));
 
 pub fn dispatch(sub: DevCmd) -> Result<()> {
     match sub {
@@ -70,9 +72,10 @@ fn up(name: &str) -> Result<()> {
         // Default to the "base" image unless `name` itself matches a
         // known image — this lets `forge dev up rust` do the expected
         // thing without an explicit `--image` flag.
-        let img = imgs.find(name).or_else(|| imgs.find("base")).ok_or_else(
-            || anyhow!("no dev images defined; add one to dev-images.toml"),
-        )?;
+        let img = imgs
+            .find(name)
+            .or_else(|| imgs.find("base"))
+            .ok_or_else(|| anyhow!("no dev images defined; add one to dev-images.toml"))?;
 
         let bare_name = podman::bare_name(name);
         let mut volumes: Vec<Volume> = Vec::new();

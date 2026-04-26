@@ -1,0 +1,443 @@
+#!/usr/bin/env python3
+"""wifi-menu - WiFi network selector using fuzzel.
+
+Bound to ``$mod+w`` in sway. The flow is:
+
+  1. Trigger an nmcli rescan and list visible SSIDs.
+  2. Render them in a fuzzel dmenu, sorted by signal strength, with
+     ASCII signal bars and a lock icon for secured networks.
+  3. When the user picks an SSID:
+       * Open networks → connect directly.
+       * Saved + secured networks → try the saved password first, only
+         re-prompt if NetworkManager actually rejected the credentials.
+       * New secured networks → open a fuzzel password prompt
+         (``--password=•`` so input is masked) and connect with the
+         entered password.
+  4. On any auth failure, delete the connection profile that nmcli
+     creates anyway (see ``connect()``); without that cleanup, retrying
+     with a new password silently reuses the bad one.
+
+This script intentionally avoids forget / disconnect / hidden-SSID UX —
+the keybind is meant for the common "I want to join this WiFi" flow and
+keeping it focused makes it cheap to reason about.
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+# Remote-desktop sessions started by `remote-start` write a dbus-env
+# file into the user's runtime dir so that subprocesses launched outside
+# the original sway session (notify-send, fuzzel) can find the session
+# bus. Without this import, this script can't pop fuzzel from a remote
+# session, and the keybind silently does nothing.
+dbus_env = Path(f"/run/user/{os.getuid()}/dbus-env")
+if dbus_env.exists() and "DBUS_SESSION_BUS_ADDRESS" not in os.environ:
+    for line in dbus_env.read_text().splitlines():
+        if line.startswith("export DBUS_SESSION_BUS_ADDRESS="):
+            addr = line.split("=", 1)[1].strip("'\"")
+            os.environ["DBUS_SESSION_BUS_ADDRESS"] = addr
+
+
+def run_output(cmd: list[str]) -> str:
+    """Run ``cmd`` and return its stdout, or ``""`` on failure / missing tool.
+
+    Used for "best effort" reads where we want to degrade to "no data"
+    instead of raising — e.g. an nmcli call before NetworkManager is
+    fully up should just yield an empty network list, not a stack trace.
+    """
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.stdout if result.returncode == 0 else ""
+    except FileNotFoundError:
+        return ""
+
+
+def notify(title: str, msg: str, critical: bool = False) -> None:
+    """Send a desktop notification via notify-send.
+
+    Silently no-ops if notify-send is missing (minimal installs / over
+    SSH). Critical notifications use ``-u critical`` so mako keeps them
+    on-screen until dismissed — useful for connection failures the user
+    might miss otherwise.
+    """
+    try:
+        cmd = ["notify-send"]
+        if critical:
+            cmd.extend(["-u", "critical"])
+        cmd.extend([title, msg])
+        subprocess.run(cmd, capture_output=True)
+    except FileNotFoundError:
+        pass
+
+
+def nm_running() -> bool:
+    """Return True if the NetworkManager systemd unit is active.
+
+    The desktop role enables NetworkManager via ``systemctl enable
+    --now`` post-command, so on a properly-provisioned box this should
+    always be True. We still check defensively because the keybind is
+    user-facing — a clear "NetworkManager not running" notification is
+    better than a silent failure.
+    """
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-active", "--quiet", "NetworkManager"],
+            capture_output=True,
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+
+def signal_bars(signal: int) -> str:
+    """Map an nmcli signal % (0–100) to a 4-cell ASCII bar glyph.
+
+    Four buckets keeps the menu visually consistent (every entry is the
+    same width) without trying to be precise about dB values that nmcli
+    has already coarsely approximated for us. The glyphs use Unicode
+    block-element characters rather than Nerd Font icons so the menu
+    renders correctly even on minimal installs.
+    """
+    if signal >= 75:
+        return "▂▄▆█"
+    elif signal >= 50:
+        return "▂▄▆░"
+    elif signal >= 25:
+        return "▂▄░░"
+    else:
+        return "▂░░░"
+
+
+def scan_networks() -> list[tuple[str, int, bool]]:
+    """Trigger a rescan and return the top 15 visible SSIDs.
+
+    Returns a list of ``(ssid, signal_pct, secured)`` tuples sorted by
+    descending signal strength. Duplicates (same SSID on multiple BSSIDs
+    / bands) collapse to a single entry — nmcli's connect by SSID picks
+    a usable BSSID anyway, so showing both would just clutter the menu.
+    """
+    # Kick off a rescan but don't wait for it to finish: nmcli already
+    # caches recent results, so the menu is responsive while a fresh
+    # scan happens in the background for the next invocation.
+    subprocess.run(
+        ["nmcli", "device", "wifi", "rescan"], capture_output=True, timeout=5
+    )
+
+    # `-t` (terse) gives us colon-separated, easily-parsed output. Asking
+    # for SSID,SIGNAL,SECURITY in that order makes the column positions
+    # below stable.
+    output = run_output(
+        ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "device", "wifi", "list"]
+    )
+
+    networks: list[tuple[str, int, bool]] = []
+    seen_ssids: set[str] = set()
+
+    for line in output.splitlines():
+        # Lines beginning with ":" are hidden / unnamed networks. Skip
+        # them — without an SSID we can't connect via this menu anyway.
+        if not line or line.startswith(":"):
+            continue
+        parts = line.split(":")
+        if len(parts) < 2:
+            continue
+
+        ssid = parts[0]
+        if not ssid or ssid in seen_ssids:
+            continue
+
+        # Defensive int parse: nmcli has occasionally been seen returning
+        # an empty SIGNAL field on freshly-inserted USB wifi adapters.
+        try:
+            signal = int(parts[1]) if len(parts) > 1 and parts[1] else 0
+        except ValueError:
+            signal = 0
+
+        # SECURITY is "--" for open networks and a security suite name
+        # (e.g. "WPA2", "WPA3") for secured ones.
+        security = parts[2] if len(parts) > 2 else ""
+        secured = bool(security and security != "--")
+
+        seen_ssids.add(ssid)
+        networks.append((ssid, signal, secured))
+
+    # Strongest networks first, capped at 15 so the menu fits on screen
+    # even in noisy RF environments (cafés / apartments).
+    networks.sort(key=lambda x: x[1], reverse=True)
+    return networks[:15]
+
+
+def saved_connections() -> set[str]:
+    """Return the names of all NM connection profiles.
+
+    For wifi connections the profile name defaults to the SSID, so
+    membership in this set is a usable proxy for "we have credentials
+    cached for that SSID". (User-renamed profiles will look "new" to
+    this menu, which is fine — worst case it just prompts again.)
+    """
+    output = run_output(["nmcli", "-t", "-f", "NAME", "connection", "show"])
+    return {line.strip() for line in output.splitlines() if line.strip()}
+
+
+def prompt_password(ssid: str) -> str | None:
+    """Ask the user for a wifi password via fuzzel's password mode.
+
+    Returns the entered password, or ``None`` if the user cancelled
+    (Esc) or left the field empty. Fuzzel's ``--password`` flag masks
+    keystrokes with the supplied character; we use ``•`` because it's
+    visually distinct from the spinner glyphs.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "fuzzel",
+                "--dmenu",
+                "--password=•",
+                f"--prompt=Password for {ssid}: ",
+                # `--lines=0` hides the (empty) candidate list and shows
+                # only the prompt + input field — exactly the layout we
+                # want for password entry.
+                "--lines=0",
+                "--width=40",
+            ],
+            input="",
+            text=True,
+            capture_output=True,
+            timeout=120,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if result.returncode != 0:
+        # Non-zero from fuzzel = user pressed Escape / closed the popup.
+        return None
+    pw = result.stdout.rstrip("\n")
+    return pw if pw else None
+
+
+def nmcli_connect(ssid: str, password: str | None = None) -> tuple[bool, str]:
+    """Run ``nmcli device wifi connect`` and return ``(ok, error_text)``.
+
+    ``error_text`` is nmcli's stderr on failure (or stdout if stderr was
+    empty) — we surface it in notifications so the user can tell
+    "wrong password" from "out of range" without re-running the command
+    in a terminal.
+    """
+    cmd = ["nmcli", "device", "wifi", "connect", ssid]
+    if password is not None:
+        cmd.extend(["password", password])
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
+    except subprocess.TimeoutExpired:
+        return False, "connection timeout"
+    return result.returncode == 0, (result.stderr or result.stdout).strip()
+
+
+def delete_connection(name: str) -> None:
+    """Best-effort delete of an NM connection profile.
+
+    Used after auth failures to drop the stale profile that nmcli
+    creates anyway (see ``connect()``). We swallow output and a
+    nonzero exit because "profile didn't exist" is a perfectly fine
+    outcome here — we just want it gone.
+    """
+    subprocess.run(
+        ["nmcli", "connection", "delete", name], capture_output=True, timeout=10
+    )
+
+
+def is_auth_error(stderr: str) -> bool:
+    """Heuristic: did nmcli fail because of bad / missing credentials?
+
+    nmcli doesn't expose an exit-code-per-failure-class, so we substring
+    its stderr looking for the strings it uses across versions when the
+    802.11 supplicant rejects the password or no key is available. A
+    false-positive here just causes an extra password prompt; a
+    false-negative leaves the user staring at a "Failed to connect"
+    notification with no path forward, so we err toward including
+    plausible markers.
+    """
+    s = stderr.lower()
+    return (
+        "secrets were required" in s
+        or "no key available" in s
+        or "802-11-wireless-security" in s
+        or "passphrase" in s
+        or "invalid password" in s
+    )
+
+
+def connect(ssid: str, secured: bool) -> None:
+    """Connect to ``ssid``, prompting for a password when needed.
+
+    The flow handles four cases:
+
+      1. **Open network** — connect directly, notify on result.
+      2. **Saved + secured + password still valid** — nmcli reuses the
+         cached password; we just notify on success.
+      3. **Saved + secured + password no longer works** — first attempt
+         fails with an auth error; we delete the stale profile and fall
+         through to the prompt path.
+      4. **New secured** — prompt for a password, connect, and on auth
+         failure delete the profile nmcli created so the next attempt
+         starts clean.
+    """
+    saved = ssid in saved_connections()
+
+    # Case 1: open network — no password possible / needed.
+    if not secured:
+        ok, err = nmcli_connect(ssid)
+        if ok:
+            notify("WiFi", f"Connected to {ssid}")
+        else:
+            notify("WiFi", f"Failed to connect to {ssid}: {err}", critical=True)
+        return
+
+    # Case 2 / 3: secured network we already have a saved profile for.
+    # Try the cached credentials first so the common "reconnecting to my
+    # home wifi" flow stays one keypress.
+    if saved:
+        ok, err = nmcli_connect(ssid)
+        if ok:
+            notify("WiFi", f"Connected to {ssid}")
+            return
+        if not is_auth_error(err):
+            # Non-auth failure (out of range, hardware issue, etc.).
+            # Don't bother re-prompting — a new password won't help.
+            notify("WiFi", f"Failed to connect to {ssid}: {err}", critical=True)
+            return
+        # Auth failure on saved creds — the password was changed on the
+        # AP side. Drop the stale profile so the prompt below can write
+        # a fresh one without merge conflicts.
+        delete_connection(ssid)
+
+    # Case 4 (and the auth-failure fall-through from 3): prompt the
+    # user for the password and try with it.
+    password = prompt_password(ssid)
+    if password is None:
+        # User cancelled / submitted an empty field. No-op silently —
+        # they presumably hit Esc on purpose.
+        return
+
+    ok, err = nmcli_connect(ssid, password)
+    if ok:
+        notify("WiFi", f"Connected to {ssid}")
+        return
+
+    # nmcli writes a connection profile *even when authentication
+    # fails*, which means a subsequent connect attempt would silently
+    # reuse the bad password instead of prompting. Delete the failed
+    # profile so the user can hit $mod+w again and get a fresh prompt.
+    delete_connection(ssid)
+    notify("WiFi", f"Failed to connect to {ssid}: {err}", critical=True)
+
+
+def main() -> None:
+    """Show the wifi menu, prompt for a password if needed, and connect."""
+    # --help / -h support so `wifi-menu --help` from a terminal explains
+    # the ASCII bars without having to read the source.
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        print(
+            """wifi-menu - WiFi network selector
+
+USAGE: wifi-menu
+
+Scans for WiFi networks and displays them in fuzzel.
+Select a network to connect. Secured networks prompt for a
+password (masked) on first connect; saved passwords are reused
+automatically.
+
+Signal bars:
+  ▂▄▆█  75-100%
+  ▂▄▆░  50-74%
+  ▂▄░░  25-49%
+  ▂░░░  0-24%
+"""
+        )
+        return
+
+    # Bail early with a clear notification if the daemon isn't up. The
+    # desktop role enables it at install, but it can be stopped manually
+    # or fail to start after a kernel upgrade.
+    if not nm_running():
+        notify("WiFi", "NetworkManager not running", critical=True)
+        sys.exit(1)
+
+    networks = scan_networks()
+
+    # Empty scan result: figure out *why* and surface that in a tiny
+    # one-line fuzzel popup. This is much more useful than the original
+    # "No networks found" message because users on a wired box don't
+    # want to be told their wifi is broken when it's actually just
+    # turned off in favor of ethernet.
+    if not networks:
+        devices = run_output(["nmcli", "-t", "-f", "TYPE,STATE", "device"])
+        if "ethernet:connected" in devices:
+            msg = "No WiFi - using Ethernet"
+        elif "wireguard:connected" in devices:
+            msg = "No WiFi - using VPN"
+        elif "wifi:" not in devices:
+            msg = "No WiFi adapter"
+        else:
+            msg = "No networks found"
+
+        # Show the diagnosis in fuzzel so the user has a visible, fixed-
+        # width popup rather than a fleeting libnotify bubble.
+        subprocess.run(
+            ["fuzzel", "--dmenu", "--prompt=", "--lines=1", "--width=30"],
+            input=msg,
+            text=True,
+            capture_output=True,
+        )
+        sys.exit(0)
+
+    # Build the menu lines. Each line: signal bars, optional lock icon,
+    # SSID. Keeping the bars / lock as fixed prefixes lets us strip them
+    # back off after the user's selection without ambiguity.
+    menu_lines: list[str] = []
+    for ssid, signal, secured in networks:
+        bars = signal_bars(signal)
+        lock = "󰌾 " if secured else ""
+        menu_lines.append(f"{bars} {lock}{ssid}")
+
+    # Show the network picker.
+    try:
+        result = subprocess.run(
+            ["fuzzel", "--dmenu", "--prompt=WiFi  ", "--lines=10", "--width=40"],
+            input="\n".join(menu_lines),
+            text=True,
+            capture_output=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        sys.exit(0)
+    except FileNotFoundError:
+        notify("WiFi", "fuzzel not installed", critical=True)
+        sys.exit(1)
+
+    choice = result.stdout.strip()
+    if not choice:
+        # User dismissed the picker without selecting anything.
+        sys.exit(0)
+
+    # Reverse the prefix decoration we added when building menu_lines so
+    # we get back the raw SSID for nmcli. The order of these checks
+    # matters: bars come before the lock, so we strip in that order.
+    ssid = choice
+    for prefix in ("▂▄▆█ ", "▂▄▆░ ", "▂▄░░ ", "▂░░░ "):
+        if ssid.startswith(prefix):
+            ssid = ssid[len(prefix):]
+            break
+    if ssid.startswith("󰌾 "):
+        ssid = ssid[2:]
+
+    # Recover the `secured` flag from the scan list rather than re-querying
+    # nmcli — we already know what the scan saw, and round-tripping would
+    # add latency for no benefit.
+    secured = next((sec for (s, _sig, sec) in networks if s == ssid), False)
+    connect(ssid, secured)
+
+
+if __name__ == "__main__":
+    main()

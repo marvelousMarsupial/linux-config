@@ -172,8 +172,8 @@ impl RolesFile {
     }
 
     pub fn from_path(path: &Path) -> Result<Self> {
-        let s = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
+        let s =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         Self::from_toml(&s)
     }
 
@@ -202,7 +202,9 @@ impl RolesFile {
             merged.dotfiles.extend(cfg.dotfiles.iter().cloned());
             merged.downloads.extend(cfg.downloads.iter().cloned());
             merged.post.extend(cfg.post.iter().cloned());
-            merged.teardown_post.extend(cfg.teardown_post.iter().cloned());
+            merged
+                .teardown_post
+                .extend(cfg.teardown_post.iter().cloned());
         }
         merged.extends = None;
         Ok(merged)
@@ -260,10 +262,7 @@ post = [
         assert_eq!(s.post[0].run(), "chsh -s /bin/zsh");
         assert_eq!(s.post[0].check(), None);
         assert_eq!(s.post[1].run(), "ufw enable");
-        assert_eq!(
-            s.post[1].check(),
-            Some("ufw status | grep -q active")
-        );
+        assert_eq!(s.post[1].check(), Some("ufw status | grep -q active"));
     }
 
     #[test]

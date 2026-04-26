@@ -98,7 +98,10 @@ fn do_apply(name: &str, preview: bool) -> Result<()> {
 
     for hook in &report.hooks {
         cliclack::log::info(format!("hook: {hook}"))?;
-        let _ = std::process::Command::new("sh").arg("-c").arg(hook).status();
+        let _ = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(hook)
+            .status();
     }
 
     for proc in &report.restarts {

@@ -1,352 +1,224 @@
 # CLAUDE.md
 
-AI onboarding for this Linux dotfiles and workstation provisioning project.
+AI onboarding for this repository. Read this first.
 
-## CRITICAL: File Ownership
+## What this is
 
-The repo lives at `/home/august/linux-config` and is **owned by august**.
+A single-binary Linux workstation provisioner. The `forge` CLI embeds the entire
+dotfile tree, the role definitions, and the theme system at compile time; running
+`forge setup <role>` on a fresh Debian box brings it from "stock install" to
+"fully configured workstation" in one command, with no repo clone, no network
+fetch (apart from explicit binary downloads), and no separate config lookup.
 
-**After editing files, ALWAYS fix ownership:**
-```bash
-chown -R august:august /home/august/linux-config
-```
-
-If august can't read configs (sway reload fails, etc.), this is usually the cause.
-
-## Quick Start
+Owned by user **august**, lives at `/home/august/linux-config`.
 
 ```bash
-# Deploy a role to user "august"
-./deploy/install.sh desktop
-
-# Or via forge CLI
-forge setup desktop
-forge status
-forge teardown
+~/linux-config/target/release/forge setup desktop
+~/linux-config/target/release/forge status
+~/linux-config/target/release/forge teardown
 ```
 
-**Available roles:** `server`, `dev`, `desktop`, `remote-desktop`, `net-box`, `attack-box`
+**Roles:** `server`, `dev`, `desktop`, `remote-desktop`, `net-box`, `attack-box`.
 
-## Fresh System Install
-
-On a fresh system, `install.sh`:
-1. Installs ansible and git
-2. Clones repo to `$HOME/linux-config`
-3. Runs `forge setup <role>`
-
-Ansible then:
-1. Creates user `august` with zsh, sudo access
-2. Handles repo location (clones to user home, or symlinks from root if run as root)
-3. Removes conflicting dotfiles
-4. Stows all configs
-5. Applies theme
-
-## Project Structure
+## Repo layout
 
 ```
 linux-config/
-├── ansible/
-│   ├── playbook.yml          # Main entry (accepts role= variable)
-│   ├── inventory.yml         # Defines august user + host settings
-│   ├── group_vars/all.yml    # Global vars (theme, gitea URL)
-│   └── roles/
-│       ├── server/           # Base: bash, zsh, tmux, nvim, yazi, starship, theme
-│       ├── dev/              # + build tools, nodejs, lazygit, podman services
-│       ├── desktop/          # + sway, foot, fuzzel, mako, flatpaks
-│       ├── remote-desktop/   # + wayvnc, Sunshine
-│       ├── net-box/          # + network analysis tools
-│       └── attack-box/       # + CTF/pentesting (Burp, Wireshark, etc)
-├── bin/                      # ALL scripts (in PATH via zshrc)
-│   ├── forge                 # Main CLI (setup/teardown/status)
-│   ├── forge_lib/            # Python library for forge
-│   ├── theme                 # Theme switcher (base16 colors)
-│   ├── vpn                   # WireGuard helper
-│   ├── wifi-menu             # WiFi selector ($mod+w)
-│   ├── status-panel          # System status popup ($mod+i)
-│   ├── status-osd            # Status OSD notifications
-│   ├── power-menu            # Power/logout menu ($mod+x)
-│   ├── keybinds              # Keybinding reference ($mod+?)
-│   ├── notes-toggle          # Toggle notes window ($mod+n)
-│   ├── notes-picker          # Search notes ($mod+Shift+n)
-│   ├── pass-picker           # Password store picker ($mod+p)
-│   ├── remote-start          # Start headless Sway + VNC
-│   ├── remote-stop           # Stop remote desktop
-│   ├── tmux-keys             # Tmux keybinding reference
-│   ├── battery-monitor       # Background battery daemon
-│   ├── launcher              # Fuzzel wrapper
-│   └── motd                  # Message of the day
-├── stow/                     # Dotfiles (ALL directory symlinks)
-│   ├── bash/                 # → ~/.bashrc
-│   ├── zsh/                  # → ~/.zshrc, ~/.zsh_aliases
-│   ├── tmux/                 # → ~/.tmux.conf
-│   ├── nvim/                 # → ~/.config/nvim/
-│   ├── yazi/                 # → ~/.config/yazi/
-│   ├── starship/             # → ~/.config/starship.toml
-│   ├── theme/                # → ~/.config/theme/
-│   ├── sway/                 # → ~/.config/sway/
-│   ├── foot/                 # → ~/.config/foot/
-│   ├── fuzzel/               # → ~/.config/fuzzel/
-│   ├── gtk-3.0/              # → ~/.config/gtk-3.0/
-│   ├── gtk-4.0/              # → ~/.config/gtk-4.0/
-│   └── desktop-entries/      # → ~/.local/share/applications/
-├── vault/                    # Documentation (Obsidian-compatible)
-└── deploy/
-    └── install.sh            # Bootstrap script
+├── Cargo.toml              # workspace manifest
+├── crates/
+│   ├── common/             # forge_common: planner, executor, theme, state, ...
+│   └── forge/              # binary crate; embeds dotfiles/ + config/ + themes/
+├── dotfiles/               # mirrors $HOME — embedded into the binary
+│   ├── .bashrc
+│   ├── .zshrc
+│   ├── .tmux.conf
+│   ├── .config/{sway,foot,fuzzel,nvim,yazi,starship.toml,...}
+│   └── .local/
+│       ├── bin/            # scripts (notes-toggle, power-menu, wifi-menu, ...)
+│       └── share/applications/
+├── config/
+│   ├── roles.toml          # role definitions (packages + dotfiles globs + post)
+│   ├── dev-images.toml     # podman dev container runtimes
+│   └── vm-profiles.toml    # incus VM profiles
+├── themes/
+│   ├── config.toml         # template targets + scheme metadata
+│   ├── schemes/*.yaml      # base16 color schemes
+│   └── templates/*.j2      # tera templates rendered per-app
+├── containers/             # Containerfiles for dev images
+├── legacy/                 # the previous Ansible+Stow+Python implementation
+│                           # — reference only, do not extend
+└── target/release/forge    # built binary
 ```
 
-## Stow Packages
+## How a `forge setup` works
 
-All configs symlinked via GNU Stow. **Never edit files in ~/.config** - edit in `stow/`.
+1. **Parse** `config/roles.toml` (embedded as `&str`). Resolve the role's
+   `extends` chain, deduplicating packages/dotfiles/downloads/post.
+2. **Plan** (`forge_common::planner::build_plan`):
+   - `AptUpdate` once if any package install follows
+   - `InstallPackage` per dedup'd package
+   - `Download` per binary (nvim, starship, yazi, fonts...)
+   - `WriteFile` per dotfile that matches a glob — files starting with `#!`
+     get mode `0o755` so embedded scripts execute
+   - `PostCommand` per `post` entry
+3. **Execute** (`forge_common::executor::execute`): every action is idempotent.
+   `is_installed`, content-equality checks in `write_atomic`, `dest.exists()`
+   for downloads, and the optional `check` field on post-commands all let
+   reruns be cheap no-ops.
+4. **State** is written to `~/.local/state/forge/state.json` so `forge status`
+   and `forge teardown` know what role is live.
 
-**Server role stows:** `bash zsh tmux yazi nvim starship theme`
-**Desktop role adds:** `sway foot fuzzel gtk-3.0 gtk-4.0 desktop-entries`
+## Editing the dotfile tree
 
-### Symlink Structure
+Every file under `dotfiles/` ships in the binary via `include_dir!`. Edit a
+file, then `cargo build --release -p forge` to re-embed it. There is no
+"sync from disk" mode — the binary is the source of truth at runtime.
 
-All stow packages create **directory symlinks** (entire dir is one symlink):
+`dotfiles/.local/bin/<script>` is the canonical home for new scripts. They
+land at `~/.local/bin/<script>` and are made executable by the planner's
+shebang detection. Sway's `$bin` is set to `/home/august/.local/bin`.
 
-```
-~/.config/nvim      → linux-config/stow/nvim/.config/nvim
-~/.config/yazi      → linux-config/stow/yazi/.config/yazi
-~/.config/theme     → linux-config/stow/theme/.config/theme
-~/.config/sway      → linux-config/stow/sway/.config/sway
-~/.config/foot      → linux-config/stow/foot/.config/foot
-~/.config/fuzzel    → linux-config/stow/fuzzel/.config/fuzzel
-~/.config/gtk-3.0   → linux-config/stow/gtk-3.0/.config/gtk-3.0
-~/.config/gtk-4.0   → linux-config/stow/gtk-4.0/.config/gtk-4.0
-```
+## Editing roles
 
-**Home dotfiles** (file symlinks):
-```
-~/.bashrc           → linux-config/stow/bash/.bashrc
-~/.zshrc            → linux-config/stow/zsh/.zshrc
-~/.zsh_aliases      → linux-config/stow/zsh/.zsh_aliases
-~/.tmux.conf        → linux-config/stow/tmux/.tmux.conf
-```
+`config/roles.toml`. A role can `extends` another (chain is resolved
+base-first so leaf entries append/override). Each role declares:
 
-### Theme-Generated Files
+- `packages` — apt package names
+- `dotfiles` — globset patterns matched against the embedded tree
+- `downloads` — `[[role.downloads]]` tables with `name/url/dest/extract/chmod`
+- `post` — shell commands; bare string or `{ run, check }` for idempotency
+- `teardown_post` — inverse commands run during `forge teardown`
 
-Theme writes color configs into stowed directories. These are gitignored:
-- `stow/nvim/.config/nvim/lua/plugins/colorscheme.lua`
-- `stow/foot/.config/foot/colors.ini`
-- `stow/fuzzel/.config/fuzzel/colors.ini`
-- `stow/sway/.config/sway/colors`
-- `stow/gtk-3.0/.config/gtk-3.0/gtk.css`
-- `stow/gtk-4.0/.config/gtk-4.0/gtk.css`
-- `stow/yazi/.config/yazi/theme.toml`
+Keep packages alphabetically grouped by purpose with a comment header. Keep
+post-commands idempotent (always supply a `check` unless the command itself
+is a true no-op on rerun).
 
-Theme also writes to real directories (not stowed):
-- `~/.config/tmux/colors.conf`
-- `~/.config/mako/config`
-- `~/.config/swaylock/config`
+## Theme system
 
-## Role Inheritance
+`forge theme apply <name>` reads a base16 YAML scheme from `themes/schemes/`,
+renders every Tera template in `themes/templates/` against the scheme, and
+writes the output to the path declared in `themes/config.toml`. Targets can
+declare a `hook` (run after write) or `restart` (process-name to kill/restart).
 
-```
-server (base)
-├── dev              → server + dev tools
-├── desktop          → server + Sway GUI
-│   ├── remote-desktop → desktop + VNC/Sunshine
-│   └── attack-box     → remote-desktop + CTF/pentesting
-└── net-box          → server + network analysis
-```
+All scheme/template/config files are embedded in the binary just like dotfiles.
 
-## Theme System
+## Coding standards (load-bearing — enforced in review)
 
-Python script applying base16 colors across all apps:
+### 1. Rustdoc on every public item
 
-```bash
-theme list                    # Available schemes
-theme apply gruvbox-dark-hard # Apply everywhere
-theme current                 # Show current + palette
-```
+Every `pub` item — modules, types, functions, traits, fields, enum variants —
+gets a `///` doc comment that explains **what it is** and, if non-obvious,
+**why it exists**. Every module gets a `//!` header that states its purpose
+and any noteworthy design decisions (the existing modules in `crates/common`
+are good models — see `planner.rs`, `executor.rs`, `atomic.rs`).
 
-**Schemes:** gruvbox-dark-hard, catppuccin-mocha, kanagawa, tokyonight-moon, onehalfdark-black, summer-dusk
+`cargo doc --no-deps --workspace` should build clean and read like a
+self-contained reference. Write for someone joining the project cold.
 
-**Files:**
-- `stow/theme/.config/theme/config.toml` - Output targets + reload hooks
-- `stow/theme/.config/theme/schemes/` - Base16 YAML definitions
-- `stow/theme/.config/theme/templates/` - Jinja2 per app
+```rust
+//! Brief module purpose. Then a paragraph or two on design choices that
+//! aren't obvious from reading the code.
 
-## Dev Containers
-
-Isolated development environments with podman (rootless).
-
-**Required packages** (installed by server role):
-- `podman` - container runtime
-- `uidmap` - user namespace mapping for rootless containers
-- `passt` - network namespace tool (provides `pasta`)
-
-```bash
-forge dev create myapp python    # Create Python container
-forge dev create frontend ts     # TypeScript/Node container
-forge dev enter myapp            # Enter container shell
-forge dev list                   # List containers
-forge dev rm myapp               # Remove container
+/// What this function does. Trailing notes on edge cases or invariants.
+///
+/// # Errors
+/// When/why this returns Err.
+pub fn do_thing(x: u32) -> Result<()> { ... }
 ```
 
-**Runtimes:** `python`, `c`, `ts`, `nuxt`, `bun`, `java`, `base`
+Private helpers don't need rustdoc but a one-line `//` comment is welcome
+when the name doesn't already say it all. Keep comments short — explain
+*why*, not *what*.
 
-**Features:**
-- Debian trixie base with zsh, tmux, neovim, starship, yazi
-- Full nvim config with LSPs pre-installed
-- Theme system injected (inherits host theme)
-- Format-on-save with conform.nvim (stylua, prettier, ruff, shfmt)
+### 2. Tests for every behavior
 
-**Options:**
-```bash
-forge dev create myapp python -p 8000           # Port forward
-forge dev create myapp python -v .:/workspace   # Mount volume
-```
+Every module that does real work gets a `#[cfg(test)] mod tests` block.
+The bar:
 
-## Neovim
+- New public functions get unit tests covering the happy path, the error
+  path, and any explicit edge case the doc comment calls out.
+- Idempotent operations get a "twice in a row" test (see
+  `executor::tests::write_file_is_idempotent`).
+- Anything that parses external input (TOML, YAML, glob patterns) gets a
+  parse-success test, a parse-failure test, and a roundtrip if applicable.
+- Embedded-asset invariants are tested in `embed.rs::tests` so a bad
+  `roles.toml` or a missing template fails at `cargo test`, not at
+  `forge setup` on a fresh machine.
 
-**LSPs:** lua_ls, ts_ls, pyright, vue_ls, tailwindcss, clangd
+`cargo test --workspace` must stay green. If you can't test something
+(requires the live system, sudo, network) document it in the module header
+and prefer extracting the testable core into a helper that takes the side
+effect as an injected dependency — `DotfileSource` and `TemplateSource`
+are the existing pattern.
 
-**Format-on-save** via conform.nvim:
-| Language | Formatter |
-|----------|-----------|
-| Python | ruff |
-| JS/TS/Vue/CSS/HTML/JSON/YAML/MD | prettier |
-| Lua | stylua |
-| C/C++ | clang-format |
-| Shell | shfmt |
+### 3. Other expectations
 
-**Key bindings:**
-- `<leader>cf` - Format buffer
-- `<leader>ca` - Code actions
-- `gd` - Go to definition
-- `K` - Hover docs
+- `cargo build --release -p forge` must succeed with zero warnings.
+- Don't reach for new dependencies casually; the workspace already pulls in
+  what's reasonable for a binary this size.
+- Prefer extending `forge_common` over duplicating logic in `crates/forge`.
+- Atomic writes go through `atomic::write_atomic`. Shell out via `run::checked`.
 
-**Vault notes** (~/vault/*.md) have zen mode - no statusline.
+## Common tasks
 
-## Obsidian Integration
+**Add a new keybind script:** drop the script at `dotfiles/.local/bin/<name>`
+(must start with `#!`), bind it in `dotfiles/.config/sway/config` via
+`exec $bin/<name>`, ensure any apt packages it needs are in the desktop
+role. Rebuild forge.
 
-obsidian.nvim configured for `~/vault/` and `~/linux-config/docs/`:
+**Add a new role:** add a `[<name>]` section to `config/roles.toml`. The
+`embed.rs::all_roles_resolve_and_plan` test will catch broken extends
+chains and empty plans. Add the role to the `Role` enum in
+`crates/common/src/role.rs`.
 
-- `gf` - Follow [[wiki-link]] under cursor
-- `<leader>of` - Follow link
-- `<leader>os` - Search notes
-- `<leader>oq` - Quick switch
-- `<leader>ot` - Today's daily note
-- `<leader>ch` - Toggle checkbox
+**Add a themed app:** add a Tera template under `themes/templates/`, add a
+`[[targets]]` entry to `themes/config.toml` pointing at the output path
+and (if needed) a hook or restart. The `embedded_themes_config_valid`
+test enforces template existence.
 
-## Incus VMs and Containers
+**Investigate a setup failure:** `forge setup <role> --dry-run` shows the
+plan; `forge setup <role> --diff` prints a unified diff per dotfile against
+what's currently on disk.
 
-```bash
-forge lxc server              # LXC container with server role
-forge vm attack-box           # VM with attack-box role
-forge instances               # List all
-forge delete mydev --force    # Remove
-```
+**Adjust the monitor layout (desktop role):** edit
+`dotfiles/.config/kanshi/config`, not the sway config. Kanshi owns all
+per-output mode/position/transform/scale; sway only ships the wildcard
+wallpaper line. Profiles are matched by EDID description (`Make Model
+Serial`) so connector-name shifts (DP-5 → DP-7 across dock reboots)
+don't break anything. Two non-obvious gotchas, both burned us in
+practice and are documented inline at the top of the kanshi config:
 
-## Tmux Keybindings
+1. **Mode rate must be exact, including the fractional Hz.** `mode
+   1920x1200@60Hz` failed silently against a panel that reports
+   `@59.951Hz`, the profile aborted, and the laptop stayed dark on
+   undock. Either pin the exact reported rate or omit `mode` entirely
+   and let kanshi pick the preferred mode.
+2. **Kanshi and `swaymsg output ... transform N` use opposite sign
+   conventions for portrait rotations** on this kanshi version (1.7.0).
+   `swaymsg ... transform 270` ⇔ kanshi `transform 90`, and vice
+   versa. Verify visually after any rotation change.
 
-Run `tmux-keys` for full reference. Key bindings:
+After editing, rebuild forge (`cargo build --release -p forge`) and
+either rerun `forge setup desktop` or — for a hot reload without going
+through apt — copy the file to `~/.config/kanshi/config` and
+`pkill -HUP kanshi`. Sway's `exec_always pkill -x kanshi; kanshi`
+respawns the daemon on every `swaymsg reload`, so the next reload also
+re-applies cleanly.
 
-- `Alt+hjkl` - Navigate panes (integrates with smart-splits.nvim)
-- `Alt+HJKL` - Resize panes
-- `Alt+v` - Vertical split + nvim (uses `~/.local/bin/nvim`)
-- `Alt+V` - Horizontal split + nvim
-- `Alt+e` - Vertical split + yazi
-- `Alt+Enter` - Vertical split + shell
-- `Alt+s` - Horizontal split + shell
-- `Alt+q` - Close pane
-- `Alt+z` - Zoom toggle
-- `Ctrl+Space r` - Reload config
+## Things that look load-bearing but aren't
 
-## Remote Desktop
+- **`legacy/`** is a reference snapshot of the previous Ansible/Stow/Python
+  implementation. Don't extend it. If you find functionality that wasn't
+  ported (look in `legacy/bin/`, `legacy/ansible/`, `legacy/docs/`),
+  port it into the Rust workspace properly — embed scripts in
+  `dotfiles/.local/bin/`, encode install steps in `config/roles.toml`.
+- **`README.md`** describes what the project is for users; **CLAUDE.md** (this
+  file) is the authoritative architectural doc for AI/agent work.
 
-Scripts in `bin/`:
-- `remote-start` - Launches headless Sway + wayvnc + mako
-- `remote-stop` - Stops all remote desktop services
+## Design principles
 
-Aliases: `rstart`, `rstop`
-
-## Sway Keybindings
-
-Run `keybinds` or `$mod+?` to see all bindings.
-
-**Variables in sway config:**
-- `$mod` - Mod4 (Super/Windows key)
-- `$term` - foot
-- `$bin` - `/home/august/linux-config/bin` (for script paths)
-- `$menu` - `$bin/launcher`
-
-Key bindings use scripts from `bin/` via `$bin` variable:
-- `$mod+n` - notes-toggle
-- `$mod+Shift+n` - notes-picker
-- `$mod+x` - power-menu
-- `$mod+p` - pass-picker
-- `$mod+i` - status-panel
-- `$mod+w` - wifi-menu
-- `$mod+v` - nvim (uses full path `~/.local/bin/nvim`)
-
-## Python Scripts
-
-All scripts in `bin/` are Python 3 (stdlib only except theme which needs pyyaml + jinja2).
-
-PATH set in `.zshrc`:
-```bash
-export PATH="$HOME/linux-config/bin:$HOME/.local/bin:$PATH"
-```
-
-## IMPORTANT: nvim Path Issue
-
-nvim is installed in `~/.local/bin/nvim`. When calling nvim from:
-- Sway keybindings (`bindsym ... exec`)
-- `foot -e` commands
-- tmux `split-window` commands
-
-**You MUST use the full path `~/.local/bin/nvim`** because:
-1. Sway doesn't inherit PATH from `.zshrc` (only interactive shells source it)
-2. `foot -e` executes commands directly without a shell
-3. The display manager starts sway before shell profile is loaded
-
-This is why sway config uses `$bin` variable for scripts in `~/linux-config/bin/`.
-
-## Common Tasks
-
-**Add a new stow package:**
-1. Create `stow/<name>/.config/<name>/` with config files
-2. Add to appropriate role's `dotfiles.yml` stow command
-3. Add directory removal before stow (so stow can create symlink)
-
-**Re-stow after changes:**
-```bash
-cd ~/linux-config/stow
-stow -R -t ~ <package>   # -R restows (unlink + link)
-```
-
-## Ansible Patterns
-
-**Architecture support:** x86_64 and ARM64. Variables in `group_vars/all.yml`.
-
-**User context:** Always use `target_user` and `target_home`, NOT `ansible_env.HOME`.
-
-```yaml
-path: "{{ target_home }}/.config/foo"
-owner: "{{ target_user }}"
-```
-
-## Design Principles
-
-- Everything reproducible via Ansible + Stow
-- All configs in stow/, never edit ~/.config directly
-- All scripts in bin/, one location
-- Directory symlinks for simplicity
-- Sway (Wayland) only, no X11
-- Keyboard-driven, minimal UI
-
-## Git / Backup
-
-Update bundle:
-```bash
-cd ~/linux-config
-git bundle create ~/linux-config.bundle --all
-```
-
-Restore:
-```bash
-git clone linux-config.bundle linux-config
-```
+- One binary, no runtime config lookup, no implicit network.
+- Idempotent at every layer; a rerun is a cheap no-op.
+- Tests catch broken embedded assets at `cargo test`, not at install.
+- Sway/Wayland only. Keyboard-driven. No X11.
+- Optimize for "fresh box → working desktop in one command".

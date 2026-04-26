@@ -44,8 +44,7 @@ pub enum InstanceKind {
 
 pub fn launch(name: &str, image: &str, kind: InstanceKind) -> Result<()> {
     let q = qualified(name);
-    let mut argv: Vec<String> =
-        vec!["incus".into(), "launch".into(), image.into(), q];
+    let mut argv: Vec<String> = vec!["incus".into(), "launch".into(), image.into(), q];
     if kind == InstanceKind::Vm {
         argv.push("--vm".into());
     }

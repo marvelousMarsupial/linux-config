@@ -1,0 +1,31 @@
+# yazi keymap — overrides on top of the default bindings.
+#
+# `prepend_keymap` adds bindings to the front of the lookup table so they
+# take priority over the defaults shipped with yazi (see the upstream
+# `keymap-default.toml` for the base set). We intentionally use prepend
+# rather than `keymap` so we don't have to re-list yazi's whole default
+# keymap every time it gains a new useful binding.
+
+[mgr]
+prepend_keymap = [
+    # ── Removable media ──────────────────────────────────────────────
+    #
+    # `M` (capital) opens the mount.yazi plugin's interactive picker:
+    # a list of every partition (mounted + unmounted) with mount /
+    # unmount / eject actions. Capital so it doesn't collide with `m`,
+    # which yazi uses by default for the bookmark family (`m<key>`
+    # marks, `'<key>` jumps).
+    #
+    # The plugin file lives at
+    # ~/.config/yazi/plugins/mount.yazi/main.lua (vendored from
+    # yazi-rs/plugins, see that directory's README).
+    { on = "M", run = "plugin mount", desc = "Mount picker (USB / drives)" },
+
+    # `gm` ("Goto Media") jumps yazi's cwd to /run/media/august, where
+    # udiskie auto-mounts removable drives. Path is hardcoded because
+    # the keymap.toml format doesn't expand $USER, and this whole repo
+    # is tied to user `august` anyway (see CLAUDE.md). If you ever fork
+    # this for another user, change this path or replace it with a
+    # plugin-based `cd` that resolves $USER at runtime.
+    { on = ["g", "m"], run = "cd /run/media/august", desc = "Go to mounted media" },
+]

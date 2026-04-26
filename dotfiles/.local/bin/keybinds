@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Display sway keybindings cheatsheet."""
+
+CONTENT = """
+                          SWAY + TMUX KEYBINDINGS
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   NAVIGATION                              SYSTEM
+   Super + hjkl        Focus window        Super + q           Kill window
+   Super + Shift hjkl  Move window         Super + x           Power menu
+   Super + Ctrl hjkl   Resize window       Super + Escape      Lock screen
+   Super + Tab         Next workspace      Super + i           Status panel
+   Super + 1-9         Workspace N         Super + Shift + i   btop
+   Super + o           Next monitor        Super + w           WiFi menu
+   Alt + Tab           Cycle windows       Super + Shift + b   Bluetooth
+                                           Super + u           Eject USB
+   LAYOUT                                  Super + Shift + v   Clipboard
+   Super + \\           Horizontal split    Super + Shift + c   Reload sway
+   Super + -           Vertical split      Super + Shift + e   Exit sway
+   Super + f           Fullscreen
+   Super + Shift Space Float toggle        SCREENSHOTS
+   Super + t           Toggle layout       Print               Select to clip
+   Super + `           Scratchpad          Super + Print       Screen to file
+
+   APPS                                    TMUX (in terminal)
+   Super + Enter       Terminal            Alt + hjkl          Navigate panes
+   Super + Space       Launcher            Alt + Shift hjkl    Resize panes
+   Super + b           Browser (Zen)       Alt + v / e / Enter Vertical split
+   Super + n           New vim note        Alt + V / E / s     Horizontal split
+   Super + m           Search notes        Alt + q             Close pane
+   Super + Shift + n   Obsidian            Alt + z             Zoom pane
+   Super + e           Files               Alt + t             Toggle terminal
+   Super + p           Passwords           Alt + n             New session
+   Super + v           Editor              Alt + ( / )         Prev/next session
+   Super + Shift + /   This help           Alt + d             Detach
+                                           Alt + [ / ]         Copy / Paste
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                             Press Enter to close
+"""
+
+def main():
+    print(CONTENT)
+    try:
+        input()
+    except (KeyboardInterrupt, EOFError):
+        pass
+
+if __name__ == "__main__":
+    main()

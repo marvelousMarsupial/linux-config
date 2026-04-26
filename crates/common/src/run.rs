@@ -12,9 +12,7 @@ use std::process::Command;
 
 /// Run a command, inheriting stdio. Fail if the command exits non-zero.
 pub fn run(argv: &[&str]) -> Result<()> {
-    let (head, tail) = argv
-        .split_first()
-        .ok_or_else(|| anyhow!("empty argv"))?;
+    let (head, tail) = argv.split_first().ok_or_else(|| anyhow!("empty argv"))?;
     cmd(*head, tail)
         .run()
         .with_context(|| format!("running `{}`", argv.join(" ")))?;
@@ -23,9 +21,7 @@ pub fn run(argv: &[&str]) -> Result<()> {
 
 /// Run a command and capture stdout as a `String`. Fail if it exits non-zero.
 pub fn run_capture(argv: &[&str]) -> Result<String> {
-    let (head, tail) = argv
-        .split_first()
-        .ok_or_else(|| anyhow!("empty argv"))?;
+    let (head, tail) = argv.split_first().ok_or_else(|| anyhow!("empty argv"))?;
     let out = cmd(*head, tail)
         .read()
         .with_context(|| format!("running `{}`", argv.join(" ")))?;

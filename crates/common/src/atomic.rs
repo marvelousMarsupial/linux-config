@@ -32,8 +32,7 @@ pub fn write_atomic(path: &Path, contents: &[u8], mode: Option<u32>) -> Result<b
 
     let mut tmp = tempfile::NamedTempFile::new_in(parent)
         .with_context(|| format!("creating temp file in {}", parent.display()))?;
-    tmp.write_all(contents)
-        .context("writing temp contents")?;
+    tmp.write_all(contents).context("writing temp contents")?;
     tmp.flush().ok();
 
     if let Some(m) = mode {

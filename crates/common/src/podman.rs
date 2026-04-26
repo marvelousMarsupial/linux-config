@@ -80,7 +80,13 @@ pub enum Volume {
 /// the container and the env var is set so git/ssh can request signatures
 /// from the host agent. No key files are copied — the agent holds the
 /// keys and the container only talks to it via the socket.
-pub fn create(name: &str, image: &str, volumes: &[Volume], ports: &[u16], ssh_agent: bool) -> Result<()> {
+pub fn create(
+    name: &str,
+    image: &str,
+    volumes: &[Volume],
+    ports: &[u16],
+    ssh_agent: bool,
+) -> Result<()> {
     let q = qualified(name);
     let mut argv: Vec<String> = vec![
         "podman".into(),

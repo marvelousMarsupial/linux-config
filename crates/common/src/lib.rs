@@ -1,17 +1,17 @@
 //! Shared primitives for forge: roles, paths, state, atomic file ops, diffing.
 
 pub mod atomic;
+pub mod dev_config;
 pub mod diff;
 pub mod executor;
+pub mod incus;
 pub mod packages;
 pub mod paths;
 pub mod plan;
 pub mod planner;
+pub mod podman;
 pub mod role;
 pub mod run;
-pub mod dev_config;
-pub mod incus;
-pub mod podman;
 pub mod state;
 pub mod theme;
 

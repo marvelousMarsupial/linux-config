@@ -1,0 +1,13 @@
+#!/bin/bash
+# Simple pass picker using fuzzel - copies password to clipboard
+
+export PASSWORD_STORE_DIR="$HOME/.password-store"
+export PASSWORD_STORE_CLIP_CMD="wl-copy"
+
+entry=$(find "$PASSWORD_STORE_DIR" -name '*.gpg' -printf '%P\n' 2>/dev/null | \
+    sed 's/\.gpg$//' | \
+    fuzzel --dmenu --prompt="pass: ")
+
+if [ -n "$entry" ]; then
+    foot --app-id=pass-prompt --hold -e pass -c "$entry"
+fi

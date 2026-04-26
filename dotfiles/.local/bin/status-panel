@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""status-panel - system status popup with ASCII clock.
+
+Bound to ``$mod+i`` in sway. Renders a small fuzzel popup with:
+
+  1. A figlet ASCII clock for the current time (via ``toilet -f future``).
+  2. The date.
+  3. A blank spacer line so the status block is visually separated.
+  4. Network status (``wifi: <ssid>``, ``ethernet``, or ``offline``).
+  5. VPN status (``vpn: on`` / ``vpn: off``).
+  6. Battery / power status with explicit "charging" label when charging.
+
+Layout choices worth flagging:
+
+* ``PANEL_WIDTH`` is sized for the longest possible status line
+  ("battery: NN% charging" at ~22 chars) plus a small breathing margin.
+  Anything wider (long SSIDs) is truncated with an ellipsis so nothing
+  overflows the popup edge.
+* Emoji prefixes are deliberately *not* used. They render as
+  double-width cells in fuzzel's monospace font, which made earlier
+  versions of this panel clip text off the right edge.
+* The popup is ephemeral: fuzzel returns whatever the user picks (we
+  ignore it) and exits, so this is a status-display tool, not an
+  interactive menu.
+"""
+
+import os
+import re
+import subprocess
+from datetime import datetime
+from pathlib import Path
+
+# Remote-desktop sessions started by `remote-start` write a dbus-env file
+# to the user's runtime dir so daemons launched outside the sway session
+# (notify-send, fuzzel) can find the bus. Without importing it here, this
+# script can't open a fuzzel popup when invoked from a remote session.
+dbus_env = Path(f"/run/user/{os.getuid()}/dbus-env")
+if dbus_env.exists() and "DBUS_SESSION_BUS_ADDRESS" not in os.environ:
+    for line in dbus_env.read_text().splitlines():
+        if line.startswith("export DBUS_SESSION_BUS_ADDRESS="):
+            addr = line.split("=", 1)[1].strip("'\"")
+            os.environ["DBUS_SESSION_BUS_ADDRESS"] = addr
+
+
+# Width of the popup in monospace cells. Sized for the longest status
+# line ("battery: NN% charging" ~ 22 chars) plus a few cells of breathing
+# room. Bumping the font size below also affects how many cells fit on
+# screen — keep them in sync.
+PANEL_WIDTH = 26
+FONT = "monospace:size=18"
+# Maximum SSID length before we truncate with an ellipsis. Computed so
+# that "wifi: <ssid>" never exceeds PANEL_WIDTH (the trailing -1 leaves
+# one cell of right-margin so the ellipsis doesn't touch the popup edge).
+SSID_MAX = PANEL_WIDTH - len("wifi: ") - 1
+
+
+def run(cmd: list[str]) -> str:
+    """Run ``cmd`` and return its stdout, or ``""`` on failure.
+
+    We intentionally swallow non-zero exits and FileNotFoundError so
+    callers can treat "tool missing" / "tool failed" the same as "no
+    data" — the panel keeps rendering the lines it could produce
+    instead of crashing the whole popup over one missing helper.
+    """
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        return r.stdout if r.returncode == 0 else ""
+    except FileNotFoundError:
+        return ""
+
+
+def trunc(s: str, n: int) -> str:
+    """Truncate ``s`` to at most ``n`` cells, replacing the tail with ``…``."""
+    return s if len(s) <= n else s[: max(0, n - 1)] + "…"
+
+
+def get_clock() -> str:
+    """Big ASCII-art clock for the current ``HH:MM`` via ``toilet -f future``.
+
+    The ``future`` font is ~3 lines tall and ~13 cells wide for a 5-char
+    time string, which fits comfortably inside ``PANEL_WIDTH``.
+    """
+    time_str = datetime.now().strftime("%H:%M")
+    return run(["toilet", "-f", "future", time_str]).rstrip("\n")
+
+
+def get_network() -> str:
+    """Return ``wifi: <ssid>``, ``ethernet``, or ``offline``.
+
+    Wifi is detected via ``iwgetid -r`` (returns the associated SSID, or
+    empty if not associated). Ethernet detection uses ``ip -br link
+    show`` and matches any interface in state UP whose name starts with
+    a wired prefix:
+
+      * ``en*``  — systemd predictable names (enp0s3, eno1, enx<mac>)
+      * ``eth*`` — legacy kernel naming (eth0)
+      * ``em*``  — biosdevname (em0, em1)
+
+    The previous regex only covered ``enp/eth/eno`` and silently reported
+    "offline" on USB ethernet adapters (``enx*``), which was the visible
+    bug behind "the panel doesn't know I'm online".
+    """
+    wifi = run(["iwgetid", "-r"]).strip()
+    if wifi:
+        return f"wifi: {trunc(wifi, SSID_MAX)}"
+
+    # Format from `ip -br link show`:
+    #     <ifname>  <state>  <mac>  <flags>
+    # Whitespace-separated, one interface per line. Skip the loopback
+    # interface explicitly so a UP `lo` never shows as ethernet.
+    for line in run(["ip", "-br", "link", "show"]).splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == "UP" and parts[0] != "lo":
+            if parts[0].startswith(("en", "eth", "em")):
+                return "ethernet"
+    return "offline"
+
+
+def get_vpn() -> str:
+    """Return ``vpn: on`` if a wireguard ``wg0`` interface has an IPv4 lease.
+
+    The ``vpn`` helper script in ``bin/`` brings up exactly one wireguard
+    interface named ``wg0``, so checking that interface is sufficient.
+    Other VPN types (openvpn, tailscale) would need separate detection.
+    """
+    wg = run(["ip", "-4", "addr", "show", "wg0"])
+    return "vpn: on" if re.search(r"inet\s+\d+", wg) else "vpn: off"
+
+
+def get_battery() -> str:
+    """Return a battery / power status line.
+
+    Possible outputs:
+
+      * ``power: ac``           — no battery present (desktop / docked).
+      * ``battery: NN% charging`` — on AC and charging up.
+      * ``battery: NN% (ac)``   — on AC, full enough that the firmware
+                                  has stopped charging the cell ("Not
+                                  charging" status, common on ThinkPads
+                                  with a charge-stop threshold).
+      * ``battery: full``        — battery reports ``Full``.
+      * ``battery: NN%``         — discharging, or any other state we
+                                  don't have a special label for.
+
+    Sourced from ``/sys/class/power_supply/BAT0`` rather than upower so
+    this works on minimal installs without the upower daemon.
+    """
+    bat = Path("/sys/class/power_supply/BAT0")
+    if not bat.exists():
+        return "power: ac"
+    try:
+        pct = (bat / "capacity").read_text().strip()
+        status = (bat / "status").read_text().strip().lower()
+    except OSError:
+        # sysfs read failed (battery hot-removed, permissions, etc.) —
+        # better to render a placeholder than to crash the whole panel.
+        return "battery: ?"
+    if status == "charging":
+        return f"battery: {pct}% charging"
+    if status == "full":
+        return "battery: full"
+    if status == "not charging":
+        return f"battery: {pct}% (ac)"
+    # "discharging" or anything unexpected — show just the percentage.
+    return f"battery: {pct}%"
+
+
+def main() -> None:
+    """Render the status panel and hand it to fuzzel."""
+    date_str = datetime.now().strftime("%a %b %d")
+
+    # Build the line list in display order. Clock first (3 lines), then
+    # the date, a blank spacer for visual grouping, then one status line
+    # each for network / vpn / battery.
+    clock_lines = get_clock().split("\n")
+    lines: list[str] = []
+    lines.extend(clock_lines)
+    lines.append(date_str)
+    lines.append("")
+    lines.append(get_network())
+    lines.append(get_vpn())
+    lines.append(get_battery())
+
+    # Hand the lines to fuzzel via stdin. The selection-color overrides
+    # make highlighting invisible (panel is read-only, so we don't want
+    # the cursor's blue bar drawing attention to whichever line happens
+    # to be focused). `--inner-pad` and `--line-height` give the popup a
+    # bit more breathing room than fuzzel's defaults.
+    subprocess.run(
+        [
+            "fuzzel",
+            "--dmenu",
+            "--prompt=",
+            f"--lines={len(lines)}",
+            f"--width={PANEL_WIDTH}",
+            f"--font={FONT}",
+            "--selection-color=00000000",
+            "--selection-text-color=ffffffff",
+            "--inner-pad=20",
+            "--line-height=25",
+        ],
+        input="\n".join(lines),
+        text=True,
+        capture_output=True,
+    )
+
+
+if __name__ == "__main__":
+    main()
