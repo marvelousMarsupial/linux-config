@@ -2,8 +2,8 @@
 //!
 //! `checked` is the one you want when a subprocess failure should abort
 //! the caller with a useful error. It captures stderr and surfaces it in
-//! the error message, so you see *why* podman/incus/apt blew up instead
-//! of just "exit status 1". `run` and `run_capture` stream stdio to the
+//! the error message, so you see *why* podman/apt blew up instead of
+//! just "exit status 1". `run` and `run_capture` stream stdio to the
 //! user's terminal — use them for interactive commands.
 
 use anyhow::{anyhow, Context, Result};
@@ -30,8 +30,8 @@ pub fn run_capture(argv: &[&str]) -> Result<String> {
 
 /// Run a subprocess silently, capturing stdout+stderr. On non-zero exit
 /// the error message includes the command line and the first ~800 bytes
-/// of stderr — enough to diagnose typical apt/podman/incus failures
-/// without drowning the caller in output.
+/// of stderr — enough to diagnose typical apt/podman failures without
+/// drowning the caller in output.
 pub fn checked(argv: &[&str]) -> Result<String> {
     let (head, tail) = argv.split_first().ok_or_else(|| anyhow!("empty argv"))?;
     let out = Command::new(head)

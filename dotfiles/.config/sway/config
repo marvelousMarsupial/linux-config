@@ -48,11 +48,34 @@ output * bg ~/.config/sway/wallpaper fill $base00
 # APPEARANCE (minimal)
 # ===========================================
 
-gaps inner 7
+# Whitespace between tiled windows (inner) and between the outermost
+# windows and the screen edge (outer).
+#
+# Sway adds the outer value ON TOP of the inner value when computing
+# the edge-to-window distance (sway(5): "Outer gaps are added to the
+# inner gaps"). So `gaps inner 3` + `gaps outer 3` would render as
+# 3 px between adjacent tiled windows but 6 px from the screen edge
+# to the outermost window — the screen-edge stripe ends up visibly
+# twice as wide as the between-window stripe, which reads as the
+# layout floating in a frame rather than tiling cleanly to the edge.
+#
+# Setting outer to 0 makes the effective edge gap equal to the
+# inner gap (0 + 3 = 3 px), so every visible whitespace stripe in
+# the layout — between windows AND between the outermost window
+# and the screen edge — is the same 3 px.
+gaps inner 3
 gaps outer 0
 
-default_border pixel 1
-default_floating_border pixel 1
+# Window border thickness (the focus-outline drawn by sway around
+# the focused container). A 1px outline is hard to spot at a glance
+# — easy to lose track of which window will receive a keystroke
+# when more than one is visible. 3px is wide enough to be
+# unambiguously visible without eating noticeable screen real
+# estate. The `for_window [app_id="keybinds"] ... border pixel 3`
+# rule lower in the file already used 3 — the default now matches
+# so floating popups and tiled windows look consistent.
+default_border pixel 3
+default_floating_border pixel 3
 
 # Hide borders when only one window (disabled - may not work on all sway versions)
 # smart_borders on
@@ -302,14 +325,20 @@ bindsym --to-code $mod+Shift+v exec cliphist list | head -10 | fuzzel --dmenu | 
 # SCREENSHOTS
 # ===========================================
 
-# Selection to clipboard (default - most common)
-bindsym Print exec grim -g "$(slurp)" - | wl-copy && notify-send "Screenshot" "Copied to clipboard"
+# Selection: save to ~/Pictures AND copy to clipboard (the common
+# case — drag a region, get both a permanent file and an
+# immediately-pasteable clipboard payload). Implementation lives in
+# $bin/screenshot so the save-then-copy chain, slurp-cancel
+# handling, and ~/Pictures auto-create only need to be written
+# once.
+bindsym Print exec $bin/screenshot select
 
-# Full screen to file
-bindsym $mod+Print exec 'f=~/Pictures/$(date +%Y%m%d_%H%M%S).png && grim "$f" && notify-send "Screenshot" "Saved to $f"'
-
-# Selection to file
-bindsym $mod+Shift+Print exec 'f=~/Pictures/$(date +%Y%m%d_%H%M%S).png && grim -g "$(slurp)" "$f" && notify-send "Screenshot" "Saved to $f"'
+# Fullscreen: same save-and-copy behavior across all connected
+# outputs. Using Shift+Print rather than $mod+Print so the modifier
+# matches the "expanded scope" idiom Print already uses elsewhere
+# (Shift = bigger region) and so the bind works without the user
+# having to reach for Mod first.
+bindsym Shift+Print exec $bin/screenshot full
 
 # ===========================================
 # MEDIA / BRIGHTNESS
@@ -358,8 +387,31 @@ for_window [app_id=".*"] inhibit_idle fullscreen
 # AUTOSTART
 # ===========================================
 
-# D-Bus session (required for portals, gsettings, flatpak apps)
-exec dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway DBUS_SESSION_BUS_ADDRESS
+# Bring up the systemd user session that hosts sway-integrated
+# services. The `sway-session` script:
+#   1. exports XDG_CURRENT_DESKTOP / XDG_SESSION_TYPE / XDG_SESSION_DESKTOP
+#   2. pushes WAYLAND_DISPLAY / SWAYSOCK / DISPLAY / cursor vars into
+#      both dbus (`dbus-update-activation-environment`) and the user
+#      systemd manager (`systemctl --user import-environment`)
+#   3. starts `sway-session.target`, which `BindsTo=graphical-session.target`
+#      and pulls in everything `WantedBy=sway-session.target` (kanshi.service)
+#
+# This single line subsumes the previous standalone
+# `dbus-update-activation-environment` invocation that used to live
+# here (the script does it as part of step 2) and replaces the
+# previous `exec_always $bin/kanshi-restart` autostart — kanshi is
+# now started by systemd via the unit file at
+# ~/.config/systemd/user/kanshi.service, with proper `After=` and
+# `PartOf=` ordering against graphical-session.target so it can't
+# subscribe to wlr-output-management before sway-IPC is ready (the
+# subscribe-before-ready race was the root cause of the boot-time
+# wedge that left the launcher rendering off-screen).
+#
+# `exec` (not `exec_always`): the script already short-circuits if
+# sway-session.target is active, so re-running it on `swaymsg
+# reload` is a no-op. Keeping `exec` makes the no-op explicit and
+# avoids reload-time DBus traffic.
+exec $bin/sway-session
 
 # Force dark mode for Flatpak apps (Obsidian, etc)
 exec gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
@@ -376,26 +428,6 @@ exec mako
 # (mount.yazi plugin) or the `gm` jump-to-/run/media binding — see
 # dotfiles/.config/yazi/keymap.toml.
 exec udiskie --no-tray --automount --notify
-# kanshi: monitor hotplug manager. Reads ~/.config/kanshi/config and
-# applies the matching profile whenever the set of connected outputs
-# changes (laptop docked / undocked, monitor hotplug). Without this,
-# plugging in an external display would just leave it idle until you
-# manually `swaymsg output ...` it on.
-#
-# Why `exec_always` + `pkill`: bare `exec kanshi` only runs on the
-# initial sway startup, not on `swaymsg reload`, which means a freshly-
-# installed kanshi never starts in the existing session and config
-# edits don't take effect until logout. `exec_always` re-fires on
-# every reload; `pkill -x kanshi` kills any prior instance first so we
-# don't stack daemons fighting over the same wlroots IPC. The
-# semicolon makes `kanshi` run regardless of pkill's exit code (pkill
-# exits non-zero when no process matched, which is the steady-state
-# "first startup" case).
-#
-# Debian doesn't ship `kanshi.service` or `kanshictl`, so the cleaner
-# `systemctl --user restart kanshi.service` / `kanshictl reload`
-# patterns aren't available here.
-exec_always pkill -x kanshi; kanshi
 exec wl-paste --watch cliphist store -max-items 10
 exec swayidle -w before-sleep 'swaylock -f'
 exec $bin/battery-monitor

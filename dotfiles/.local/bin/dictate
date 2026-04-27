@@ -215,17 +215,35 @@ ensure_server() {
 
 # ---- Transcription + paste -------------------------------------------------
 
-# POST the WAV to /inference and print the trimmed transcription on
+# POST the WAV to /inference and print the cleaned transcription on
 # stdout. We ask for response_format=text so we don't have to parse
 # JSON in shell; whisper-server returns a plain-text body when that
 # flag is set. temperature=0.0 makes decoding deterministic — useful
 # for dictation where consistency matters more than diversity.
+#
+# The post-processing pipeline:
+#   1. `tr '\n\r' '  '` collapses any line breaks in the response
+#      body into spaces. This is load-bearing: whisper's text
+#      response splits multi-sentence utterances across newlines,
+#      and `wtype -` faithfully types those `\n` bytes as real
+#      Return keypresses. In Claude Code (and any line-submitted
+#      REPL/terminal app) that submits the prompt mid-thought —
+#      every sentence boundary becomes an unintended enter. We
+#      flatten to a single line before typing so the user can keep
+#      dictating multi-sentence prompts without them auto-firing.
+#   2. `tr -s '[:space:]'` squeezes runs of whitespace (including
+#      the spaces we just inserted) down to one, so we don't end up
+#      with double spaces between sentences.
+#   3. The final `sed` trims leading/trailing whitespace from the
+#      whole string — same behavior as the previous version.
 transcribe() {
     curl -sf --max-time 60 \
         -F "file=@${WAV_FILE}" \
         -F "response_format=text" \
         -F "temperature=0.0" \
         "${WHISPER_URL}/inference" \
+        | tr '\n\r' '  ' \
+        | tr -s '[:space:]' \
         | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
 }
 
@@ -293,15 +311,54 @@ cmd_stop_server() {
     fi
 }
 
+# Flip the whisper-server unit on/off based on its current state.
+#
+# This is the entry point used by the status-panel popup (Mod+i):
+# the panel renders `stt: on` / `stt: off` and, if the user selects
+# that line, invokes `dictate toggle-server` to flip it. The two
+# branches:
+#
+#   * Currently active → `systemctl --user stop`. Same effect as
+#     `dictate stop-server`, just without the "already stopped"
+#     branch since toggle-from-on always means "stop it".
+#
+#   * Currently inactive → `systemctl --user start`. **Fire and
+#     forget**: we don't poll the HTTP port for readiness here.
+#     The model load takes 3–6 s on Tiger Lake, and blocking the
+#     panel's child process on that wait would feel sluggish to
+#     the user. The next dictation press already calls
+#     `ensure_server`, which polls /, so by the time the user
+#     records audio the server is either ready or about to be —
+#     the existing readiness wait covers us.
+#
+# Notify on both branches so the user gets visible feedback that
+# the toggle took (otherwise a fast click on the panel line would
+# look like nothing happened, since both transitions are silent
+# at the systemd level on this host).
+cmd_toggle_server() {
+    if systemctl --user is-active --quiet whisper-server.service; then
+        systemctl --user stop whisper-server.service
+        notify "Dictation" "whisper-server stopped (RAM freed)"
+    else
+        # Don't `--wait` and don't poll — we want this to return
+        # promptly so the panel's caller doesn't hang. The model
+        # load is async; readiness is checked at the next
+        # dictation press by ensure_server().
+        systemctl --user start whisper-server.service
+        notify "Dictation" "whisper-server starting…"
+    fi
+}
+
 usage() {
     cat <<'EOF'
 dictate - local Whisper push-to-toggle dictation.
 
 USAGE:
-  dictate              Toggle: start recording, or stop+transcribe+paste.
-  dictate cancel       Abort an in-flight recording without transcribing.
-  dictate stop-server  Stop the whisper-server systemd unit (frees ~1.7 GiB RAM).
-  dictate -h | --help  This help.
+  dictate                Toggle: start recording, or stop+transcribe+paste.
+  dictate cancel         Abort an in-flight recording without transcribing.
+  dictate stop-server    Stop the whisper-server systemd unit (frees ~1.7 GiB RAM).
+  dictate toggle-server  Flip the whisper-server unit on/off (used by status-panel).
+  dictate -h | --help    This help.
 
 KEYBINDS (sway):
   Mod+s        toggle
@@ -312,9 +369,10 @@ EOF
 # ---- Dispatch --------------------------------------------------------------
 
 case "${1:-toggle}" in
-    toggle|"")    cmd_toggle ;;
-    cancel)       cmd_cancel ;;
-    stop-server)  cmd_stop_server ;;
-    -h|--help)    usage ;;
-    *)            echo "dictate: unknown subcommand: $1" >&2; usage >&2; exit 2 ;;
+    toggle|"")      cmd_toggle ;;
+    cancel)         cmd_cancel ;;
+    stop-server)    cmd_stop_server ;;
+    toggle-server)  cmd_toggle_server ;;
+    -h|--help)      usage ;;
+    *)              echo "dictate: unknown subcommand: $1" >&2; usage >&2; exit 2 ;;
 esac

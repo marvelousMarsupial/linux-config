@@ -46,6 +46,22 @@ source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 # Starship prompt
 eval "$(starship init zsh)"
 
+# fnm (Fast Node Manager) shell integration. Loaded conditionally so
+# the same .zshrc is portable across hosts and containers — fnm ships
+# in the dev container image but isn't installed on the host or on
+# remote servers, and `command -v fnm` keeps the file innocuous when
+# absent. `--use-on-cd` makes fnm auto-switch the active Node version
+# when you `cd` into a directory containing a `.nvmrc` /
+# `.node-version` file, which is the whole point of using fnm over a
+# manual `nvm use`. The init also exports `FNM_MULTISHELL_PATH` and
+# prepends it to `$PATH` (this happens AFTER our explicit PATH export
+# at the top of the file, which is intentional — fnm's PATH manipulation
+# needs to win for the active Node version to take precedence over
+# any system Node).
+if command -v fnm >/dev/null; then
+  eval "$(fnm env --use-on-cd --shell zsh)"
+fi
+
 # History
 HISTFILE=~/.zsh_history
 HISTSIZE=10000

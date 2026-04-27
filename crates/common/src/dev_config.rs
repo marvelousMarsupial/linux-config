@@ -1,31 +1,56 @@
-//! Parsed `dev-images.toml` and `vm-profiles.toml`.
+//! Parsed `dev-container.toml`.
 //!
-//! Both files describe lookups: given a name, find the config to use for
-//! building / launching. Kept as plain data structs (no behavior) so the
-//! forge binary reads them once at startup and all command handlers
-//! receive a borrowed slice.
+//! Flat config — there is exactly one dev image, used by every
+//! `forge dev up <name>`. Plain data structs (no behavior) so the forge
+//! binary reads them once at startup and command handlers receive a
+//! borrowed slice. The previously-paired `vm-profiles.toml` /
+//! `VmProfilesFile` was retired with the rest of the `forge vm` stack.
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-/// One dev-container image definition.
+/// The (single) dev container image config.
+///
+/// Backs `forge dev up <name>`. The fields are flat at the top level of
+/// `dev-container.toml` deliberately — there is only one image in the
+/// system, so wrapping it in an `[[image]]` array would be ceremony
+/// around a list of length one.
+///
+/// Note: there is no `containerfile` field. The Containerfile is
+/// embedded into the binary at compile time (see `embed::BASE_CONTAINERFILE`)
+/// and materialised to a tempdir at `forge dev build` time, so the build
+/// runs from any cwd without needing the repo on disk. Image-as-data
+/// rather than image-as-disk-path is what makes the binary truly
+/// self-contained.
 #[derive(Debug, Clone, Deserialize)]
-pub struct DevImage {
-    pub name: String,
-    pub containerfile: String,
+pub struct DevContainer {
+    /// Image tag applied at build time and used as the `FROM` reference
+    /// at container-create time. Namespaced (e.g. `forge-dev`) so it
+    /// doesn't collide with unrelated images on the host.
+    pub image_tag: String,
+    /// Volumes attached to every container. The named-volume entry is
+    /// what makes per-project state persistent across `forge dev rm`.
     #[serde(default)]
     pub default_volumes: Volumes,
+    /// Host ports forwarded into every container as `-p X:X`.
     #[serde(default)]
     pub default_ports: Vec<u16>,
-    /// Forward the host's SSH agent socket into the container. The agent
+    /// Forward the host's `$SSH_AUTH_SOCK` into the container. The agent
     /// holds the keys — the container only gets a socket to request
     /// signatures, never the key material itself.
     #[serde(default)]
     pub ssh_agent: bool,
 }
 
+impl DevContainer {
+    /// Parse the embedded `dev-container.toml` text.
+    pub fn from_toml(s: &str) -> Result<Self> {
+        toml::from_str(s).context("parsing dev-container.toml")
+    }
+}
+
 /// Volume configuration: named volumes for persistent data (code, home dir)
-/// and bind mounts for host files (.ssh, .gitconfig).
+/// and bind mounts for host files.
 ///
 /// Named volumes use `{name}` as a placeholder for the container name, so
 /// each container gets its own volume (e.g. `myapp-home` for container `myapp`).
@@ -52,107 +77,55 @@ pub struct BindMount {
     pub container: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct DevImagesFile {
-    #[serde(default, rename = "image")]
-    pub images: Vec<DevImage>,
-}
-
-impl DevImagesFile {
-    pub fn from_toml(s: &str) -> Result<Self> {
-        toml::from_str(s).context("parsing dev-images.toml")
-    }
-    pub fn find(&self, name: &str) -> Option<&DevImage> {
-        self.images.iter().find(|i| i.name == name)
-    }
-}
-
-/// One VM / system-container profile.
-#[derive(Debug, Clone, Deserialize)]
-pub struct VmProfile {
-    pub name: String,
-    pub image: String,
-    pub kind: VmKind,
-    pub role: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum VmKind {
-    Vm,
-    Container,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct VmProfilesFile {
-    #[serde(default, rename = "profile")]
-    pub profiles: Vec<VmProfile>,
-}
-
-impl VmProfilesFile {
-    pub fn from_toml(s: &str) -> Result<Self> {
-        toml::from_str(s).context("parsing vm-profiles.toml")
-    }
-    pub fn find(&self, name: &str) -> Option<&VmProfile> {
-        self.profiles.iter().find(|p| p.name == name)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// The flat dev-container.toml shape — top-level fields, optional
+    /// `[default_volumes]` table — must round-trip through serde.
+    /// `containerfile` is intentionally absent; the Containerfile is
+    /// embedded in the binary, not loaded from disk.
     #[test]
-    fn parse_dev_images() {
+    fn parse_dev_container() {
         let src = r#"
-[[image]]
-name = "base"
-containerfile = "containers/base.Containerfile"
+image_tag = "forge-dev"
 default_ports = [3000, 8080]
+ssh_agent = true
 
-[image.default_volumes]
+[default_volumes]
 named = [{ name = "{name}-home", container = "/home/dev" }]
 bind = [{ host = "~/.ssh", container = "/home/dev/.ssh:ro" }]
 "#;
-        let f = DevImagesFile::from_toml(src).unwrap();
-        assert_eq!(f.images.len(), 1);
-        let img = f.find("base").unwrap();
-        assert_eq!(img.default_volumes.named.len(), 1);
-        assert_eq!(img.default_volumes.bind.len(), 1);
-        assert_eq!(img.default_volumes.named[0].name, "{name}-home");
-        assert_eq!(img.default_ports, vec![3000, 8080]);
+        let c = DevContainer::from_toml(src).unwrap();
+        assert_eq!(c.image_tag, "forge-dev");
+        assert_eq!(c.default_ports, vec![3000, 8080]);
+        assert!(c.ssh_agent);
+        assert_eq!(c.default_volumes.named.len(), 1);
+        assert_eq!(c.default_volumes.named[0].name, "{name}-home");
+        assert_eq!(c.default_volumes.bind.len(), 1);
     }
 
+    /// `[default_volumes]` is optional. Without it the struct should
+    /// still parse, with an empty `Volumes` default. Surfaces here so a
+    /// future minimal config doesn't silently regress.
     #[test]
-    fn find_returns_none_for_missing() {
-        let f = DevImagesFile { images: vec![] };
-        assert!(f.find("nope").is_none());
-    }
-
-    #[test]
-    fn parse_vm_profiles() {
+    fn dev_container_default_volumes_optional() {
         let src = r#"
-[[profile]]
-name = "net-box"
-image = "images:debian/13"
-kind = "vm"
-role = "net-box"
+image_tag = "forge-dev"
 "#;
-        let f = VmProfilesFile::from_toml(src).unwrap();
-        let p = f.find("net-box").unwrap();
-        assert_eq!(p.kind, VmKind::Vm);
-        assert_eq!(p.role, "net-box");
+        let c = DevContainer::from_toml(src).unwrap();
+        assert!(c.default_volumes.named.is_empty());
+        assert!(c.default_volumes.bind.is_empty());
+        assert!(c.default_ports.is_empty());
+        assert!(!c.ssh_agent);
     }
 
+    /// Missing required fields must surface as a parse error rather
+    /// than a silently-defaulted empty string — that would let a typo
+    /// in `image_tag` produce a buildable-but-untagged image.
     #[test]
-    fn vm_kind_deserializes_lowercase() {
-        let c = toml::from_str::<VmProfile>(
-            r#"name="x"
-image="i"
-kind="container"
-role="dev""#,
-        )
-        .unwrap();
-        assert_eq!(c.kind, VmKind::Container);
+    fn dev_container_missing_required_fields_errors() {
+        let src = r#"default_ports = []"#;
+        assert!(DevContainer::from_toml(src).is_err());
     }
 }

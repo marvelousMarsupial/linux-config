@@ -18,7 +18,15 @@ Owned by user **august**, lives at `/home/august/linux-config`.
 ~/linux-config/target/release/forge teardown
 ```
 
-**Roles:** `server`, `dev`, `desktop`, `remote-desktop`, `net-box`, `attack-box`.
+**Roles:** `server`, `desktop`. Two roles only — server is the base
+(shell stack, editor, rootless-podman runtime, foot terminfo,
+whisper runtime libs) and desktop extends it with the Sway
+compositor and the audio/dictation stack. Every role can spin up
+dev pods via `forge dev` because the container packages live in
+`server`. There is intentionally **no Rust toolchain** in any role
+— `forge` itself is rebuilt inside a dev container and the binary
+is `podman cp`-ed onto the host, keeping `~/.cargo` and `~/.rustup`
+off production hosts.
 
 ## Repo layout
 
@@ -38,13 +46,14 @@ linux-config/
 │       └── share/applications/
 ├── config/
 │   ├── roles.toml          # role definitions (packages + dotfiles globs + post)
-│   ├── dev-images.toml     # podman dev container runtimes
-│   └── vm-profiles.toml    # incus VM profiles
+│   └── dev-container.toml  # single podman dev container image config
 ├── themes/
 │   ├── config.toml         # template targets + scheme metadata
 │   ├── schemes/*.yaml      # base16 color schemes
 │   └── templates/*.j2      # tera templates rendered per-app
-├── containers/             # Containerfiles for dev images
+├── containers/             # base.Containerfile (single dev image,
+│                           # embedded into the binary at compile time
+│                           # so `forge dev build` works from any cwd)
 ├── legacy/                 # the previous Ansible+Stow+Python implementation
 │                           # — reference only, do not extend
 └── target/release/forge    # built binary
@@ -57,14 +66,19 @@ linux-config/
 2. **Plan** (`forge_common::planner::build_plan`):
    - `AptUpdate` once if any package install follows
    - `InstallPackage` per dedup'd package
-   - `Download` per binary (nvim, starship, yazi, fonts...)
-   - `WriteFile` per dotfile that matches a glob — files starting with `#!`
-     get mode `0o755` so embedded scripts execute
+   - `Download` per binary (nvim, starship, yazi, fonts, whisper model)
+   - `WriteFile` per dotfile that matches a glob. Mode 0o755 gets set
+     on files starting with `#!` (shell scripts) **or** `\x7fELF`
+     (vendored binaries — currently whisper-server / whisper-cli).
+     Everything else lands at the default 0o644.
    - `PostCommand` per `post` entry
 3. **Execute** (`forge_common::executor::execute`): every action is idempotent.
    `is_installed`, content-equality checks in `write_atomic`, `dest.exists()`
    for downloads, and the optional `check` field on post-commands all let
-   reruns be cheap no-ops.
+   reruns be cheap no-ops. `InstallPackage` also runs `apt-mark manual`
+   on every package — including the already-installed path — so an
+   `apt autoremove` later can't sweep a role-required package that
+   originally landed as someone else's transitive dep.
 4. **State** is written to `~/.local/state/forge/state.json` so `forge status`
    and `forge teardown` know what role is live.
 
@@ -199,27 +213,127 @@ practice and are documented inline at the top of the kanshi config:
    versa. Verify visually after any rotation change.
 
 After editing, rebuild forge (`cargo build --release -p forge`) and
-either rerun `forge setup desktop` or — for a hot reload without going
-through apt — copy the file to `~/.config/kanshi/config` and
-`pkill -HUP kanshi`. Sway's `exec_always pkill -x kanshi; kanshi`
-respawns the daemon on every `swaymsg reload`, so the next reload also
-re-applies cleanly.
+rerun `forge setup desktop`. For a hot reload of the kanshi config
+without going through forge, copy the file to `~/.config/kanshi/config`
+and `systemctl --user restart kanshi.service` — kanshi is now managed
+by a systemd user unit (`~/.config/systemd/user/kanshi.service`,
+`WantedBy=sway-session.target`) rather than spawned directly by sway.
+Lifecycle is owned by graphical-session.target so a sway exit cleanly
+stops kanshi, and a kanshi crash mid-session is auto-respawned via
+`Restart=on-failure`. The session is bootstrapped by
+`~/.local/bin/sway-session` (run via `exec $bin/sway-session` in the
+sway config), which propagates compositor env vars into dbus and
+systemd before starting `sway-session.target`. The previous
+`exec_always pkill -x kanshi; kanshi` autostart and the bash
+`kanshi-restart` / `kanshi-boot-kick` helpers were retired — kanshi
+1.7.0's subscribe-before-ready race is now closed at the systemd
+dependency-graph level (kanshi.service `After=graphical-session.target`)
+rather than papered over with bash retries.
+
+**Audio stack (desktop role):** PipeWire-only — no PulseAudio
+daemon. The desktop role installs `pipewire-pulse` (the libpulse
+API shim — most apps speak Pulse, not native PipeWire),
+`alsa-utils` (`alsamixer`, `aplay`, `arecord`, `speaker-test` —
+required for any meaningful "no audio" debugging),
+`libspa-0.2-bluetooth` (the BlueZ↔PipeWire bridge — without it
+BT devices pair but produce no PipeWire sink), `rtkit` (lets
+PipeWire request realtime scheduling priority — without it audio
+crackles under CPU load), `wireplumber` (session manager), and
+`fonts-noto-color-emoji` (emoji codepoints render as tofu boxes
+without it). Two post-commands wire it together:
+`systemctl --user enable --now pipewire-pulse.socket` (libpulse
+clients connect via `$XDG_RUNTIME_DIR/pulse/native`; installing
+the package is *not* enough, the socket needs explicit
+enablement) and `sudo systemctl enable --now bluetooth.service`
+(Debian's `bluez` postinst doesn't always enable it on minimal
+installs). The `desktop_role_provisions_audio_stack` test in
+`embed.rs` pins all four packages and both enable post-commands
+together; if you split this up the test will catch it.
+
+One non-obvious gotcha: **wireplumber needs a restart on existing
+installs after `libspa-0.2-bluetooth` lands.** Wireplumber loads
+its SPA monitor list at startup, so adding the BT bridge after
+the session is already up leaves wireplumber blind to BT devices
+until `systemctl --user restart wireplumber`. Fresh installs
+don't hit this (wireplumber starts after the package is on disk)
+which is why we don't add a forge post-cmd for it — but a one-
+time `systemctl --user restart wireplumber` is needed when
+upgrading an already-running session into BT support. Pairing
+itself is per-device and manual; forge can't (shouldn't)
+automate it.
+
+**Screenshot key (desktop role, Print / Shift+Print):** one
+script (`dotfiles/.local/bin/screenshot`) handles both modes,
+sway just dispatches to it. `Print` calls `screenshot select`
+(region selection via slurp), `Shift+Print` calls
+`screenshot full` (all outputs). Both save to
+`~/Pictures/screenshot_<UTC timestamp>.png` AND copy the same
+bytes to the wl-clipboard, with a single notification covering
+both. Esc during region selection is a silent cancel (no
+"screenshot failed" notification — the user knows they
+cancelled). To add a new mode (e.g. focused window): add a case
+branch in the script and a new bindsym in
+`dotfiles/.config/sway/config`. The
+`screenshot_script_and_binds_ship_correctly` test asserts
+the script ships, both binds resolve to the script, and the
+legacy inline `$mod+(Shift+)Print` binds are NOT present —
+those were removed when the script consolidated everything
+into one bind per mode.
 
 **Tweak the dictation stack (desktop role, Mod+s):** the model, the
-build flags, and the systemd unit are spread across three files —
-change in lockstep or the `dictation_dotfiles_ship_correctly` and
+binary, and the systemd unit are spread across three files — change
+in lockstep or the `dictation_dotfiles_ship_correctly` and
 `desktop_role_provisions_whisper_dictation_stack` tests will catch
 the drift. To switch model size: change the URL on the
-`whisper-medium-en-model` download in `config/roles.toml` and the
-matching `--model` path in
-`dotfiles/.config/systemd/user/whisper-server.service`. To change the
-loopback port: update both the unit's `--port` and the
+`whisper-small-en-q5_1-model` download in `config/roles.toml` and
+the matching `--model` path in
+`dotfiles/.config/systemd/user/whisper-server.service`. To change
+the loopback port: update both the unit's `--port` and the
 `WHISPER_PORT` constant in `dotfiles/.local/bin/dictate` (the test
-asserts the two agree). To rebuild whisper.cpp from a newer upstream:
-`rm -rf ~/.local/src/whisper.cpp` and rerun `forge setup desktop` —
-the clone/build post-commands are guarded by checks that probe for
-the source dir and the built binary respectively, so a missing tree
-re-triggers them.
+asserts the two agree). For refreshing the vendored whisper-server
+binary itself, see "Refreshing the vendored whisper-server binary"
+below.
+
+**Refreshing the vendored whisper-server binary:** whisper-server
+and whisper-cli are checked into the dotfile tree at
+`dotfiles/.local/bin/{whisper-server,whisper-cli}` as statically
+linked prebuilt ELF binaries (~3 MiB each, stripped). They land on
+hosts via the planner's ELF detection in `crates/common/src/planner.rs`,
+which sets mode 0o755 on any embedded file starting with `\x7fELF`.
+This replaces the previous host-side build chain — desktop role no
+longer installs `build-essential` / `libopenblas-dev`, and the
+`server` role installs `libopenblas0` + `libgomp1` (the runtime
+libraries the binary still dynamically links against) so every
+machine can run dictation without a build toolchain. To refresh:
+
+```bash
+forge dev up whisper-build       # spin up a clean dev container
+# inside:
+sudo apt install -y build-essential cmake libopenblas-dev
+git clone --depth=1 https://github.com/ggml-org/whisper.cpp /tmp/w
+cd /tmp/w
+cmake -B build -DBUILD_SHARED_LIBS=OFF -DGGML_BLAS=1 -DGGML_NATIVE=ON \
+      -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j --target whisper-server whisper-cli
+strip build/bin/whisper-server build/bin/whisper-cli
+exit
+# back on host:
+podman cp forge-dev-whisper-build:/tmp/w/build/bin/whisper-server \
+          ~/linux-config/dotfiles/.local/bin/whisper-server
+podman cp forge-dev-whisper-build:/tmp/w/build/bin/whisper-cli \
+          ~/linux-config/dotfiles/.local/bin/whisper-cli
+cargo install --path crates/forge --force
+```
+
+Three flags are load-bearing: `-DBUILD_SHARED_LIBS=OFF` (without it
+whisper-server links to libwhisper.so + libggml*.so from the build
+dir, which won't be on any other host); `-DGGML_BLAS=1` (routes
+encoder GEMMs through OpenBLAS — measurable speedup on the encoder
+GEMM kernels); `-DGGML_NATIVE=ON` (lights up AVX2/AVX-512 on Tiger
+Lake — fine because every host running this binary is the user's
+own laptop with the same arch family). If you start running this
+on a heterogeneous fleet, drop NATIVE and pin a baseline ISA
+explicitly.
 
 ## Dictation (Mod+s)
 
@@ -246,15 +360,19 @@ the user, all lazy:
    `dictation_dotfiles_ship_correctly` test enforces both that no
    `[Install]` section ships and that the unit's `--model` arg
    references the same GGML file the role downloads.
-3. **whisper.cpp** is built from source during `forge setup
-   desktop` (no official Linux binaries upstream). The post-command
-   uses `cmake -B build -DGGML_BLAS=1 -DGGML_NATIVE=ON --target
-   whisper-server whisper-cli` — both flags matter: BLAS routes
-   encoder GEMMs through OpenBLAS (libopenblas-dev), NATIVE lights
-   up AVX2/AVX-512 on Tiger Lake. Source lives in
-   `~/.local/src/whisper.cpp/`; `~/.local/bin/whisper-server` and
-   `whisper-cli` are symlinks into the build dir so the systemd
-   unit can use a stable short path.
+3. **whisper-server / whisper-cli** ship prebuilt as vendored
+   binaries in the dotfile tree
+   (`dotfiles/.local/bin/{whisper-server,whisper-cli}`). They are
+   statically linked against libwhisper / libggml so the only
+   runtime deps are libopenblas + libgomp + libgfortran (all
+   pulled in by the `server` role's `libopenblas0` + `libgomp1`
+   packages). On `forge setup`, the planner's ELF detection
+   (`crates/common/src/planner.rs`) writes them with mode 0o755.
+   No host build chain, no `~/.local/src/whisper.cpp/`, no symlinks
+   — `~/.local/bin/whisper-server` is the actual binary on disk.
+   See "Refreshing the vendored whisper-server binary" above for
+   how to rebuild them in a dev container when upstream releases
+   a new version.
 
 Four gotchas worth knowing:
 

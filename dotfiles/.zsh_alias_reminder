@@ -49,8 +49,20 @@ _ar_check() {
     local cmd="$1"
     local exp name
 
-    # Skip empty or single-word
-    [[ -z "$cmd" || "$cmd" != *" "* ]] && return
+    # Skip empty input only.
+    #
+    # Earlier versions of this function also returned when the command
+    # contained no space, on the theory that "single-word commands are
+    # already as short as they get." That guard was wrong: many of the
+    # most useful reminders are single-word — e.g. `clear` -> `c`,
+    # `nvim` -> `v`, `lazygit` -> `lg`, `history` -> `h`,
+    # `wl-copy` -> `clip`, `git` -> `g`. The guard silently suppressed
+    # all of them, so the reminder appeared "broken" to anyone whose
+    # muscle memory still typed the long form. The remaining
+    # length check below (alias name shorter than expansion) is what
+    # actually filters out useless hints, so dropping the space check
+    # is safe.
+    [[ -z "$cmd" ]] && return
 
     # Exact match
     if [[ -n "${_alias_map[$cmd]}" ]]; then

@@ -1,0 +1,73 @@
+# Dev container configuration — one image, one container per project.
+#
+# # Mental model
+#
+# There is exactly one dev container image (built from `containerfile`
+# below, tagged `image_tag`). Every `forge dev up <name>` creates a
+# container from that image, named after the project. There are no
+# language-specific presets — toolchains (rustup, nvm, pyenv, mise,
+# uv, …) are installed *inside* the container the first time the
+# project needs them, and they live in the `<name>-home` named volume
+# mounted at `/home/dev`, so they persist across stop/start and across
+# `forge dev rm`. This trades "rust pre-baked" for "every project gets
+# the same shell, editor, and AI tools, then layers its own toolchain
+# on top." Adding a preset back is a future option, not a current one.
+#
+# # Persistence model
+#
+# `containers/base.Containerfile` bakes the user's dotfiles (zsh, tmux,
+# nvim, yazi, starship, theme) into `/home/dev` at build time, and the
+# named volume `<name>-home` mounts on top of that path. Podman's
+# first-run volume-seed behaviour copies the image's `/home/dev` into
+# the volume the first time the volume is created, so a fresh
+# `forge dev up myapp` starts with a fully-themed shell. Subsequent
+# runs see the volume's own state — anything the user changes inside
+# the container persists across stop/start AND across `forge dev rm`
+# (the container goes; the volume survives). To re-seed an existing
+# container's home from a rebuilt image, wipe the volume first:
+# `podman volume rm <name>-home`.
+#
+# # Authentication
+#
+# SSH keys are NEVER mounted. The host's `$SSH_AUTH_SOCK` is forwarded
+# at create time so `git push` over ssh works inside the container
+# without the key material ever leaving the host's agent. Set
+# `git config user.name` / `user.email` once inside — it lives in the
+# home volume and persists.
+
+# NOTE: there is no `containerfile` field. The Containerfile is
+# embedded into the forge binary at compile time (see
+# `containers/base.Containerfile` in this repo, exposed at runtime as
+# `embed::BASE_CONTAINERFILE`) and materialised to a tempdir at
+# `forge dev build` time alongside the embedded dotfiles tree. That
+# tempdir is the build context podman sees, so `forge dev build`
+# works from any cwd — you don't have to be in this repo. The binary
+# alone is enough.
+
+# Tag applied to the built image. Namespaced with `forge-` so a
+# `podman images` listing makes it obvious which images come from
+# this project, and so a generic name like `base` doesn't collide
+# with random other images on the host.
+image_tag = "forge-dev"
+
+# Host ports forwarded into every container as `-p X:X`. Empty by
+# default — most dev work is initiated from inside the container
+# (running tests, talking to the LSP, ssh-pushing to remotes) and
+# doesn't need inbound access. Add per-project ports here if you
+# routinely run a web server inside that the host browser needs to
+# reach.
+default_ports = []
+
+# Forward the host's `$SSH_AUTH_SOCK` into the container at create
+# time. The agent holds the keys; the container only gets a socket
+# to request signatures, never the key material itself.
+ssh_agent = true
+
+# Volumes attached to every container. The single named volume below
+# is what makes "start it and go back to work" actually work — see
+# the persistence-model section above.
+[default_volumes]
+named = [
+    { name = "{name}-home", container = "/home/dev" },
+]
+bind = []

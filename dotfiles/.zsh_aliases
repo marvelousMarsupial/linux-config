@@ -106,6 +106,37 @@ alias please='sudo $(fc -ln -1)'
 alias ag='alias | grep'
 alias fd='fdfind'
 
+# fix — install the local foot terminfo entry into the remote's
+# ~/.terminfo so vim / yazi / tmux / less / htop on that remote
+# render correctly when you SSH in from foot. Named `fix` because
+# that's how it gets used in practice: SSH somewhere, see TUI apps
+# look broken, exit, run `fix me@host`, SSH back in — it now looks
+# right.
+#
+# Why this exists: foot's terminfo is shipped on Debian trixie via
+# `ncurses-term`, but plenty of remotes (older distros, minimal
+# images, prod boxes you don't provision) don't have it. SSHing
+# from foot then lands you in a session whose TERM the remote
+# ncurses library doesn't know, and TUI apps fall back to
+# broken-looking rendering. Forge-provisioned servers already have
+# ncurses-term in the `server` role; this helper covers everything
+# else.
+#
+# Usage: fix me@vps.example.com
+#
+# Mechanism: `infocmp -x foot` dumps the local terminfo source
+# (`-x` preserves user-defined capabilities foot relies on);
+# the pipe sends it to ssh, which runs `tic -x -o ~/.terminfo` on
+# the remote to compile it into the user's per-account terminfo
+# directory. No sudo required on the remote.
+fix() {
+  if [[ -z "$1" ]]; then
+    echo "usage: fix <user@host>" >&2
+    return 1
+  fi
+  infocmp -x foot | ssh "$1" 'mkdir -p ~/.terminfo && tic -x -o ~/.terminfo /dev/stdin'
+}
+
 # History & Config
 alias h='history -10'
 alias hg='history | grep'

@@ -32,6 +32,44 @@ pub fn bare_name(name: &str) -> &str {
     name.strip_prefix(DEV_PREFIX).unwrap_or(name)
 }
 
+/// Does an image with this tag exist locally?
+///
+/// Used by `forge dev up` to short-circuit with a useful error before
+/// `podman run` would otherwise fail with the cryptic
+/// `short-name "<tag>" did not resolve to an alias and no
+/// unqualified-search registries are defined` — that message comes from
+/// podman's short-name handling falling through to a registry lookup
+/// when the local image is missing, and it does not mention `forge dev
+/// build` (which is what the user actually needs to run).
+pub fn image_exists(tag: &str) -> bool {
+    Command::new("podman")
+        .args(["image", "exists", tag])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Is the `podman` binary on PATH at all?
+///
+/// Checked at the top of every `forge dev` subcommand so the user gets a
+/// clear "install podman" hint instead of the bare `os error 2` that
+/// `Command::new("podman").status()?` produces when the binary is missing.
+/// We probe with `podman --version` rather than `which podman` so we don't
+/// depend on `which` being installed and so a podman that's on PATH but
+/// broken (linked against a missing libc, for example) also surfaces
+/// here, where the error message can be helpful.
+pub fn installed() -> bool {
+    Command::new("podman")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Does a container with this (qualified or bare) name exist?
 /// Uses `podman container exists` which is the cheapest query available.
 pub fn exists(name: &str) -> bool {

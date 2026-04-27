@@ -130,14 +130,29 @@ pub fn build_plan(cfg: &RoleConfig, src: &dyn DotfileSource) -> Result<Plan> {
         let contents = src
             .read(&rel)
             .ok_or_else(|| anyhow::anyhow!("dotfile vanished from source: {}", rel.display()))?;
-        // Files with a shebang are scripts — write them executable so binds
-        // like `exec ~/.local/bin/wifi-menu` actually run instead of erroring
-        // with EACCES. include_dir doesn't preserve the source's +x bit.
-        let mode = if contents.starts_with(b"#!") {
-            Some(0o755)
-        } else {
-            None
-        };
+        // Decide the file mode at write time.
+        //
+        // Two triggers for the executable bit, both load-bearing:
+        //
+        //   * Shebang (`#!`) — POSIX scripts. Every entry under
+        //     `dotfiles/.local/bin/` written without 0o755 here would
+        //     bind silently to "EACCES" because `include_dir!` doesn't
+        //     preserve the source's executable bit.
+        //
+        //   * ELF magic (`\x7fELF`) — vendored binaries. The whisper
+        //     dictation stack ships prebuilt whisper-server +
+        //     whisper-cli binaries inside the dotfile tree (rather
+        //     than building from source on every host); without this
+        //     branch they'd land at 0o644 and fail to execute. ELF
+        //     magic is unambiguous — no shell script or config file
+        //     can begin with those four bytes — so the heuristic
+        //     can't false-positive on an unintended config file.
+        //
+        // Anything else gets 0o644 (the current-mode fallthrough);
+        // `write_atomic` does the chmod after the byte write.
+        let is_executable =
+            contents.starts_with(b"#!") || contents.starts_with(b"\x7fELF");
+        let mode = if is_executable { Some(0o755) } else { None };
         plan.push(Action::WriteFile {
             rel,
             contents,
@@ -371,5 +386,69 @@ mod tests {
         let plan = build_teardown_plan(&c, &sample_source()).unwrap();
         // setup `post` commands are dropped during teardown.
         assert_eq!(plan.summary().commands, 0);
+    }
+
+    /// Files starting with the ELF magic `\x7fELF` must be marked
+    /// executable (mode 0o755). This is what makes vendored binaries
+    /// shipped through the dotfile tree (whisper-server / whisper-cli)
+    /// runnable after `forge setup` writes them — without it they'd
+    /// land at 0o644 and `~/.local/bin/whisper-server` would EACCES on
+    /// the first dictation press.
+    #[test]
+    fn elf_magic_marks_file_executable() {
+        let src = InMemoryDotfiles(vec![(
+            PathBuf::from(".local/bin/fake-bin"),
+            // Real ELF magic + a small tail so the bytes don't look
+            // like a shebang fallthrough.
+            b"\x7fELF\x02\x01\x01\x00".to_vec(),
+        )]);
+        let c = cfg(&[], &[".local/bin/fake-bin"], &[]);
+        let plan = build_plan(&c, &src).unwrap();
+        match &plan.actions[0] {
+            Action::WriteFile { mode, .. } => {
+                assert_eq!(*mode, Some(0o755), "ELF binary must be marked 0o755");
+            }
+            _ => panic!("expected WriteFile"),
+        }
+    }
+
+    /// Shebang detection must continue to work alongside ELF
+    /// detection — both branches in the same `is_executable` predicate.
+    /// Pinned so a future refactor that flips one to `else if` doesn't
+    /// silently regress the script case.
+    #[test]
+    fn shebang_marks_file_executable() {
+        let src = InMemoryDotfiles(vec![(
+            PathBuf::from(".local/bin/script"),
+            b"#!/bin/sh\necho hi\n".to_vec(),
+        )]);
+        let c = cfg(&[], &[".local/bin/script"], &[]);
+        let plan = build_plan(&c, &src).unwrap();
+        match &plan.actions[0] {
+            Action::WriteFile { mode, .. } => {
+                assert_eq!(*mode, Some(0o755), "shebang script must be marked 0o755");
+            }
+            _ => panic!("expected WriteFile"),
+        }
+    }
+
+    /// Plain text content (no shebang, no ELF magic) gets the
+    /// fallthrough mode (None → write_atomic uses 0o644). Pin this so a
+    /// future heuristic doesn't accidentally widen and start chmod-ing
+    /// regular config files executable.
+    #[test]
+    fn plain_text_does_not_get_executable_bit() {
+        let src = InMemoryDotfiles(vec![(
+            PathBuf::from(".zshrc"),
+            b"export PATH=$PATH:/foo\n".to_vec(),
+        )]);
+        let c = cfg(&[], &[".zshrc"], &[]);
+        let plan = build_plan(&c, &src).unwrap();
+        match &plan.actions[0] {
+            Action::WriteFile { mode, .. } => {
+                assert_eq!(*mode, None, "plain text must not be marked executable");
+            }
+            _ => panic!("expected WriteFile"),
+        }
     }
 }

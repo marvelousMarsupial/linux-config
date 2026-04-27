@@ -1,0 +1,92 @@
+#!/bin/bash
+# screenshot — Wayland screenshot helper for sway. Saves a PNG to
+# ~/Pictures/ and pushes the same bytes to the wl-clipboard, so the
+# user gets both a permanent file (for sharing later, scrolling back
+# through, attaching to a bug report) and an immediately-pasteable
+# clipboard payload (for dragging into Slack / Obsidian / a chat
+# textbox right now).
+#
+# Usage:
+#   screenshot            # selection (slurp) — default, bound to Print
+#   screenshot select     # same as default
+#   screenshot full       # all outputs at once — bound to Shift+Print
+#
+# Why a script rather than two inline `bindsym Print exec ...` lines:
+# the save-and-copy combo wants a temp path, an mkdir -p, slurp-cancel
+# handling, and an error notification, all chained together. Inlining
+# all of that into the sway config makes the bindsym line ~200 chars
+# of unreadable shell with no room for comments, and duplicating the
+# logic across the select and full binds invites drift. Keeping it
+# here also means future modes (window, output) can be added without
+# touching the sway config.
+#
+# Two design choices worth documenting:
+#
+#   1. Save-then-copy, not capture-once-and-tee. We could `grim ... -`
+#      and pipe the bytes simultaneously into wl-copy and a tee-to-
+#      file, but that races the notification (we need the path before
+#      we can announce it) and gives wl-copy an unsizable stream
+#      which some Wayland clients handle worse than a pre-encoded
+#      MIME blob. Writing the file first means the path is stable
+#      before we notify, and `wl-copy < file` hands a complete PNG
+#      to the clipboard daemon in one shot.
+#
+#   2. Silent exit on slurp cancel. If the user starts a region
+#      selection and presses Esc, slurp exits non-zero. Surfacing
+#      that as a "Screenshot failed" notification would be more noise
+#      than signal — the user knows they cancelled. We catch the
+#      non-zero exit, exit 0 ourselves, and write nothing.
+
+set -euo pipefail
+
+mode="${1:-select}"
+out_dir="$HOME/Pictures"
+out="$out_dir/screenshot_$(date +%Y%m%d_%H%M%S).png"
+
+# mkdir -p is idempotent and silent if the directory exists, so this
+# fixes the first-run-on-fresh-install case where ~/Pictures has not
+# been created yet (a freshly-provisioned XDG home does not
+# auto-populate it). Without this the very first screenshot would
+# fail with "no such file or directory" and the user would have no
+# obvious clue to mkdir manually.
+mkdir -p "$out_dir"
+
+case "$mode" in
+    select)
+        # slurp prints the selected region as "X,Y WxH" on stdout.
+        # On Esc-cancel it exits 1 and prints nothing — the `|| exit 0`
+        # turns the cancel into a clean noop instead of letting set -e
+        # abort the script (which would still be silent but would
+        # leave a non-zero exit code that systemd would log if the
+        # bind were ever invoked from a unit).
+        region=$(slurp) || exit 0
+        grim -g "$region" "$out"
+        ;;
+    full)
+        # No -g flag → grim captures every connected output and
+        # composes them side-by-side at their actual resolutions, so
+        # the resulting PNG matches what the user saw across all
+        # monitors at the moment of capture.
+        grim "$out"
+        ;;
+    *)
+        # Unknown mode is a developer error (typo in a sway bind),
+        # not a user error — surface it as a critical notification
+        # so it does not get silently lost in the notification
+        # history. The exit 1 means the bindsym `exec` will surface
+        # a non-zero return to sway, which logs it.
+        notify-send -u critical "Screenshot" "Unknown mode: $mode (expected select|full)"
+        exit 1
+        ;;
+esac
+
+# wl-copy reads from stdin and announces the MIME type to the
+# compositor; `--type image/png` keeps Wayland clients from having
+# to sniff the bytes. The `< "$out"` redirection means we are
+# pushing the exact same payload that landed on disk, so a paste
+# and the saved file are byte-identical.
+wl-copy --type image/png < "$out"
+
+# Single notification covers both the file and the clipboard so the
+# user does not get spammed with two pop-ups for one action.
+notify-send "Screenshot" "Saved to $out — also copied to clipboard"

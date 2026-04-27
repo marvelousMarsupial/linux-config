@@ -7,38 +7,40 @@ use std::fmt;
 use std::path::Path;
 use std::str::FromStr;
 
+/// The set of roles forge knows how to provision.
+///
+/// Two roles:
+/// * `server`  — base role: shell stack + editor + container runtime
+///   (rootless podman). Headless. Extends nothing.
+/// * `desktop` — server + Sway compositor + Rust toolchain +
+///   full audio/dictation/font stack. Extends `server`.
+///
+/// Previously-defined `dev`, `remote-desktop`, `net-box`, and
+/// `attack-box` roles were retired. `dev`'s responsibilities (Rust
+/// toolchain, lazygit) folded into `desktop`; its container-runtime
+/// packages (podman + friends) moved into `server` so every host can
+/// run `forge dev`. `remote-desktop` (a desktop + TigerVNC) was dropped
+/// because spinning up a remote graphical session is a one-off thing
+/// the user does manually with a systemd unit, not a forge concern.
+/// The specialty `net-box` / `attack-box` toolboxes were dropped too —
+/// per-project containers cover the use case.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Role {
     Server,
-    Dev,
     Desktop,
-    RemoteDesktop,
-    NetBox,
-    AttackBox,
 }
 
 impl Role {
     pub fn as_str(&self) -> &'static str {
         match self {
             Role::Server => "server",
-            Role::Dev => "dev",
             Role::Desktop => "desktop",
-            Role::RemoteDesktop => "remote-desktop",
-            Role::NetBox => "net-box",
-            Role::AttackBox => "attack-box",
         }
     }
 
     pub fn all() -> &'static [Role] {
-        &[
-            Role::Server,
-            Role::Dev,
-            Role::Desktop,
-            Role::RemoteDesktop,
-            Role::NetBox,
-            Role::AttackBox,
-        ]
+        &[Role::Server, Role::Desktop]
     }
 }
 
@@ -54,11 +56,7 @@ impl FromStr for Role {
     fn from_str(s: &str) -> Result<Self> {
         match s {
             "server" => Ok(Role::Server),
-            "dev" => Ok(Role::Dev),
             "desktop" => Ok(Role::Desktop),
-            "remote-desktop" => Ok(Role::RemoteDesktop),
-            "net-box" => Ok(Role::NetBox),
-            "attack-box" => Ok(Role::AttackBox),
             other => Err(anyhow!("unknown role: {other}")),
         }
     }
@@ -225,16 +223,12 @@ post = ["chsh -s /bin/zsh"]
 extends = "server"
 packages = ["sway", "foot"]
 dotfiles = ["sway", "foot"]
-
-[remote-desktop]
-extends = "desktop"
-packages = ["tigervnc-standalone-server"]
 "#;
 
     #[test]
     fn parses_sample() {
         let f = RolesFile::from_toml(SAMPLE).unwrap();
-        assert_eq!(f.roles.len(), 3);
+        assert_eq!(f.roles.len(), 2);
     }
 
     #[test]
@@ -266,16 +260,6 @@ post = [
     }
 
     #[test]
-    fn resolves_three_deep() {
-        let f = RolesFile::from_toml(SAMPLE).unwrap();
-        let rd = f.resolved(Role::RemoteDesktop).unwrap();
-        assert_eq!(
-            rd.packages,
-            vec!["zsh", "tmux", "sway", "foot", "tigervnc-standalone-server"]
-        );
-    }
-
-    #[test]
     fn role_roundtrip() {
         for r in Role::all() {
             assert_eq!(Role::from_str(r.as_str()).unwrap(), *r);
@@ -297,11 +281,12 @@ post = [
     fn cycle_detection() {
         // Serde won't let us build a cycle via TOML deserialization easily,
         // but we can verify the resolver fails fast if somehow given one.
+        // Uses two of the still-defined roles since `dev` has been retired.
         let src = r#"
 [server]
-extends = "dev"
+extends = "desktop"
 
-[dev]
+[desktop]
 extends = "server"
 "#;
         let f = RolesFile::from_toml(src).unwrap();

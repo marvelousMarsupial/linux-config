@@ -20,8 +20,8 @@ CONTENT = """
    Super + -           Vertical split      Super + Shift + e   Exit sway
    Super + f           Fullscreen
    Super + Shift Space Float toggle        SCREENSHOTS
-   Super + t           Toggle layout       Print               Select to clip
-   Super + `           Scratchpad          Super + Print       Screen to file
+   Super + t           Toggle layout       Print               Region → file & clip
+   Super + `           Scratchpad          Shift + Print       Full → file & clip
 
    APPS                                    TMUX (in terminal)
    Super + Enter       Terminal            Alt + hjkl          Navigate panes

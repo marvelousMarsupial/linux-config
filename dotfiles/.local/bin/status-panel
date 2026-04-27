@@ -3,19 +3,41 @@
 
 Bound to ``$mod+i`` in sway. Renders a small fuzzel popup with:
 
-  1. A figlet ASCII clock for the current time (via ``toilet -f future``).
+  1. An ASCII-block clock for the current time (via ``toilet -f pagga``).
   2. The date.
   3. A blank spacer line so the status block is visually separated.
   4. Network status (``wifi: <ssid>``, ``ethernet``, or ``offline``).
   5. VPN status (``vpn: on`` / ``vpn: off``).
-  6. Battery / power status with explicit "charging" label when charging.
+  6. Power status with explicit charging / full / on-ac labels.
+  7. STT (whisper-server) state — ``stt: on`` / ``stt: off``.
+
+Every line is space-padded to be visually centered within
+``PANEL_WIDTH`` before it is handed to fuzzel; fuzzel itself does
+not have a built-in justify-center option for ``--dmenu`` lines, so
+we do the alignment ourselves at render time. The padding is
+purely cosmetic — the click-dispatch on the ``stt:`` line strips
+the leading whitespace before matching the prefix so centering
+does not break the toggle.
+
+Selectable lines:
+
+* The ``stt:`` line is **interactive**: selecting it (Enter / left
+  click in fuzzel) invokes ``dictate toggle-server`` to flip the
+  whisper-server systemd unit on or off. Every other line is a
+  read-only status display — the panel ignores selections that
+  don't match the ``stt:`` prefix, so a stray Enter on the clock
+  or wifi line is a harmless no-op. This keeps the bulk of the
+  panel "just info" while still giving the user one click-to-act
+  control where they actually need one.
 
 Layout choices worth flagging:
 
 * ``PANEL_WIDTH`` is sized for the longest possible status line
-  ("battery: NN% charging" at ~22 chars) plus a small breathing margin.
-  Anything wider (long SSIDs) is truncated with an ellipsis so nothing
-  overflows the popup edge.
+  ("power: full, connected" at 22 chars) plus a few cells of
+  breathing margin — back to the original 26 after a brief
+  detour through wider settings while we iterated on the
+  full-on-AC wording. Anything wider (long SSIDs) is truncated
+  with an ellipsis so nothing overflows the popup edge.
 * Emoji prefixes are deliberately *not* used. They render as
   double-width cells in fuzzel's monospace font, which made earlier
   versions of this panel clip text off the right edge.
@@ -42,9 +64,22 @@ if dbus_env.exists() and "DBUS_SESSION_BUS_ADDRESS" not in os.environ:
             os.environ["DBUS_SESSION_BUS_ADDRESS"] = addr
 
 
-# Width of the popup in monospace cells. Sized for the longest status
-# line ("battery: NN% charging" ~ 22 chars) plus a few cells of breathing
-# room. Bumping the font size below also affects how many cells fit on
+# Width of the popup in monospace cells. Sized for the longest
+# possible status line:
+#
+#   "power: full, connected"      22 chars  (Full while AC attached)
+#   "power: NN% charging"         19 chars  (charging, two-digit NN)
+#
+# 22 chars + 4 cells of margin = 26. The smblock clock font runs
+# exactly 14 cells wide for any HH:MM (verified across
+# 00:00 / 88:88 / 12:34 / 09:59), so it fits with 6 cells of slack
+# on each side after centering. We briefly ran 52 cells while
+# trying bigascii12, but the resulting popup was too physically
+# large for a glanceable status display — smblock + 26 cells is
+# the right balance of "bold enough to read at a distance" and
+# "compact enough to feel like a popup, not a full window".
+#
+# Bumping the font size below also affects how many cells fit on
 # screen — keep them in sync.
 PANEL_WIDTH = 26
 FONT = "monospace:size=18"
@@ -74,14 +109,63 @@ def trunc(s: str, n: int) -> str:
     return s if len(s) <= n else s[: max(0, n - 1)] + "…"
 
 
-def get_clock() -> str:
-    """Big ASCII-art clock for the current ``HH:MM`` via ``toilet -f future``.
+def center(line: str, width: int) -> str:
+    """Pad ``line`` with leading spaces so its content sits centered in ``width``.
 
-    The ``future`` font is ~3 lines tall and ~13 cells wide for a 5-char
-    time string, which fits comfortably inside ``PANEL_WIDTH``.
+    fuzzel's ``--dmenu`` mode renders each input line left-justified
+    against the popup's inner padding; there is no built-in
+    justify-center option. To get centered text we compute the slack
+    space ourselves and prepend half of it. We do not pad the right
+    side — the trailing whitespace would only matter for selection
+    highlighting, and we already disable that for read-only lines.
+
+    Lines that are wider than ``width`` are returned unchanged
+    (``max(0, ...)`` clamps the pad), which is the right thing for
+    the clock: pagga can render slightly wider than ``PANEL_WIDTH``
+    on edge-case time strings, and we'd rather show all the digits
+    than chop them.
     """
-    time_str = datetime.now().strftime("%H:%M")
-    return run(["toilet", "-f", "future", time_str]).rstrip("\n")
+    pad = max(0, (width - len(line)) // 2)
+    return " " * pad + line
+
+
+def get_clock() -> str:
+    """Compact bold ASCII clock for the current ``HH MM`` via ``toilet -f smblock``.
+
+    Picked after a four-font iteration:
+
+    * ``future`` (original) — too thin, looked weak.
+    * ``pagga`` — right weight but had a ░ shading "background"
+      around the digits the user disliked.
+    * ``bigascii12`` — clean and bold but at 12 rows × 50 cells
+      it dominated the popup; "way too big" was the verdict.
+    * ``smblock`` (current) — solid block-drawing glyphs (▖ ▌ ▞ ▘),
+      bold without being thick-for-its-own-sake, no decorative
+      shading, and only 4 rows × 14 cells so the popup stays a
+      popup rather than a full-window status display.
+
+    No colon: smblock's native colon sat too low against the digit
+    caps; lifting it one row sat too high; splitting the dots with
+    half-blocks centered them but still didn't read cleanly. After
+    three iterations on a single glyph the user called it — drop
+    the colon entirely and let a single-cell space between hours
+    and minutes do the visual separating. ``HH MM`` reads as a
+    time without ambiguity (no other 4-digit-with-gap format is
+    common in this context) and the script gets simpler in the
+    bargain.
+
+    No leading/trailing-blank-row trim is needed for smblock — its
+    output is fully populated, unlike bigascii12's tall fixed-cell
+    rendering. If you ever swap to a font with empty padding rows,
+    re-introduce the trim loops the bigascii12 attempt used.
+    """
+    # `%H %M` over `%H:%M` so the rendered glyph contains a literal
+    # space between hours and minutes; smblock renders that space
+    # as a 1-cell-wide blank column, giving "12 34" as `HH (gap)
+    # MM` (6 + 1 + 6 = 13 cells wide, narrower than the 14-cell
+    # native HH:MM render).
+    time_str = datetime.now().strftime("%H %M")
+    return run(["toilet", "-f", "smblock", time_str]).rstrip("\n")
 
 
 def get_network() -> str:
@@ -127,20 +211,44 @@ def get_vpn() -> str:
     return "vpn: on" if re.search(r"inet\s+\d+", wg) else "vpn: off"
 
 
-def get_battery() -> str:
-    """Return a battery / power status line.
+def get_power() -> str:
+    """Return a power status line.
+
+    Every line uses the ``power:`` prefix (the user prefers a single
+    consistent label; the previous mix of ``battery:`` and ``power:``
+    depending on whether a battery was present was inconsistent). The
+    body of the line then describes the current state.
 
     Possible outputs:
 
-      * ``power: ac``           — no battery present (desktop / docked).
-      * ``battery: NN% charging`` — on AC and charging up.
-      * ``battery: NN% (ac)``   — on AC, full enough that the firmware
-                                  has stopped charging the cell ("Not
-                                  charging" status, common on ThinkPads
-                                  with a charge-stop threshold).
-      * ``battery: full``        — battery reports ``Full``.
-      * ``battery: NN%``         — discharging, or any other state we
-                                  don't have a special label for.
+      * ``power: ac``                        — no battery present
+                                               (desktop / docked).
+      * ``power: NN% charging``              — on AC and charging up.
+      * ``power: NN% (ac)``                  — on AC, full enough that
+                                               the firmware stopped
+                                               charging the cell ("Not
+                                               charging" status, common
+                                               on ThinkPads with a
+                                               charge-stop threshold).
+      * ``power: full, connected``           — battery reports
+                                               ``Full`` while AC is
+                                               still plugged in. The
+                                               user picked this
+                                               compact wording after
+                                               iterating from "full
+                                               and connected to
+                                               power" → "full
+                                               connected to power" →
+                                               this; "full," conveys
+                                               charged, "connected"
+                                               conveys still-on-mains,
+                                               and the comma keeps
+                                               the two facts visually
+                                               distinct.
+      * ``power: NN%``                       — discharging, or any
+                                               other state we don't
+                                               have a special label
+                                               for.
 
     Sourced from ``/sys/class/power_supply/BAT0`` rather than upower so
     this works on minimal installs without the upower daemon.
@@ -154,24 +262,85 @@ def get_battery() -> str:
     except OSError:
         # sysfs read failed (battery hot-removed, permissions, etc.) —
         # better to render a placeholder than to crash the whole panel.
-        return "battery: ?"
+        return "power: ?"
     if status == "charging":
-        return f"battery: {pct}% charging"
+        return f"power: {pct}% charging"
     if status == "full":
-        return "battery: full"
+        # User-picked wording for "battery Full while AC attached".
+        # The comma is load-bearing: "full" alone doesn't tell the
+        # user the laptop is still on mains, and earlier longer
+        # drafts ("full and connected to power", "full connected to
+        # power") were trimmed at the user's request. The two-word
+        # form keeps both facts visible without widening the panel.
+        # PANEL_WIDTH above was sized to fit this exact string; if
+        # you reword it, re-check the width.
+        return "power: full, connected"
     if status == "not charging":
-        return f"battery: {pct}% (ac)"
+        return f"power: {pct}% (ac)"
     # "discharging" or anything unexpected — show just the percentage.
-    return f"battery: {pct}%"
+    return f"power: {pct}%"
+
+
+def get_stt() -> str:
+    """Return ``stt: on`` if the whisper-server unit is active, else ``stt: off``.
+
+    The whisper-server systemd unit holds the small.en-q5_1 model
+    resident in RAM (~330 MiB on this host) and is **lazy-started**
+    by the ``dictate`` script on the first dictation press — it has
+    no ``[Install]`` section, so it is never enabled at boot. That
+    gives this status line a clean binary meaning:
+
+      * ``stt: on``  — the unit is running, RAM is occupied, the
+                       next dictation press will be near-instant
+                       (no model load to pay).
+      * ``stt: off`` — the unit is stopped, RAM is free, the next
+                       dictation press will lazy-start it (and pay
+                       the 3–6 s model load once).
+
+    Sourced via ``systemctl --user is-active`` rather than
+    probing the loopback port: ``is-active`` is faster (no
+    network round-trip), doesn't briefly print ``stt: off`` while
+    the unit is ``activating`` (model still loading) — actually
+    it does (activating returns non-zero exit and our ``run()``
+    helper treats that as failure), but that transient state is
+    fine to display as "off" because functionally the user can't
+    use it yet anyway.
+
+    The line is the one **interactive** entry in the panel — see
+    ``main`` for the selection-dispatch that flips the unit when
+    the user picks this line.
+    """
+    return (
+        "stt: on"
+        if run(["systemctl", "--user", "is-active", "whisper-server.service"]).strip()
+        else "stt: off"
+    )
+
+
+# Selection prefix the panel treats as an interactive control. Any
+# fuzzel selection whose text begins with this prefix is dispatched
+# to ``dictate toggle-server``; any other selection (or a cancelled
+# popup) is a no-op. Defined as a module constant so the embed-side
+# regression test in ``crates/forge/src/embed.rs`` can substring-
+# check that the dispatch wiring still references the right prefix.
+STT_LINE_PREFIX = "stt:"
 
 
 def main() -> None:
-    """Render the status panel and hand it to fuzzel."""
+    """Render the status panel, hand it to fuzzel, and dispatch the selection.
+
+    Almost all lines are display-only — the panel is meant to be
+    glance-and-go. The one exception is the ``stt:`` line, which
+    flips the whisper-server unit when selected (see the module
+    docstring for why). The selection dispatch lives here rather
+    than in ``get_stt()`` so the rendering and click-handling
+    halves of the panel stay co-located.
+    """
     date_str = datetime.now().strftime("%a %b %d")
 
     # Build the line list in display order. Clock first (3 lines), then
     # the date, a blank spacer for visual grouping, then one status line
-    # each for network / vpn / battery.
+    # each for network / vpn / power / stt.
     clock_lines = get_clock().split("\n")
     lines: list[str] = []
     lines.extend(clock_lines)
@@ -179,14 +348,32 @@ def main() -> None:
     lines.append("")
     lines.append(get_network())
     lines.append(get_vpn())
-    lines.append(get_battery())
+    lines.append(get_power())
+    # STT is appended last so it's the bottom line; that's also where
+    # the "interactive" line lives, which keeps the read-only top of
+    # the panel visually grouped and the actionable line at the edge.
+    lines.append(get_stt())
+
+    # Center every line within PANEL_WIDTH. Done after the lines list
+    # is fully built (rather than per get_*() call) so future lines
+    # automatically inherit centering without each helper having to
+    # know about it. The blank spacer line stays a blank — center("")
+    # returns "" because len("") < width and the pad is "" * N, so
+    # nothing changes for it.
+    lines = [center(line, PANEL_WIDTH) for line in lines]
 
     # Hand the lines to fuzzel via stdin. The selection-color overrides
-    # make highlighting invisible (panel is read-only, so we don't want
-    # the cursor's blue bar drawing attention to whichever line happens
-    # to be focused). `--inner-pad` and `--line-height` give the popup a
-    # bit more breathing room than fuzzel's defaults.
-    subprocess.run(
+    # make highlighting invisible (most of the panel is read-only, so
+    # we don't want the cursor's blue bar drawing attention to whichever
+    # line happens to be focused). `--inner-pad` and `--line-height`
+    # give the popup a bit more breathing room than fuzzel's defaults.
+    #
+    # Selection dispatch: fuzzel `--dmenu` prints the picked line on
+    # stdout (exit 0). On Escape it exits non-zero and prints nothing
+    # — so we only act on a returncode-0 result. Reading the picked
+    # line lets us treat the `stt:` row as a click-target while every
+    # other line stays a no-op.
+    result = subprocess.run(
         [
             "fuzzel",
             "--dmenu",
@@ -203,6 +390,23 @@ def main() -> None:
         text=True,
         capture_output=True,
     )
+
+    # Only the STT line is interactive. We match by prefix, not exact
+    # string, so the dispatch keeps working when the line text
+    # changes from `stt: on` to `stt: off` (or vice versa) between
+    # renders. The `.strip()` is load-bearing now that every line is
+    # space-padded for centering — fuzzel echoes the picked line
+    # back verbatim including the leading spaces, so a raw
+    # `startswith("stt:")` would never match. Any non-stt selection
+    # — or a cancelled popup (returncode != 0) — falls through
+    # silently.
+    if result.returncode == 0 and result.stdout.strip().startswith(STT_LINE_PREFIX):
+        # Fire-and-forget: dictate's toggle-server returns quickly
+        # (systemd start is async, no readiness wait), but we still
+        # don't want to block this script's exit on it. Popen avoids
+        # the wait, and the user's notification ("stopped" /
+        # "starting…") is emitted by dictate via notify-send.
+        subprocess.Popen(["dictate", "toggle-server"])
 
 
 if __name__ == "__main__":

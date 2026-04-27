@@ -16,7 +16,7 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::atomic::write_atomic;
-use crate::packages::{apt_install, apt_remove, apt_update, is_installed};
+use crate::packages::{apt_install, apt_mark_manual, apt_remove, apt_update, is_installed};
 use crate::plan::{Action, Plan};
 use crate::role::PostCmd;
 
@@ -60,12 +60,26 @@ fn apply_one(action: &Action, home: &Path, opts: &ExecOpts) -> Result<ActionResu
             Ok(ActionResult::Changed)
         }
         Action::InstallPackage(pkg) => {
-            if is_installed(pkg) {
-                Ok(ActionResult::AlreadyDone)
+            // `apt-mark manual` runs on BOTH paths (already-installed AND
+            // freshly-installed) so an apt autoremove can't sweep a
+            // role-required package that happened to already be on disk
+            // as someone else's transitive dependency. Without this, a
+            // package like `libopenblas0` — pulled in as an auto dep
+            // when libopenblas-dev was on the system — stays marked
+            // "automatically installed" even after we explicitly list
+            // it in the role; apt later thinks it's an orphan and
+            // removes it. apt-mark is a no-op when the flag is already
+            // set, so the cost on reruns is one tiny subprocess per
+            // package. Worth it for the protection.
+            let result = if is_installed(pkg) {
+                ActionResult::AlreadyDone
             } else {
                 apt_install(pkg).with_context(|| format!("installing package `{pkg}`"))?;
-                Ok(ActionResult::Changed)
-            }
+                ActionResult::Changed
+            };
+            apt_mark_manual(pkg)
+                .with_context(|| format!("marking package `{pkg}` as manually installed"))?;
+            Ok(result)
         }
         Action::RemovePackage(pkg) => {
             if !is_installed(pkg) {

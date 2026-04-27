@@ -1,0 +1,32 @@
+[Unit]
+# Sway-specific user session target. The session script
+# (`~/.local/bin/sway-session`) starts this target after sway-IPC has
+# been wired up and the compositor's environment variables have been
+# pushed into systemd + dbus. Services that should autostart with
+# sway use `WantedBy=sway-session.target` in their unit's [Install]
+# section; the canonical example in this repo is kanshi.service.
+#
+# Why a sway-specific target rather than `WantedBy=graphical-session.target`
+# directly: systemd documentation (and the freedesktop DESKTOP_ENVIRONMENTS
+# guidance) says graphical-session.target shouldn't be started directly
+# by users — it's reserved as a coordination point that DE-specific
+# targets `BindsTo=`. So we mirror what GNOME, KDE, and the alebastr/
+# sway-systemd reference implementation do: a small DE-specific target
+# that BindsTo graphical-session.target.
+Description=Sway compositor session
+Documentation=man:systemd.special(7)
+
+# BindsTo: when sway-session.target starts, graphical-session.target
+# starts too, and they share lifecycle — stopping one stops the other.
+# That's how units with `WantedBy=graphical-session.target` (e.g. some
+# portable wayland services from upstream packages) get pulled in
+# alongside our kanshi.service which uses `WantedBy=sway-session.target`.
+BindsTo=graphical-session.target
+
+# graphical-session-pre.target is systemd's documented hook for
+# "things that should run before the graphical session starts" — e.g.
+# environment imports, agent setup. We pull it in via Wants= rather
+# than Requires= so a missing pre-target unit doesn't fail the whole
+# session bring-up; After= guarantees ordering when it's present.
+Wants=graphical-session-pre.target
+After=graphical-session-pre.target

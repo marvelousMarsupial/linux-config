@@ -1,36 +1,63 @@
 # linux-config
 
-Single-binary Linux workstation provisioner. One Rust binary embeds the dotfile
-tree, role definitions, and theme system at compile time — copy `forge` onto a
-fresh Debian box and `forge setup desktop` brings it from stock to fully
-configured in one command.
+Single-binary Linux workstation provisioner. One Rust binary embeds the
+dotfile tree, role definitions, theme system, the dev container's
+Containerfile, and the vendored prebuilt whisper-server binary at
+compile time — copy `forge` onto a fresh Debian box and
+`forge setup desktop` brings it from stock to fully configured in one
+command. No repo clone required at runtime, no rust toolchain required
+on the host, no implicit network fetches outside a small set of
+explicit upstream binary downloads.
 
 ## Quick start
 
+**Build once** (on any machine with a Rust toolchain — typically a dev
+container, see "Rebuilding `forge`" below):
+
 ```bash
-git clone <this-repo> ~/linux-config
-cd ~/linux-config
+git clone <this-repo> linux-config
+cd linux-config
 cargo build --release -p forge
-~/linux-config/target/release/forge setup desktop
 ```
 
-The binary is self-contained — no repo clone required at runtime, no separate
-config files to manage. Drop `target/release/forge` onto any Debian box and it
-has everything it needs.
+**Run anywhere** — copy `target/release/forge` to a fresh Debian 13
+host and:
+
+```bash
+./forge setup desktop      # or: forge setup server (for headless boxes)
+```
+
+The host doesn't need git, doesn't need cargo, doesn't need this repo.
+Just the single binary and passwordless sudo.
+
+## Rebuilding `forge`
+
+The host stays Rust-free by design. To rebuild the binary, do it inside
+a dev container (which has rustup baked into the image) and copy the
+result out:
+
+```bash
+forge dev up forge-build
+# inside the container:
+git clone <this-repo> /tmp/lc && cd /tmp/lc
+cargo build --release -p forge
+# back on host:
+podman cp forge-dev-forge-build:/tmp/lc/target/release/forge ~/.local/bin/forge
+```
 
 ## Roles
 
 ```
-server                  base CLI: zsh, tmux, neovim, yazi, starship, theme
-├── dev                 + build tools, nodejs, lazygit
-├── desktop             + sway, foot, fuzzel, bin scripts, zen, obsidian
-│   ├── remote-desktop  + tigervnc
-│   └── attack-box      + wireshark, nmap, sqlmap, hydra, ...
-└── net-box             + tshark, suricata, nmap, dns tools
+server      base CLI: zsh, tmux, neovim, yazi, starship, theme,
+            rootless podman + companions, foot terminfo (ncurses-term),
+            whisper.cpp runtime libs (libopenblas0, libgomp1)
+└── desktop + sway, foot, fuzzel, bin scripts, zen, obsidian,
+              audio + dictation stack, lazygit, cmake
 ```
 
-Each role inherits its parent's packages, dotfiles, and post-install commands.
-Definitions live in [`config/roles.toml`](config/roles.toml).
+Two roles. `desktop` extends `server`, picking up everything `server`
+ships and layering the GUI + dictation pieces on top. Definitions live
+in [`config/roles.toml`](config/roles.toml).
 
 ## Commands
 
@@ -46,8 +73,28 @@ forge theme list             # available base16 schemes
 forge theme apply <name>     # render theme across every configured target
 forge theme current          # show active scheme
 
-forge dev up <name>          # podman dev container
-forge vm create <profile>    # incus VM
+forge dev build              # build the dev container image (one-time)
+forge dev up <name>          # create + attach to a per-project container;
+                             #   creates fresh, starts if stopped, attaches
+forge dev attach <name>      # re-attach to a running container
+forge dev exec <name> -- cmd # run one-off command in container
+forge dev down <name>        # stop (state preserved in <name>-home volume)
+forge dev rm <name>          # remove the container (volume survives)
+forge dev ls                 # list dev containers
+```
+
+Dev pods are one container per project. Same shell, editor, and AI
+tooling baked into the image; per-project toolchains (rustup, fnm,
+uv, pyenv) installed inside and persisted in the named volume so
+they survive `forge dev rm`. The image is built from
+`containers/base.Containerfile` (embedded into the binary), so
+`forge dev build` works without the repo on disk.
+
+To install foot's terminfo on a remote you don't manage, the `fix`
+helper (defined in `dotfiles/.zsh_aliases`) pushes it via SSH:
+
+```bash
+fix me@vps.example.com       # one-off; persists in the remote's ~/.terminfo
 ```
 
 ## Desktop keybinds (Sway, `Super` = Mod)
@@ -67,6 +114,7 @@ forge vm create <profile>    # incus VM
 | `Super+x` | power menu |
 | `Super+w` | wifi menu |
 | `Super+i` / `Super+Shift+i` | status panel / btop |
+| `Print` / `Shift+Print` | screenshot region / fullscreen — saves to `~/Pictures` and copies to clipboard |
 | `Super+Shift+/` | keybindings cheatsheet |
 | `Super+Escape` | lock |
 | `Super+Shift+c` | reload sway |
@@ -90,13 +138,20 @@ forge theme apply catppuccin-mocha
 ```
 linux-config/
 ├── crates/
-│   ├── common/         # forge_common: planner, executor, theme, state
-│   └── forge/          # binary; embeds dotfiles/ + config/ + themes/
-├── dotfiles/           # mirrors $HOME (.zshrc, .config/**, .local/bin/**)
-├── config/roles.toml   # role definitions
-├── themes/             # base16 schemes + tera templates + targets config
-├── containers/         # Containerfiles for dev images
-└── legacy/             # previous Ansible/Stow implementation (reference only)
+│   ├── common/             # forge_common: planner, executor, theme, state
+│   └── forge/              # binary; embeds dotfiles/ + config/ + themes/
+│                           #   + Containerfile + vendored whisper bins
+├── dotfiles/               # mirrors $HOME (.zshrc, .config/**, .local/bin/**)
+│                           # .local/bin includes vendored whisper-server +
+│                           # whisper-cli (statically linked, ~3 MB each)
+├── config/
+│   ├── roles.toml          # role definitions
+│   └── dev-container.toml  # single dev image config (image_tag, ports, …)
+├── themes/                 # base16 schemes + tera templates + targets config
+├── containers/
+│   └── base.Containerfile  # the one dev image; embedded at compile time
+│                           # so `forge dev build` works from any cwd
+└── legacy/                 # previous Ansible/Stow implementation (reference only)
 ```
 
 ## Contributing

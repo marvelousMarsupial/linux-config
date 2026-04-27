@@ -71,6 +71,42 @@ opt.cmdheight = 0
 -- Hide tabline
 opt.showtabline = 0
 
+-- Soft-wrap note buffers.
+--
+-- The global default is `wrap = false` (set above) because we want
+-- code/config files to scroll horizontally — wrapping a Lua function
+-- or a long shell pipeline mid-line is harder to read than scrolling.
+-- Notes are different: prose paragraphs in markdown should reflow to
+-- the window width so the user isn't forced to either insert hard
+-- newlines (which `wtype` dictation already wants to avoid — see the
+-- `dictate` script) or scroll horizontally through every sentence.
+--
+-- Scope: the same paths obsidian.nvim picks up (~/vault/*.md and
+-- ~/linux-config/docs/*.md). That matches "note mode" exactly and
+-- intentionally leaves arbitrary markdown elsewhere (e.g. a project
+-- README opened from another repo) on the global no-wrap default.
+--
+-- Three settings, all load-bearing together:
+--   * `wrap = true`         — turn soft wrapping on for this buffer.
+--   * `linebreak = true`    — break at `breakat` characters (spaces,
+--                             punctuation) instead of mid-word, so a
+--                             wrapped paragraph reads naturally.
+--   * `breakindent = true`  — continuation lines inherit the leading
+--                             indent of the wrapped line, which keeps
+--                             bullet lists and quoted blocks visually
+--                             aligned across the wrap.
+vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile" }, {
+  pattern = {
+    vim.fn.expand("~") .. "/vault/*.md",
+    vim.fn.expand("~") .. "/linux-config/docs/*.md",
+  },
+  callback = function()
+    vim.opt_local.wrap = true
+    vim.opt_local.linebreak = true
+    vim.opt_local.breakindent = true
+  end,
+})
+
 -- Auto-rename vault notes based on # Title (like Obsidian)
 vim.api.nvim_create_autocmd("BufWritePost", {
   pattern = vim.fn.expand("~") .. "/vault/*.md",

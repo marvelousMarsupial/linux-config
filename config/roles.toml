@@ -24,6 +24,62 @@ packages = [
     "eza",
     "bat",
     "unzip",
+    # Extended terminfo entries — ncurses-term provides terminfo for
+    # foot, foot-extra, tmux-256color, alacritty, kitty, and the rest
+    # of the modern terminal lineup. The Debian default `ncurses-base`
+    # package ships only the classics (xterm, vt100, linux). Without
+    # this, SSHing from a foot terminal to this server lands the
+    # remote shell in a TERM with no terminfo entry, ncurses
+    # applications (vim, yazi, less, htop) fall back to minimal /
+    # wrong escape sequences, and the rendering looks broken even
+    # though the host terminal is fine. On Debian trixie this package
+    # also `Provides: foot-terminfo` (the foot-terminfo apt package
+    # itself is now an empty transitional shim).
+    "ncurses-term",
+    # whisper.cpp runtime libraries — we ship a vendored prebuilt
+    # whisper-server (see `dotfiles/.local/bin/whisper-server`) instead
+    # of building from source on each host, but the binary still
+    # dynamically links against:
+    #   * `libopenblas0` — BLAS implementation that ggml-blas calls.
+    #     Also Provides libblas.so.3 via update-alternatives.
+    #   * `libgomp1` — GNU OpenMP runtime ggml-cpu uses for thread
+    #     pooling. Sometimes already pulled in by libgcc, but we list
+    #     it explicitly so a minimal trixie install gets it.
+    # libgfortran5 is a runtime dep of libopenblas0 and gets pulled in
+    # transitively, so we don't list it. Lives in `server` rather than
+    # `desktop` because the user wanted these "future-fresh-install"
+    # essentials in the broadest base; whisper-server is a host-side
+    # tool and the binary lands wherever the dotfiles are written.
+    "libopenblas0",
+    "libgomp1",
+    # Container runtime — `forge dev` shells out to podman, and per the
+    # project's dev model every host (server, desktop) is expected to
+    # be able to spin up dev pods. Putting these in the base `server`
+    # role is the way that works without branching the role list.
+    # Rootless podman needs four companions on Debian trixie:
+    #   * `uidmap`         — newuidmap/newgidmap setuid helpers; without
+    #                        them rootless containers fail at create time.
+    #   * `passt`          — provides `pasta`, the userspace network
+    #                        stack podman 5+ uses by default for rootless
+    #                        containers' outbound traffic. Without it,
+    #                        every `podman build` / `podman run` errors
+    #                        out at namespace setup with `could not find
+    #                        pasta, the network namespace can't be
+    #                        configured`. Trixie's podman is 5.x.
+    #   * `slirp4netns`    — older userspace network stack, kept around
+    #                        as a fallback for the few podman commands
+    #                        that still ask for it (and so that pinning
+    #                        `--network=slirp4netns` still works for
+    #                        ad-hoc debugging).
+    #   * `fuse-overlayfs` — overlay storage driver that works without
+    #                        root. Without it podman falls back to vfs,
+    #                        which copies the whole image on every layer
+    #                        (slow + huge disk usage).
+    "podman",
+    "uidmap",
+    "passt",
+    "slirp4netns",
+    "fuse-overlayfs",
 ]
 dotfiles = [
     ".bashrc",
@@ -74,44 +130,6 @@ dest = "~/.local/bin/ya"
 extract = "*/ya"
 chmod = 755
 
-[dev]
-extends = "server"
-packages = ["build-essential", "nodejs", "npm"]
-# Rust toolchain installed via rustup rather than Debian's `cargo` apt
-# package because:
-#   * clippy and rustfmt aren't shipped by the apt package, but they're
-#     required for `cargo test + clippy + fmt --check` to be a working
-#     gate during day-to-day development.
-#   * rust-analyzer (the LSP) is also a rustup component, so getting it
-#     here keeps neovim's lsp config working out of the box.
-#   * The container/rust.Containerfile already uses this exact rustup
-#     install pattern; matching it on the host means the dev container
-#     and the host agree on toolchain version.
-# `--no-modify-path` is important: rustup-init by default appends a
-# cargo-env source line to ~/.profile / ~/.zshrc / ~/.bashrc, but PATH
-# in this repo is managed declaratively through the dotfiles tree (see
-# dotfiles/.config/environment.d/path.conf and the shell rcs). Letting
-# rustup-init edit those files would create drift between disk and the
-# embedded versions and forge would keep "fixing" it on every rerun.
-post = [
-    # First step: install rustup itself plus the stable toolchain and
-    # rust-analyzer. The `check` is a presence test on the rustup binary
-    # — if the install ran successfully before, it's a no-op now.
-    { run = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --no-modify-path --component rust-analyzer", check = "test -x $HOME/.cargo/bin/rustup" },
-    # Second step: add clippy + rustfmt as separate components. rustup
-    # makes this idempotent on its own (`component add` is a no-op when
-    # the component is up to date), but the `check` short-circuits the
-    # whole thing without spawning a process at all.
-    { run = "$HOME/.cargo/bin/rustup component add clippy rustfmt", check = "test -x $HOME/.cargo/bin/cargo-clippy && test -x $HOME/.cargo/bin/rustfmt" },
-]
-
-[[dev.downloads]]
-name = "lazygit"
-url = "https://github.com/jesseduffield/lazygit/releases/latest/download/lazygit_0.44.1_Linux_x86_64.tar.gz"
-dest = "~/.local/bin/lazygit"
-extract = "lazygit"
-chmod = 755
-
 [desktop]
 extends = "server"
 packages = [
@@ -147,16 +165,66 @@ packages = [
     "libnotify-bin",
     "hicolor-icon-theme",
     "adwaita-icon-theme",
+    # Color emoji glyphs. Without this, every emoji codepoint in
+    # the system (browser tabs, notifications, mako popups, chat
+    # apps, file/folder names with emoji prefixes) renders as the
+    # missing-glyph "tofu" box — even though the underlying string
+    # is correct. Debian ships fontconfig rules in this package's
+    # postinst that add it as the fallback for the Unicode emoji
+    # block, so installing the package is enough; no manual
+    # fontconfig snippet is needed.
+    "fonts-noto-color-emoji",
     # Network + power + media
     "network-manager",
     "wireless-tools",
     "brightnessctl",
     "playerctl",
     "wireplumber",
+    # PipeWire's PulseAudio API shim. Without this the PipeWire daemon
+    # is fine and native-PipeWire callers (`pw-cat`, the dictate
+    # script's `pw-record`) work, but anything speaking the
+    # PulseAudio protocol (browsers, media players, basically every
+    # app using libpulse) has nothing listening at
+    # $XDG_RUNTIME_DIR/pulse/native and goes silent. We hit this
+    # exact failure mode — dictation worked, browser audio didn't —
+    # which is what prompted adding the package to the role. Pulls
+    # in `pipewire` and `pipewire-bin` as deps, so they don't need
+    # to be listed explicitly.
+    "pipewire-pulse",
+    # ALSA userspace tools — `alsamixer`, `aplay`, `arecord`,
+    # `speaker-test`. None of the role's automated post-commands need
+    # these, but troubleshooting "no audio" without them is awful:
+    # there's no way to inspect the hardware mixer state, list cards,
+    # or play a test tone from the shell. Worth the ~1 MiB to have
+    # them on hand the next time something goes wrong.
+    "alsa-utils",
+    # RTKit lets PipeWire request realtime scheduling priority for
+    # its audio threads. Without it PipeWire logs `RTKit error:
+    # org.freedesktop.DBus.Error.ServiceUnknown` at startup, falls
+    # back to nice level 0, and audio is more prone to crackle and
+    # dropouts when the CPU is under load (background compiles,
+    # browser tab heavy, etc). The rtkit daemon is a tiny system
+    # service that mediates realtime requests from unprivileged
+    # processes — it's dbus-activated, so installing the package is
+    # enough to make it available the next time PipeWire reconnects;
+    # no explicit `systemctl enable` is needed in the post section.
+    "rtkit",
     "udiskie",
     # Bluetooth
     "bluez",
     "blueman",
+    # PipeWire's BlueZ SPA plugin — the bridge that lets wireplumber
+    # route audio streams to/from BT devices (A2DP for headsets,
+    # HSP/HFP for headsets-with-mic). Without it wireplumber logs
+    # `PipeWire's BlueZ SPA plugin is missing or broken. Bluetooth
+    # devices will not be supported.` at startup; pairing a BT audio
+    # device via blueman appears to succeed (it shows up as a paired
+    # device) but PipeWire never produces a sink/source for it, so
+    # there is no way to actually play or record audio over the
+    # connection. This is a separate package from `bluez` because
+    # the bluez stack itself is protocol-only — the SPA bridge is
+    # what makes BT visible to PipeWire.
+    "libspa-0.2-bluetooth",
     # Screenshots
     "grim",
     "slurp",
@@ -165,6 +233,16 @@ packages = [
     # Status panel ASCII clock + system monitor
     "toilet",
     "btop",
+    # Lazygit — git TUI bound to the host shell alias `lg`. We install
+    # via apt rather than from upstream's GitHub releases because the
+    # `/releases/latest/download/lazygit_X.Y.Z_Linux_x86_64.tar.gz` URL
+    # pattern bakes the version into the filename, so any new upstream
+    # release 404s the previously-pinned URL until the version digit is
+    # bumped here. Debian trixie ships lazygit at a recent enough
+    # version (0.50+) that the apt source is the lower-maintenance
+    # path; if we ever need a feature only on the bleeding edge we can
+    # switch back to a tarball download then.
+    "lazygit",
     # Password managers
     "pass",
     "keepassxc",
@@ -176,18 +254,13 @@ packages = [
     # long results land instantly. wl-clipboard (above) is what holds
     # the text between wl-copy and the synthesized paste.
     "wtype",
-    # Build toolchain for whisper.cpp. We compile from source rather
-    # than ship a prebuilt binary because:
-    #   * The whisper.cpp project doesn't publish official Linux
-    #     binaries — only Windows zips and the source tarball.
-    #   * Building locally lets `-DGGML_NATIVE=ON` light up AVX2 +
-    #     AVX-512 on this Tiger Lake CPU, which is meaningful for the
-    #     medium.en model where every encoder pass is several seconds.
-    # libopenblas-dev pulls in the headers for `-DGGML_BLAS=1`, which
-    # gives a measurable speedup on the encoder GEMM kernels.
-    "build-essential",
+    # cmake — kept on desktop role as a generally-useful Linux build
+    # tool. We no longer use it for the whisper.cpp build (those
+    # binaries are now vendored prebuilt — see
+    # `dotfiles/.local/bin/whisper-server`), but it's small and the
+    # kind of thing a Linux desktop expects to have available for
+    # ad-hoc work.
     "cmake",
-    "libopenblas-dev",
 ]
 dotfiles = [
     ".config/sway/**",
@@ -213,6 +286,15 @@ dotfiles = [
     ".local/bin/**",
 ]
 post = [
+    # NOTE: the rustup install + clippy/rustfmt component-add steps that
+    # used to live here are gone. The host no longer carries a Rust
+    # toolchain — rebuilding `forge` happens in a dev container
+    # (`forge dev up forge-build`), the resulting binary gets `podman
+    # cp`'d onto the host. This keeps the desktop free of ~/.cargo and
+    # ~/.rustup (each of which is several hundred MiB by the time it
+    # has clippy + rustfmt + rust-analyzer + a stable toolchain), and
+    # is the same pattern we use for whisper.cpp (vendored prebuilt
+    # binaries, build-time tooling lives in containers).
     { run = "fc-cache -f ~/.local/share/fonts", check = "fc-list | grep -qi 'CaskaydiaCove Nerd Font'" },
     # NetworkManager: required by wifi-menu (bound to $mod+w) and by
     # nm-applet status integrations. Debian's network-manager apt
@@ -224,6 +306,16 @@ post = [
     # manually-stopped daemon (e.g. during debugging) gets restarted on
     # the next forge rerun instead of being silently left down.
     { run = "sudo systemctl enable --now NetworkManager", check = "systemctl is-active --quiet NetworkManager" },
+    # bluetooth.service: the `bluez` package ships the unit but
+    # Debian's postinst does not always enable it on a minimal
+    # install (depends on debian-installer profile selection). Enable
+    # explicitly so `bluetoothctl`, blueman, and PipeWire's BT bridge
+    # all have a running daemon to talk to after the very first
+    # `forge setup desktop` instead of needing a manual enable later.
+    # The check uses `is-active` (not is-enabled) so a manually-stopped
+    # daemon — e.g. during BT debugging — gets brought back up by the
+    # next forge run, matching the NetworkManager pattern above.
+    { run = "sudo systemctl enable --now bluetooth.service", check = "systemctl is-active --quiet bluetooth.service" },
     # systemd-logind lid-switch behavior. The defaults already match
     # what we want (suspend on lid close when undocked, ignore when
     # docked — i.e. when an external display is connected), but the
@@ -251,23 +343,15 @@ post = [
     # Xwayland-startup ordering problem.
     { run = "flatpak override --user --socket=wayland md.obsidian.Obsidian", check = "flatpak override --user --show md.obsidian.Obsidian | grep -q 'sockets=.*wayland'" },
     { run = "flatpak override --user --socket=wayland app.zen_browser.zen", check = "flatpak override --user --show app.zen_browser.zen | grep -q 'sockets=.*wayland'" },
-    # whisper.cpp source checkout. We pin to a shallow clone in
-    # ~/.local/src/whisper.cpp so the build artifacts stay out of
-    # $HOME root and can be rebuilt independently of the model file.
-    # The `check` is presence of the `.git` dir, so reruns skip the
-    # network fetch entirely once the tree is on disk.
-    { run = "git clone --depth=1 https://github.com/ggml-org/whisper.cpp $HOME/.local/src/whisper.cpp", check = "test -d $HOME/.local/src/whisper.cpp/.git" },
-    # Build whisper.cpp with OpenBLAS + native CPU features. -DGGML_BLAS=1
-    # routes the encoder GEMMs through OpenBLAS (libopenblas-dev provides
-    # the headers); -DGGML_NATIVE=ON enables AVX2 + AVX-512 on this
-    # Tiger Lake CPU. The `check` looks for the produced `whisper-server`
-    # binary, so reruns are no-ops once the build has succeeded once.
-    { run = "cd $HOME/.local/src/whisper.cpp && cmake -B build -DGGML_BLAS=1 -DGGML_NATIVE=ON -DCMAKE_BUILD_TYPE=Release && cmake --build build -j --config Release --target whisper-server whisper-cli", check = "test -x $HOME/.local/src/whisper.cpp/build/bin/whisper-server" },
-    # Surface the built binaries on PATH via symlinks under ~/.local/bin
-    # (already in PATH from .config/environment.d/path.conf). The
-    # `dictate` script and the whisper-server systemd unit both
-    # reference these paths, not the build dir.
-    { run = "ln -sf $HOME/.local/src/whisper.cpp/build/bin/whisper-server $HOME/.local/bin/whisper-server && ln -sf $HOME/.local/src/whisper.cpp/build/bin/whisper-cli $HOME/.local/bin/whisper-cli", check = "test -L $HOME/.local/bin/whisper-server && test -L $HOME/.local/bin/whisper-cli" },
+    # NOTE: the whisper.cpp clone + cmake build + symlink steps that
+    # used to live here are gone. whisper-server and whisper-cli are
+    # now vendored prebuilt under `dotfiles/.local/bin/` (statically
+    # linked against libwhisper/libggml so the only runtime deps are
+    # libopenblas + libgomp + libgfortran, all standard Debian
+    # packages installed by the `server` role). The planner's ELF
+    # detection writes them executable. To refresh them after a
+    # whisper.cpp upstream release, see CLAUDE.md ("Refreshing the
+    # vendored whisper-server binary").
     # Re-read user systemd units so the freshly-written
     # ~/.config/systemd/user/whisper-server.service is visible to
     # `systemctl --user start`. daemon-reload is a true no-op when the
@@ -275,6 +359,101 @@ post = [
     # swallows the harmless failure when forge runs outside a user
     # session (e.g. an SSH provision without -t).
     "systemctl --user daemon-reload 2>/dev/null || true",
+    # Enable the pipewire-pulse user socket so PulseAudio-protocol
+    # clients (browsers, media players, anything linking libpulse)
+    # can find a server at $XDG_RUNTIME_DIR/pulse/native. Installing
+    # `pipewire-pulse` (above, in packages) ships the .socket and
+    # .service unit files but does NOT enable the socket — Debian's
+    # postinst leaves that to the user, so without this command the
+    # role looks correct (package present, PipeWire running) yet the
+    # system stays silent for every libpulse caller. Native-PipeWire
+    # callers like `pw-cat` and the dictate script's `pw-record`
+    # work either way, which is what made this failure mode so
+    # confusing the first time around.
+    #
+    # `enable --now` does both halves at once: symlinks the socket
+    # into sockets.target.wants/ for next login, AND binds it in the
+    # current session so audio comes back without a logout. The
+    # socket is the right unit to enable (not the .service): it's
+    # socket-activated, so the daemon stays asleep until the first
+    # libpulse client connects, then starts on demand.
+    #
+    # The `2>/dev/null || true` covers the SSH-provision case where
+    # there's no user systemd manager (same reasoning as the kanshi
+    # enable below — `enable` would fail with "Failed to connect to
+    # user scope bus" and we'd rather let setup complete than abort
+    # on something that resolves itself the moment the user logs
+    # into a graphical session).
+    #
+    # The check has two parts: `is-enabled` (the symlink under
+    # sockets.target.wants/ exists, so it'll come up next login)
+    # AND `is-active` (the socket is currently bound in this
+    # session). Requiring both means a manually-stopped socket gets
+    # brought back up by the next forge run — matching the
+    # NetworkManager check above, which is `is-active` for the same
+    # reason.
+    { run = "systemctl --user enable --now pipewire-pulse.socket 2>/dev/null || true", check = "systemctl --user is-enabled --quiet pipewire-pulse.socket && systemctl --user is-active --quiet pipewire-pulse.socket" },
+    # Enable the kanshi systemd user unit so it gets pulled in by
+    # sway-session.target on every login. The unit's
+    # `WantedBy=sway-session.target` only takes effect after a
+    # user-side `systemctl enable`, which creates the symlink under
+    # ~/.config/systemd/user/sway-session.target.wants/. The check
+    # short-circuits reruns once the symlink is already in place.
+    # The `2>/dev/null || true` covers the SSH-provision case where
+    # there's no user systemd manager (e.g. a fresh box being
+    # provisioned over SSH without -t); enable will fail with
+    # "Failed to connect to user scope bus" and we'd rather let
+    # setup complete than abort on something that resolves itself
+    # the moment the user logs into sway.
+    { run = "systemctl --user enable kanshi.service 2>/dev/null || true", check = "systemctl --user is-enabled --quiet kanshi.service" },
+    # Bring kanshi under systemd management in the *currently
+    # running* session, so the user doesn't have to log out / back
+    # in to pick up the new ordering. Three things happen here:
+    #
+    #   1. Run `sway-session` to push WAYLAND_DISPLAY / SWAYSOCK /
+    #      DISPLAY into the user-systemd manager's environment and
+    #      activate sway-session.target. This is normally done by
+    #      `exec $bin/sway-session` at login, but on the first
+    #      deploy the user is already logged in and the manager
+    #      env is missing those vars — without this step,
+    #      kanshi.service would start with no wayland display and
+    #      crash immediately. The script is idempotent (bails out
+    #      with exit 0 if sway-session.target is already active),
+    #      so reruns are cheap.
+    #
+    #   2. Kill any stray unmanaged kanshi left over from the old
+    #      `exec_always $bin/kanshi-restart` autostart, or from a
+    #      manual `kanshi &` earlier in the session. Without this,
+    #      the systemd-managed kanshi from step 3 would race the
+    #      surviving unmanaged one for the wlr-output-management
+    #      subscription — exactly the multi-kanshi wedge the
+    #      retired bash helper was working around.
+    #
+    #   3. Start kanshi.service. By now the user-systemd env has
+    #      what kanshi needs and the unit's transitive
+    #      WantedBy=sway-session.target makes this a normal start.
+    #      We also clean up the per-session lockfile from the
+    #      retired kanshi-restart helper so an eventual reboot
+    #      starts from a clean slate.
+    #
+    # The `2>/dev/null || true` on the `start` covers the
+    # SSH-provision case where there's no user systemd manager at
+    # all — the start will fail with "Failed to connect to user
+    # scope bus" and we'd rather let setup move on than abort on
+    # something that resolves itself the moment the user logs into
+    # a sway session.
+    { run = "$HOME/.local/bin/sway-session 2>/dev/null || true; pkill -x kanshi 2>/dev/null; rm -f \"${XDG_RUNTIME_DIR:-/tmp}/kanshi-restart.lock\"; systemctl --user start kanshi.service 2>/dev/null || true", check = "systemctl --user is-active --quiet kanshi.service && pgrep -x kanshi >/dev/null" },
+    # Remove the retired bash helpers from previous deploys. The
+    # planner's WriteFile actions only write files we still ship —
+    # files that have been deleted from the dotfiles tree linger
+    # on disk forever unless we explicitly clean them up. These
+    # two scripts (`kanshi-restart`, `kanshi-boot-kick`) were
+    # superseded by the systemd unit + sway-session script and
+    # would otherwise hang around as confusing orphans on PATH.
+    # rm -f is idempotent (no error on already-gone), so reruns
+    # are cheap and the check ensures we skip the rm entirely
+    # once the cleanup has succeeded.
+    { run = "rm -f $HOME/.local/bin/kanshi-restart $HOME/.local/bin/kanshi-boot-kick", check = "test ! -e $HOME/.local/bin/kanshi-restart && test ! -e $HOME/.local/bin/kanshi-boot-kick" },
 ]
 
 [[desktop.downloads]]
@@ -307,58 +486,3 @@ extract = "tree:0"
 name = "whisper-small-en-q5_1-model"
 url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin"
 dest = "~/.local/share/whisper.cpp/models/ggml-small.en-q5_1.bin"
-
-[remote-desktop]
-extends = "desktop"
-packages = ["tigervnc-standalone-server", "tigervnc-common"]
-
-# CLI-only network analysis / monitoring box.
-# Inherits server shell + tools, adds capture/monitoring/IDS stack.
-[net-box]
-extends = "server"
-packages = [
-    "tshark",
-    "tcpdump",
-    "termshark",
-    "iftop",
-    "nethogs",
-    "vnstat",
-    "bmon",
-    "iperf3",
-    "nmap",
-    "arp-scan",
-    "netdiscover",
-    "suricata",
-    "dnsutils",
-    "whois",
-    "traceroute",
-    "mtr-tiny",
-    "netcat-openbsd",
-    "socat",
-]
-
-# Offensive/CTF box. Inherits desktop GUI for Burp, Wireshark, etc.
-# Firewall is intentionally not installed so inbound tools work.
-[attack-box]
-extends = "desktop"
-packages = [
-    "wireshark",
-    "wireshark-qt",
-    "tshark",
-    "nmap",
-    "masscan",
-    "nikto",
-    "dirb",
-    "gobuster",
-    "whatweb",
-    "dnsrecon",
-    "sqlmap",
-    "wfuzz",
-    "httpie",
-    "hashcat",
-    "john",
-    "hydra",
-    "medusa",
-    "crunch",
-    "cewl",
-]

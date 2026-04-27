@@ -87,6 +87,36 @@ pub fn apt_install(pkg: &str) -> Result<()> {
     Ok(())
 }
 
+/// Mark a package as manually installed.
+///
+/// Called by the executor for every `InstallPackage` action — including
+/// the "already installed" path — so the package is protected from
+/// `apt autoremove` even if it originally landed on disk as a transitive
+/// dependency of something else.
+///
+/// # The bug this exists to prevent
+///
+/// We hit this exact failure mode after switching whisper.cpp from
+/// host-build to vendored binaries: `libopenblas0` was already on disk
+/// because `libopenblas-dev` (the old build dep) had pulled it in as a
+/// dep with the auto-installed flag set. The `desktop` role's package
+/// list was updated to include `libopenblas0` directly, but the
+/// executor's `is_installed` short-circuit meant `apt-get install
+/// libopenblas0` never ran — and so apt's auto-installed flag stayed
+/// set. The next `apt autoremove` swept libopenblas0 out from under
+/// whisper-server. Re-marking the package manually here closes that
+/// window: even if the package is already installed, we tell apt
+/// "the user wants this regardless of what depends on it."
+///
+/// `apt-mark manual` is a true no-op (and very fast) when the flag is
+/// already set, so calling it on every install path is cheap.
+pub fn apt_mark_manual(pkg: &str) -> Result<()> {
+    let mut cmd: Vec<&str> = maybe_sudo().to_vec();
+    cmd.extend(["apt-mark", "manual", pkg]);
+    checked(&cmd)?;
+    Ok(())
+}
+
 /// Uninstall one package (teardown path). Uses `remove` rather than
 /// `purge` so dotfiles the user may have customized are preserved.
 pub fn apt_remove(pkg: &str) -> Result<()> {

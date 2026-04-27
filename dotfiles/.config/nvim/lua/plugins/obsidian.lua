@@ -25,17 +25,41 @@ return {
       { "<leader>of", "<cmd>ObsidianFollowLink<cr>", desc = "Follow link" },
       { "<leader>ow", "<cmd>ObsidianWorkspace<cr>", desc = "Switch workspace" },
     },
-    opts = {
-      workspaces = {
-        {
-          name = "vault",
-          path = "~/vault",
-        },
-        {
-          name = "docs",
-          path = "~/linux-config/docs",
-        },
-      },
+    -- `opts` is a function (not a table) so we can filter workspace
+    -- specs by on-disk existence at plugin-load time. obsidian.nvim
+    -- resolves every declared workspace path with `strict = true`
+    -- (workspace.lua: `Path.new(path):resolve { strict = true }`),
+    -- which throws a noisy error popup as soon as setup runs if a
+    -- declared path doesn't exist. We hit this when a workspace
+    -- (e.g. ~/linux-config/docs) hadn't been created yet — every
+    -- single note open showed a stack trace from new_from_spec →
+    -- get_workspace_for_cwd → setup. Filtering here means a missing
+    -- directory is just absent from the workspace list (silent
+    -- no-op); creating it later transparently re-enables the
+    -- workspace on the next nvim start without further config edits.
+    opts = function()
+      -- Declare workspace specs in one place. Adding a new vault
+      -- means appending an entry here — the existence filter below
+      -- handles the "directory not yet created" case for free.
+      local workspace_specs = {
+        { name = "vault", path = "~/vault" },
+        { name = "docs", path = "~/linux-config/docs" },
+      }
+
+      -- Drop any spec whose expanded path isn't a real directory.
+      -- `vim.fn.isdirectory` returns 1 for a directory, 0 for a
+      -- non-existent path OR a non-directory (e.g. a regular file
+      -- at that path), which is exactly the set we want to exclude
+      -- — obsidian needs a directory to scan, not a file.
+      local workspaces = {}
+      for _, spec in ipairs(workspace_specs) do
+        if vim.fn.isdirectory(vim.fn.expand(spec.path)) == 1 then
+          table.insert(workspaces, spec)
+        end
+      end
+
+      return {
+      workspaces = workspaces,
 
       daily_notes = {
         folder = "daily",
@@ -84,6 +108,7 @@ return {
           return tostring(os.time())
         end
       end,
-    },
+      }
+    end,
   },
 }

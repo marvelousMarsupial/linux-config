@@ -4,7 +4,6 @@ pub mod atomic;
 pub mod dev_config;
 pub mod diff;
 pub mod executor;
-pub mod incus;
 pub mod packages;
 pub mod paths;
 pub mod plan;
