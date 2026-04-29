@@ -142,17 +142,113 @@ fn apply_one(action: &Action, home: &Path, opts: &ExecOpts) -> Result<ActionResu
 }
 
 /// Download a URL directly to a destination file.
+///
+/// Wraps the underlying `curl -fsSL` invocation in [`with_retry`] so that
+/// a single transient network failure (DNS hiccup, GitHub-Releases CDN
+/// 502, brief TLS renegotiation, mid-LAN packet loss, …) doesn't abort
+/// the entire `forge setup` plan with a re-run-from-scratch requirement.
+///
+/// We pass `--retry-connrefused` so curl's own retry covers the
+/// connect-refused / connection-reset axis cheaply (no extra process
+/// spawn), and layer [`with_retry`] on top to handle the application-
+/// layer failures curl can't retry on its own (HTTP 5xx, 4xx, partial
+/// transfers). A single transient GitHub-Releases CDN 502 caught
+/// during the LXC + KVM-VM test runs was the proximate motivation:
+/// without retries, `forge setup desktop` aborted partway through the
+/// plan with no recovery short of rerunning the whole command.
+///
+/// On exhaustion the most recent error bubbles up unchanged, so the
+/// caller (the executor's `Action::Download` arm) still gets a clean
+/// `Result::Err` with all the surrounding `with_context` chain intact.
 fn download_raw(url: &str, dest: &Path) -> Result<()> {
-    let status = Command::new("curl")
-        .args(["-fsSL", "-o"])
-        .arg(dest)
-        .arg(url)
-        .status()
-        .with_context(|| format!("spawning curl for {url}"))?;
-    if !status.success() {
-        anyhow::bail!("downloading {url} failed with status {status}");
+    with_retry(&format!("downloading {url}"), DOWNLOAD_MAX_ATTEMPTS, || {
+        let status = Command::new("curl")
+            .args(["-fsSL", "--retry-connrefused", "-o"])
+            .arg(dest)
+            .arg(url)
+            .status()
+            .with_context(|| format!("spawning curl for {url}"))?;
+        if !status.success() {
+            anyhow::bail!("downloading {url} failed with status {status}");
+        }
+        Ok(())
+    })
+}
+
+/// How many times [`download_raw`] attempts a URL before giving up.
+///
+/// Three attempts (1 initial + 2 retries) is the sweet spot for
+/// transient outages: the failure modes that benefit from retry
+/// (CDN 502, brief DNS flake, momentary TLS handshake failure)
+/// almost always clear within a single backoff window, and longer
+/// outages aren't going to clear in the next 6 seconds either —
+/// failing fast and surfacing the error is better than silently
+/// retrying for minutes.
+const DOWNLOAD_MAX_ATTEMPTS: u32 = 3;
+
+/// Base delay for [`with_retry`]'s exponential backoff, in
+/// milliseconds. Production: 1000 ms (so retries wait 2s then 4s,
+/// total worst-case extra latency 6s before final failure).
+/// Tests: 0 ms so unit tests run instantly even when exercising
+/// the failure-then-success path.
+#[cfg(not(test))]
+const RETRY_BASE_DELAY_MS: u64 = 1000;
+#[cfg(test)]
+const RETRY_BASE_DELAY_MS: u64 = 0;
+
+/// Run a fallible operation with bounded retries and exponential
+/// backoff. Returns `Ok` on the first successful attempt; otherwise
+/// returns the *last* attempt's error after `max_attempts` tries.
+///
+/// Backoff schedule before retry N is `RETRY_BASE_DELAY_MS << N`
+/// (i.e. doubles each retry: 2s, 4s, 8s, … in production). The
+/// initial attempt is *not* delayed — only retries are. With the
+/// production base (1000 ms) and `max_attempts = 3` the worst-case
+/// extra wait before the final failure is `2s + 4s = 6s`.
+///
+/// `label` is interpolated into the per-retry warning emitted to
+/// stderr so the user sees what's being retried (otherwise an
+/// occasional "warning: failed (attempt 1/3)" line would be
+/// confusing). Use a verb phrase like `"downloading <url>"`.
+///
+/// Designed to be cheap to test: tests inject a closure that flips
+/// state (success-on-Nth-attempt, always-fail) and the
+/// `RETRY_BASE_DELAY_MS = 0` cfg(test) override skips the actual
+/// sleep, so a "retry exhausts after 3 tries" test runs in
+/// microseconds rather than seconds.
+fn with_retry<F>(label: &str, max_attempts: u32, mut op: F) -> Result<()>
+where
+    F: FnMut() -> Result<()>,
+{
+    debug_assert!(
+        max_attempts >= 1,
+        "with_retry requires at least one attempt"
+    );
+
+    let mut attempt = 1u32;
+    loop {
+        match op() {
+            Ok(()) => return Ok(()),
+            Err(e) if attempt < max_attempts => {
+                let delay = std::time::Duration::from_millis(RETRY_BASE_DELAY_MS << attempt);
+                eprintln!(
+                    "warning: {label} failed (attempt {attempt}/{max_attempts}): {e}; \
+                     retrying in {}s...",
+                    delay.as_secs_f32()
+                );
+                std::thread::sleep(delay);
+                attempt += 1;
+            }
+            Err(e) => {
+                // Final attempt failed. Surface the error unmodified
+                // — keeping anyhow's full context chain intact gives
+                // the operator (and any post-mortem `forge setup`
+                // log scraper) the same diagnostic shape they would
+                // have gotten without retries layered in.
+                return Err(e);
+            }
+        }
     }
-    Ok(())
 }
 
 /// Download an archive and extract it. Two modes based on `pattern`:
@@ -529,6 +625,86 @@ mod tests {
         let dest = d.path().join("yazi");
         download_and_extract(&format!("file://{}", archive.display()), &dest, "*/yazi").unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"yazi-bin");
+    }
+
+    /// `with_retry` returns immediately on the first successful attempt
+    /// — no retry, no sleep, no extra invocations.
+    #[test]
+    fn with_retry_succeeds_first_try() {
+        use std::cell::Cell;
+        let attempts = Cell::new(0u32);
+        with_retry("op", 3, || {
+            attempts.set(attempts.get() + 1);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(attempts.get(), 1);
+    }
+
+    /// `with_retry` keeps trying through transient failures and returns
+    /// `Ok` once the operation succeeds. Mimics the GitHub-Releases CDN
+    /// flake the LXC + KVM-VM test runs caught: first attempt 502s,
+    /// later attempts succeed. The cfg(test) `RETRY_BASE_DELAY_MS = 0`
+    /// override means this test runs in microseconds rather than the
+    /// 6 seconds production-config retry waits would impose.
+    #[test]
+    fn with_retry_succeeds_after_transient_failures() {
+        use std::cell::Cell;
+        let attempts = Cell::new(0u32);
+        with_retry("op", 3, || {
+            let n = attempts.get() + 1;
+            attempts.set(n);
+            if n < 3 {
+                anyhow::bail!("transient (attempt {n})");
+            }
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(attempts.get(), 3);
+    }
+
+    /// After exhausting `max_attempts` failures, `with_retry` surfaces
+    /// the most recent error unchanged. The original anyhow chain
+    /// (with the per-attempt context) reaches the executor caller so
+    /// log scrapers can see the actual final failure cause, not a
+    /// generic "retries exhausted" wrapper that hides it.
+    #[test]
+    fn with_retry_returns_last_error_after_exhaustion() {
+        use std::cell::Cell;
+        let attempts = Cell::new(0u32);
+        let err = with_retry("op", 3, || {
+            let n = attempts.get() + 1;
+            attempts.set(n);
+            anyhow::bail!("fail #{n}")
+        })
+        .unwrap_err();
+        assert_eq!(attempts.get(), 3);
+        // The error is the LAST attempt's error verbatim; not "retries
+        // exhausted" or any other wrapper. We assert on the final
+        // counter ("fail #3") so a regression that returns the first
+        // failure instead of the last one would fail this test.
+        assert!(
+            err.to_string().contains("fail #3"),
+            "expected last attempt's error to bubble up; got: {err}"
+        );
+    }
+
+    /// `max_attempts = 1` collapses to "no retries at all" — the
+    /// happy path returns Ok immediately, and a failure surfaces
+    /// after one try with no sleep. Guards against an off-by-one in
+    /// the loop condition that could either retry forever (unsound)
+    /// or never invoke `op` (also unsound).
+    #[test]
+    fn with_retry_max_attempts_one_does_not_retry() {
+        use std::cell::Cell;
+        let attempts = Cell::new(0u32);
+        let err = with_retry("op", 1, || {
+            attempts.set(attempts.get() + 1);
+            anyhow::bail!("nope")
+        })
+        .unwrap_err();
+        assert_eq!(attempts.get(), 1);
+        assert!(err.to_string().contains("nope"));
     }
 
     /// Extract with no matching file produces a clear error.

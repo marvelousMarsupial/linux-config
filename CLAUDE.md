@@ -20,13 +20,17 @@ Owned by user **august**, lives at `/home/august/linux-config`.
 
 **Roles:** `server`, `desktop`. Two roles only — server is the base
 (shell stack, editor, rootless-podman runtime, foot terminfo,
-whisper runtime libs) and desktop extends it with the Sway
-compositor and the audio/dictation stack. Every role can spin up
-dev pods via `forge dev` because the container packages live in
-`server`. There is intentionally **no Rust toolchain** in any role
-— `forge` itself is rebuilt inside a dev container and the binary
-is `podman cp`-ed onto the host, keeping `~/.cargo` and `~/.rustup`
-off production hosts.
+whisper runtime libs, **virt stack: incus + libvirt/qemu**) and
+desktop extends it with the Sway compositor and the audio/dictation
+stack (**plus virt-manager for graphical VM consoles**). Every role
+can spin up dev pods via `forge dev` because the container packages
+live in `server`, and every role can also run system containers
+(incus) and full VMs (libvirt/qemu) — the unified `vm-menu` keybind
+($mod+c) covers all three runtimes from a single fuzzel popup. There
+is intentionally **no Rust toolchain** in any role — `forge` itself
+is rebuilt inside a dev container and the binary is `podman cp`-ed
+onto the host, keeping `~/.cargo` and `~/.rustup` off production
+hosts.
 
 ## Repo layout
 
@@ -78,8 +82,12 @@ linux-config/
    reruns be cheap no-ops. `InstallPackage` also runs `apt-mark manual`
    on every package — including the already-installed path — so an
    `apt autoremove` later can't sweep a role-required package that
-   originally landed as someone else's transitive dep.
-4. **State** is written to `~/.local/state/forge/state.json` so `forge status`
+   originally landed as someone else's transitive dep. `Download` runs
+   curl through `with_retry` (3 attempts, 2s + 4s exponential backoff)
+   so a single transient failure (GitHub-Releases CDN 502, DNS hiccup,
+   brief TLS handshake error) doesn't abort the entire `forge setup`
+   plan — caught by tests in `executor::tests::with_retry_*`.
+4. **State** is written to `~/.config/forge/state.json` so `forge status`
    and `forge teardown` know what role is live.
 
 ## Editing the dotfile tree
@@ -115,6 +123,158 @@ writes the output to the path declared in `themes/config.toml`. Targets can
 declare a `hook` (run after write) or `restart` (process-name to kill/restart).
 
 All scheme/template/config files are embedded in the binary just like dotfiles.
+
+**Catppuccin-Mocha base03/base04 deliberately diverge from upstream
+base16.** `themes/schemes/catppuccin-mocha.yaml` uses Overlay 2
+(`#9399b2`) for `base03` and Overlay 1 (`#7f849c`) for `base04`,
+not the upstream catppuccin/base16 export's surface1/surface2
+(`#45475a`/`#585b70`). The upstream values are part of catppuccin's
+*structural background* tier (intentionally low-contrast against
+`base00 #1e1e2e`), but base03/base04 are what get used in practice
+for comments, line numbers, and zsh-autosuggest text — at the
+upstream values they render at ~1.5:1 against the bg, well below
+WCAG's 3:1 minimum, visibly unreadable. Catppuccin's own style guide
+(catppuccin/catppuccin docs/style-guide.md) explicitly assigns the
+*text* tiers to Overlay 1 (subtle text / line numbers) and Overlay 2
+(comments), so the divergence aligns the YAML with catppuccin's own
+usage guidance rather than its byte-for-byte base16 export. Pinned
+by `catppuccin_mocha_uses_overlay_for_text_tiers`. Don't "sync from
+upstream" without re-reading that test's docstring — it's a
+deliberate divergence, not a stale file.
+
+## Dev container UX
+
+The dev container is a daily-driver workspace, not a build sandbox.
+A bunch of small fixes layer together to keep it ergonomic:
+
+**`bat` symlink (`/usr/local/bin/bat -> /usr/bin/batcat`)** — Debian's
+`bat` apt package installs as `batcat` due to a long-standing
+filename clash with `bacula-console-bat` (Debian bug #930299, won't-
+fix). Without the symlink the user's `cat = bat` zsh alias fails on
+every invocation. The host's `server` role and the dev container's
+`base.Containerfile` both create this symlink at the same path, so
+host and container behave identically. Pinned by
+`server_role_installs_bat_symlink` and
+`base_containerfile_installs_bat_symlink`.
+
+**Truecolor + OSC52 clipboard chain** — the visible "TUI graphics
+are wrong" symptom inside dev containers was tmux stripping 24-bit
+color escapes because `terminal-overrides ",xterm-256color:RGB"`
+doesn't match `foot`. The fix has two halves:
+
+  * `dotfiles/.tmux.conf` declares `terminal-features ",foot*:RGB"`
+    and `",foot*:clipboard"` plus `set-clipboard on` (modern
+    tmux ≥3.2 syntax — replaces the old regex `terminal-overrides`
+    pattern). This tells tmux to pass truecolor and OSC52 escapes
+    through to the outer foot terminal.
+  * `containers/base.Containerfile` declares `ENV COLORTERM=truecolor`
+    so TUI apps inside the container that detect truecolor via the
+    `$COLORTERM` env (nvim, opencode, lazygit, btop, bat) see the
+    flag — `podman exec -t` propagates `TERM` but NOT arbitrary env,
+    so without this `ENV` line the container shell ends up with
+    `COLORTERM` unset and apps quantise to 256-color.
+
+Pinned by `tmux_conf_advertises_foot_truecolor_and_clipboard` and
+`base_containerfile_sets_colorterm_truecolor`.
+
+**OSC52 `wl-copy` shim inside the container** — host `wl-copy` talks
+to the Wayland compositor, which doesn't exist inside a podman
+container. The shim at `/usr/local/bin/wl-copy` (created by the
+Containerfile via `printf > file && chmod`) emits the OSC52
+sequence `ESC ] 52 ; c ; <base64> ESC \` so `clip` zsh alias and
+tmux copy-pipe bindings that shell out to `wl-copy` work
+unchanged. Paired with foot's default-on OSC52 support (since v1.4)
+and the tmux `set-clipboard on` above. Paste is intentionally NOT
+shimmed — OSC52 read is one-way-by-default in modern terminals
+for security; use foot's native paste binding (Ctrl+Shift+V).
+Pinned by `base_containerfile_installs_wl_copy_shim`.
+
+**`forge` host-only stub** — `/usr/local/bin/forge` in the container
+is a tiny `#!/bin/sh` that prints "forge is a host-only command"
+and exits 127. Without it, typing `forge` in the container hits
+zsh's command_not_found handler with a generic apt-index miss,
+which is misleading (suggests forge is something installable).
+Same pattern Gitpod uses for its `gp` host-integration command.
+Pinned by `base_containerfile_installs_forge_stub`.
+
+**Container DNS just works — but only after the host firewall
+came off.** Earlier this session, `forge dev build` was failing
+at the very first `apt-get update` with `Temporary failure
+resolving 'deb.debian.org'` while the host could curl the same
+URL fine. We chased it through three wrong fixes (pinning
+`[containers] dns_servers` in containers.conf, passing `--dns=`
+flags to `podman build`, considering `--network=host`) before
+realising the root cause was the host's `inet forge_filter`
+nftables table: pasta (rootless podman's network backend) sends
+DNS UDP via host sockets, the replies came back into the input
+chain, and `ct state established,related accept` was NOT
+matching them on this kernel/pasta combo. With the firewall
+rolled back to no-rules (see "Host firewall" above for the full
+rationale), pasta's UDP path works again and builds need no
+special flags.
+
+Lessons worth remembering for next time:
+
+  * `[containers] dns_servers` in containers.conf only applies
+    to `podman run` — Buildah's build path ignores it
+    (containers/podman issue #15290).
+  * "Pin a public DNS fallback for resilience" is wrong on LANs
+    that block outbound DNS to anything except the gateway
+    (which is most LANs). The host's nameservers, whatever they
+    are, are by definition reachable on the network the host is
+    on; pinning public DNS overrides that with something WORSE.
+  * Conntrack tracking of pasta's UDP queries isn't reliable on
+    every kernel + pasta + nftables version combination. If a
+    future host actually needs inbound filtering, restore via a
+    per-host drop-in and explicitly test with `podman run
+    --dns=<gateway> <image> getent hosts <name>` before
+    declaring victory.
+
+`~/.config/containers/containers.conf` still ships as a forge-
+managed marker file but explicitly does NOT set `dns_servers`
+(pinned by `dotfiles_ship_containers_conf_with_no_dns_override`).
+The path is forge-owned so an ad-hoc edit can't squat it, but
+podman falls through to its compiled defaults for both build
+and run. `forge dev build`'s argv is the canonical podman
+invocation (`podman build -f <containerfile> -t <tag>
+<context>`) — no DNS shenanigans, no `--network=host`.
+
+**TZ bind mounts** — `config/dev-container.toml`'s `default_volumes.bind`
+mounts `/etc/localtime` and `/etc/timezone` from host into container,
+read-only (`readonly = true` in TOML → podman's `:ro` mode suffix).
+glibc's time-formatting code reads `/etc/localtime` directly, so a
+bind mount is more reliable than `-e TZ=...` (which lots of glibc
+code paths ignore). The `readonly` flag is non-negotiable: under
+rootless podman + `--userns keep-id` the container UID maps onto
+the invoking host user, so a writable mount would let a container
+rewrite the host's zone configuration. The Containerfile installs
+`tzdata` so the underlying zone files exist as a fallback when the
+bind mount is absent (e.g. running `forge dev exec` under a
+different runner). Pinned by `dev_container_provisions_tz_bind_mounts`
+and `base_containerfile_installs_git_delta_and_tzdata`.
+
+**lazygit + git-delta** — Both are workflow tools the dotfile
+aliases reference (`lg` → lazygit; `delta` is a git-pager opt-in).
+git-delta is in trixie main (apt). lazygit has no apt package on
+trixie main, so the Containerfile pulls the upstream static
+tarball at image-build time — same pattern as nvim/yazi/uv/fnm.
+Pinned by `base_containerfile_installs_lazygit` and
+`base_containerfile_installs_git_delta_and_tzdata`.
+
+**`COPY dotfiles/.config/theme` is deliberately absent.** That tree
+is templates + base16 schemes consumed by `forge theme apply` on
+the host. Inside the container `forge` is intentionally a stub
+(see above), so the templates never render — they'd just sit as
+~100 KiB of inert .j2 + .yaml. The container consumes the
+*rendered* outputs (`nvim/lua/plugins/colorscheme.lua`,
+`yazi/theme.toml`, `tmux/colors.conf`) which DO get copied via
+the explicit per-target dotfile COPYs, frozen at image-build time.
+Pinned by `base_containerfile_does_not_copy_dead_theme_dir`. To
+update the container's theme: run `forge theme apply <scheme>` on
+the host, then `forge dev build` to rebuild the image, then
+`podman volume rm <name>-home` so the next `forge dev up`
+re-seeds `/home/dev` from the rebuilt image (the named volume's
+first-run seed is what makes existing containers stale otherwise).
 
 ## Coding standards (load-bearing — enforced in review)
 
@@ -193,6 +353,41 @@ test enforces template existence.
 **Investigate a setup failure:** `forge setup <role> --dry-run` shows the
 plan; `forge setup <role> --diff` prints a unified diff per dotfile against
 what's currently on disk.
+
+**Spin up a clean test container or VM (`forge lxc` / `forge vm`):**
+one-shot bootstrap for a fresh Debian trixie incus instance with the
+forge binary pre-pushed. Replaces the manual "incus launch + override
+IP + fix in-guest networkd + swap resolv.conf + useradd august + push
+binary" sequence we used to do by hand for testing forge from zero.
+
+```bash
+forge lxc                  # default name forge-scratch, default IP 10.160.110.50
+forge lxc test1            # custom name
+forge lxc --no-shell test1 # bootstrap and exit (for scripting)
+forge lxc --ip 10.160.110.99 test1
+forge vm                   # KVM VM variant; default name forge-scratch-vm, IP .51
+incus delete --force <name>  # cleanup when done
+```
+
+By default drops you into a shell as `august` (UID 1000, NOPASSWD
+sudo, linger enabled) inside the guest with `./forge` ready to run.
+The binary that gets pushed in is `~/linux-config/target/release/forge`
+when present (so a `cargo build --release` followed by `forge lxc`
+always tests the just-built version, even if `which forge` resolves
+to a stale `~/.cargo/bin/forge`); falls back to the running
+`current_exe()` otherwise. Implementation in
+`crates/forge/src/commands/scratch.rs`.
+
+The earlier draft of these commands ran `incus config device override
+eth0 ipv4.address=…` followed by `incus restart` to register a
+dnsmasq lease for the static IP — that turned out to be redundant
+because the guest's `/etc/resolv.conf` is also swapped to public DNS
+(1.1.1.1, 9.9.9.9), bypassing the gateway dnsmasq entirely. Removing
+both fixed a load-bearing bug: VM restart on this host hangs for 6+
+minutes per call (ACPI shutdown timing in the upstream image), which
+made `forge vm` effectively unusable in the previous shape. Pinned by
+the `default_name_and_ip_differ_between_lxc_and_vm` and
+`vm_agent_timeout_exceeds_lxc` tests in the same module.
 
 **Adjust the monitor layout (desktop role):** edit
 `dotfiles/.config/kanshi/config`, not the sway config. Kanshi owns all
@@ -412,6 +607,297 @@ Four gotchas worth knowing:
 
 To pick a different model size or quant, see "Tweak the dictation
 stack" in Common tasks.
+
+**Adjust the virt menu (server role + desktop role,
+`$mod+c`):** unified fuzzel picker for podman containers, incus
+LXCs, and libvirt-managed KVM VMs. Three pieces, all touched
+together:
+
+1. **`vm-menu` script** (`dotfiles/.local/bin/vm-menu`) — the
+   keybind target. Snapshots every instance once at launch
+   (no live refresh), renders fixed-width rows in fuzzel, and
+   on selection pops a second fuzzel with the actions valid
+   for the picked instance's current state (`start`, `stop`,
+   `resume`, `shell`). The shell action auto-starts a stopped
+   instance first, polls until running, then opens a new foot
+   window dropped into `bash`/`sh`/serial console as
+   appropriate.
+2. **`server` role packages + post-cmds** — `incus`,
+   `incus-client`, `qemu-system-x86`, `qemu-kvm`,
+   `libvirt-daemon-system`, `libvirt-clients`, `bridge-utils`,
+   `virtinst`, plus group adds (`incus-admin`, `incus`,
+   `libvirt`, `kvm`), `systemctl enable --now libvirtd`,
+   `virsh net-define /etc/libvirt/qemu/networks/default.xml`,
+   `virsh net-autostart default && virsh net-start default`,
+   and `incus admin init --auto --storage-backend=dir`. The
+   `server_role_provisions_virt_stack` test pins all of these
+   together; if you split a step out the test will catch it.
+   The explicit `net-define` is defensive — Debian's
+   `libvirt-daemon-system` postinst usually auto-imports the
+   default network XML on first start, but on at least one host
+   we caught it with the XML on disk yet absent from `virsh
+   net-list --all`, which silently breaks the subsequent
+   `net-autostart` / `net-start` post-cmds. Pinned by
+   `server_role_defines_libvirt_default_network`.
+3. **`desktop` role addition** — the virt-console GUI tier:
+   `virt-manager` (the heavyweight management UI),
+   `gir1.2-spiceclientgtk-3.0` (the SPICE GTK widget bindings —
+   a Recommends of virt-manager that our `--no-install-recommends`
+   apt strips, without which the SPICE viewer pane errors with
+   "Namespace SpiceClientGtk not available"), and `virt-viewer`
+   (ships the `remote-viewer` CLI that `incus console <name>
+   --type=vga` shells out to — without it, the SPICE display
+   silently fails to open). All three pinned together by
+   `desktop_role_provisions_virt_console_tools`. Lives on
+   desktop only because the headless CLIs cover what `vm-menu`
+   needs; the GUI tier is the SPICE/VNC fallback for guests
+   without a serial console.
+
+Three gotchas worth knowing:
+
+1. **Group memberships need a re-login to take effect.** The
+   first `forge setup` after this stack lands runs `usermod
+   -aG` for `incus`/`libvirt`/`kvm`/`incus-admin`, but the
+   user's *current* shell session won't pick those up — group
+   membership only attaches to processes started after the
+   next login. Until then, `vm-menu` will pop the empty popup
+   with the message `log out + back in to activate
+   incus/libvirt groups` (the runtime health hint detects the
+   permission-denied stderr and surfaces it). `newgrp libvirt`
+   in the shell vm-menu was launched from is the cheapest
+   workaround if a logout is impractical.
+2. **`virsh console` requires a serial pty in the guest XML
+   AND a getty running on it.** Modern distros installed via
+   `virt-install` get this for free, but legacy/minimal images
+   often don't, in which case the foot window opens, prints
+   `Escape character is ^]`, and sits dead. The `do_shell`
+   path in `vm-menu` notifies the user about this gotcha
+   pre-emptively when the shell action targets a VM, so a
+   silent-hang failure mode at least gets a hint of "try
+   virt-manager instead". We deliberately do NOT fall back to
+   ssh — picking a username and writing an ssh-config from
+   the menu is too much state.
+3. **The `incus admin init` post-command's `check` is
+   load-bearing, not just a perf optimization.** `incus admin
+   init` errors out on rerun against an already-initialized
+   daemon (`existing instances or images. 'incus admin init'
+   requires an empty database`), so without the
+   `test -d /var/lib/incus/database` guard every forge rerun
+   would fail at this step. The
+   `server_role_provisions_virt_stack` test asserts the check
+   is present.
+
+To rebuild the keybind script after edits: `cargo install
+--path crates/forge --force` (since the dotfiles tree is
+embedded into the binary at compile time).
+
+**Networking (one-manager rule, NetworkManager-only):**
+NetworkManager owns every device on the box. Wifi has been
+NM-managed since the start; ethernet was migrated off ifupdown +
+dhcpcd because the split-manager arrangement made the
+route-metric drop-in dead config (ethernet stayed `unmanaged`
+per `nmcli device status` and dhcpcd's default metric=1006 won
+the route race against NM's wifi at 600 — symptom: wired plugged
+in, traffic still on wifi). Three migration post-cmds in the
+desktop role implement the unification (search the role for
+`05-ifupdown-managed.conf`):
+
+1. `/etc/NetworkManager/conf.d/05-ifupdown-managed.conf` writes
+   `[ifupdown] managed=true`, overriding Debian's shipped
+   `[ifupdown] managed=false` in `/etc/NetworkManager/NetworkManager.conf`
+   without editing the package-owned main file.
+2. `/etc/network/interfaces` is rewritten down to loopback-only
+   with a `# Managed by forge` marker the post-cmd's check
+   greps for. Removes the brittle MAC-derived `enxXXXXXXXXXXXX`
+   ethernet hardcode the Debian installer wrote — different USB
+   ethernet dongle / dock = NM auto-detects, no edit.
+3. `systemctl disable --now networking.service` so ifupdown
+   stops competing for any device.
+
+A separate post-cmd writes
+`/etc/NetworkManager/conf.d/10-ethernet-priority.conf` with
+`[connection-ethernet]` / `[connection-wifi]` `match-device=type:`
+blocks that pin `ipv4.route-metric` (100 vs 600). NM's compiled-in
+defaults already match these numbers; pinning them on disk guards
+against a silent NM upstream change or a stray
+`nmcli connection modify` flipping the preference. The match
+syntax `match-device=type:ethernet` is documented in
+`man NetworkManager.conf` under `[connection-*]`.
+
+**`connection.autoconnect-priority` is intentionally NOT in the
+drop-in.** Per `nm-settings(5)`, that property only chooses
+between profiles competing for the *same device* (e.g. two saved
+wifi networks on `wlan0`). It does not influence cross-device
+preference — ethernet and wifi auto-connect independently when
+their carriers come up. An earlier version of the drop-in pinned
+`autoconnect-priority=100` / `-10` between the two device types
+and that was dead config. Debian's NM also auto-generates "Wired
+connection 1" with `autoconnect-priority=-999` (NM's default-
+wired sentinel — set so any user-created wired profile at the
+default 0 outranks it on the *same* device); the property only
+matters per-device, so this is fine and safe to ignore.
+
+**Exclusive failover via dispatcher script (real "ethernet when
+plugged, wifi otherwise"):** `/etc/NetworkManager/dispatcher.d/10-wifi-when-no-ethernet`
+disconnects every wifi device when an `en*`/`eth*` device
+transitions to `up`, and reconnects every wifi device when the
+last ethernet device transitions to `down`. The route-metric pin
+above only fixes *kernel routing* — it does NOT fix
+`getaddrinfo()` / `connect()` source-address selection per RFC
+6724, which on a same-subnet wifi+ethernet host (laptop docked
+into the same LAN as the wifi AP) picks the lower-ifindex
+interface (usually wifi) for outbound binds even when ethernet
+has the lower route metric. Symptom: VPN client / `curl
+ifconfig.me` reports the wifi public IP despite the wire being
+plugged in. The dispatcher script removes the wifi IP entirely
+when ethernet is up, so no app can pick it. Uses `nmcli device
+disconnect` (not `radio off`) so the wifi card still scans and
+the user can manually pick a network with `nmcli device connect
+<wifi-dev>` to override the dispatcher. Loop-prevention is
+trivial: the script's first `case` filters on `en*`/`eth*`, so
+the wifi-up event NM fires when we re-enable wifi doesn't
+recurse. Pinned by `desktop_role_installs_wifi_failover_dispatcher`.
+
+**Migration gotcha** (only matters when forge first runs on a
+box that previously had `[ifupdown] managed=false`): NM caches
+the device's unmanaged decision and `nmcli general reload conf`
+re-reads the config file *without* re-evaluating already-
+unmanaged devices. Plus `disable --now networking.service`
+doesn't reliably kill the orphaned dhcpcd children (Debian's
+unit's ExecStop is sometimes a no-op). The clean fix is to
+**reboot**: `networking.service` is disabled so ifupdown won't
+restart, NM starts fresh with `managed=true` in effect from
+boot, dhcpcd never gets respawned. Fresh boxes pick up the
+unified setup from first boot — no reboot needed because
+nothing was holding the device wrongly to begin with. Pinned by
+`desktop_role_unifies_networking_under_nm` and
+`desktop_role_pins_networkmanager_ethernet_priority`.
+
+**Auto-updates (apt + flatpak, no auto-reboot):** the box keeps
+itself patched without manual `apt upgrade` cycles. Two halves,
+both opt-in via forge:
+
+- **apt** (server role, so every host inherits): installs
+  `unattended-upgrades` and writes two drop-ins.
+  - `/etc/apt/apt.conf.d/20auto-upgrades` enables the four
+    periodic flags (`Update-Package-Lists`,
+    `Download-Upgradeable-Packages`, `Unattended-Upgrade`,
+    `AutocleanInterval`) — without these,
+    `apt-daily-upgrade.timer` fires daily and silently does
+    nothing because the package's debconf prompt on a
+    non-interactive install never sets them.
+  - `/etc/apt/apt.conf.d/52unattended-upgrades-local.conf`
+    extends the package's shipped `50unattended-upgrades`
+    (loaded after via apt's alphabetical merge):
+    `Origins-Pattern::` appends the Debian stable + updates
+    suites so point-release fixes land too (not just
+    security); `Automatic-Reboot "false"` is pinned (default
+    is already false; pin guards against future flip);
+    `MinimalSteps "true"` so an interrupted run resumes
+    cleanly instead of leaving a half-configured package.
+- **flatpak** (desktop role only — only desktop installs
+  flatpaks): writes
+  `/etc/systemd/system/flatpak-update.{service,timer}` running
+  `flatpak update -y --noninteractive` daily as root. System
+  flatpak installs live under `/var/lib/flatpak` (root-owned),
+  so a per-user timer can't update them. The timer is
+  `OnCalendar=daily` + `RandomizedDelaySec=30m` +
+  `Persistent=true`, ordered after `network-online.target`.
+
+**The flatpak-update.service is hardened** with eleven systemd
+sandbox directives — `NoNewPrivileges=yes`, `PrivateTmp=yes`,
+`ProtectSystem=strict` + `ReadWritePaths=/var/lib/flatpak`,
+`ProtectHome=read-only`, `ProtectKernel{Tunables,Modules}=yes`,
+`ProtectControlGroups=yes`, `ProtectClock=yes`,
+`LockPersonality=yes`, `RestrictRealtime=yes`. The unit runs as
+root because system flatpaks require it; the directives
+contain the blast radius if flatpak (or any of its deps) ever
+has a privilege-escalation bug. Pinned by
+`desktop_role_hardens_flatpak_update_service`. We deliberately
+do NOT add `RestrictNamespaces=` because flatpak's update path
+uses bwrap for triggers, and over-constraining namespaces
+breaks updates with errors that are hard to diagnose. No
+auto-reboot anywhere — kernel reboots stay user-initiated.
+Verify timers fire with `systemctl list-timers
+apt-daily-upgrade.timer flatpak-update.timer`.
+
+**Host firewall (server role, deliberately none):**
+`/etc/nftables.conf` is a forge-managed file with the marker
+comment `# Managed by forge: intentionally empty` and no
+ruleset. The path is owned (so an ad-hoc edit can't squat
+it), but the contents are pure documentation — no tables, no
+chains, no policy. `nftables.service` is left as Debian
+shipped it (loaded but inert against an empty config); the
+service isn't disabled because netavark / libvirt / incus all
+program nftables for their own bridges through the same
+kernel subsystem, and pulling the package or masking the
+service would surprise those daemons.
+
+An earlier version of this role created an `inet forge_filter`
+table with `policy drop` on input plus a small allowlist
+(loopback, established/related conntrack, ICMP/ICMPv6, ssh).
+That looked correct on paper but caused real problems:
+**rootless podman + pasta UDP DNS replies were not reliably
+matching `ct state established,related accept`** in the
+input chain on this kernel/pasta combo. Symptom: `forge dev
+build` failed at the very first `apt-get update` with
+`Temporary failure resolving 'deb.debian.org'` even though
+the host could curl the same URL fine. Reproducible with
+`podman run --dns=10.10.20.1 debian:trixie-slim getent hosts
+deb.debian.org` (fails) vs `--network=host` (succeeds on the
+same machine, same DNS, same network).
+
+The choice to roll the firewall back rather than work around
+the pasta interaction:
+
+- This is a single-user developer laptop behind a NAT
+  router. Inbound traffic from the public internet is already
+  filtered at the router; default-drop on input was layering
+  on top of that for marginal benefit.
+- Debian services bind to `127.0.0.1`/`::1` by default; the
+  ones that *do* listen LAN-wide (sshd, libvirt's bridge for
+  VM consoles) are the ones we *want* reachable.
+- The LAN itself is trusted (home network).
+- Distro defaults — Debian, Ubuntu, Fedora workstation — ship
+  with no host-level filtering on a fresh install. Our
+  forge_filter was extra complexity with a real cost (broke
+  rootless podman) and no real upside.
+
+**The negative invariant against `flush ruleset` is still
+load-bearing.** Debian's stock `/etc/nftables.conf` opens
+with `flush ruleset`, and even our otherwise-empty file
+would wipe netavark / libvirt / incus tables on every
+`systemctl reload nftables` if we added that line.
+`server_role_provisions_host_firewall` walks every
+post-command in both roles and fails if `flush ruleset`
+appears anywhere. If you're rewording a comment in the
+firewall body, keep the literal phrase out of it or the test
+fails. The original `forge_filter` ruleset is preserved in
+git history if a future host (real server, public-facing)
+ever needs filtering — restore it via a per-host drop-in,
+NOT by re-introducing it to the base server role, and
+investigate the pasta interaction first.
+
+**Power profiles (desktop role, laptop):**
+`power-profiles-daemon` exposes `power-saver` / `balanced` /
+`performance` over D-Bus, switchable at runtime via
+`powerprofilesctl set <profile>`. Tweaks Intel P-state EPP,
+platform_profile (when the firmware exposes one — Tiger Lake
+i7-1185G7 does), and CPU governor in lockstep. Pure system
+service, no DE-specific bits, works the same under sway. Default
+profile on install is `balanced`.
+
+We deliberately don't pin a default profile or auto-switch
+in the role — auto-switching on AC plug/unplug is a polish
+task you wire up via a UPower dispatcher script if you want
+it (PPD doesn't auto-switch by design). Lives in desktop
+only, not server, because every knob it exposes is laptop-
+shaped — a server-on-AC just idles in `balanced` for ~5 MiB
+of nothing. Pinned by
+`desktop_role_provisions_power_profiles_daemon`. If
+`powerprofilesctl get` returns "No D-Bus name
+net.hadess.PowerProfiles" the daemon's not running —
+`systemctl status power-profiles-daemon` will tell you why.
 
 ## Things that look load-bearing but aren't
 

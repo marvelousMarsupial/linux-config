@@ -75,11 +75,143 @@ packages = [
     #                        root. Without it podman falls back to vfs,
     #                        which copies the whole image on every layer
     #                        (slow + huge disk usage).
+    #   * `nftables`       — provides the `nft` CLI that podman's
+    #                        network backend (netavark) shells out to
+    #                        for firewall / NAT rule programming on
+    #                        every container with networking. Without
+    #                        it `podman build` and `podman run` fail at
+    #                        network-setup time with "netavark:
+    #                        nftables error: unable to execute nft: No
+    #                        such file or directory" — which is
+    #                        especially confusing because podman itself
+    #                        is installed and the failure surfaces deep
+    #                        inside the build (after image pull and the
+    #                        first RUN step starts). Trixie's netavark
+    #                        defaults to nftables (the iptables-legacy
+    #                        path is being phased out), so this is
+    #                        mandatory regardless of rootless/rootful.
     "podman",
     "uidmap",
     "passt",
     "slirp4netns",
     "fuse-overlayfs",
+    "nftables",
+    # Virt stack — system containers (incus) + full VMs (libvirt/qemu).
+    # Lives in the `server` base role so both roles ship with it
+    # (desktop extends server). The `vm-menu` script bound to $mod+c
+    # in sway is the user-facing entry point; it shells out to
+    # `podman` / `incus` / `virsh` to enumerate instances and
+    # dispatch start/stop/shell actions across all three runtimes.
+    # Putting the heavy daemons in `server` keeps headless boxes
+    # capable of running them too — the desktop role piles
+    # `virt-manager` (the GTK GUI) on top for graphical console
+    # access, but the underlying CLIs work fine without an X/wayland
+    # session.
+    #
+    #   * `incus`               — system-container manager (LXD
+    #     fork). The `incus admin init --auto` post-command below
+    #     stands up the default `incusbr0` bridge, a `dir`-backed
+    #     storage pool under /var/lib/incus, and a `default` profile
+    #     — enough that `incus launch images:debian/13` works
+    #     end-to-end on a fresh box.
+    #   * `incus-client`        — the `incus` CLI binary, separate
+    #     package so headless / remote-only hosts can install just
+    #     the client. We always want both on every host.
+    #   * `qemu-system-x86`     — x86_64 system emulator/
+    #     virtualizer. The actual hypervisor process libvirt spawns
+    #     per VM.
+    #   * `qemu-kvm`            — Debian compatibility shim that
+    #     pulls in the kernel-side KVM accel glue. Without it
+    #     libvirt happily defines VMs but they fall back to pure
+    #     software emulation (10-100x slower, fans pegged on a
+    #     mostly-idle guest); on trixie this is a separate package
+    #     from `qemu-system-x86`, so we need both listed.
+    #   * `libvirt-daemon-system` — `libvirtd` plus the package's
+    #     postinst that defines the default `virbr0` NAT network
+    #     and the /var/lib/libvirt/images storage pool. The
+    #     post-commands below mark the network autostart so VMs
+    #     come back up after a host reboot without manual
+    #     `virsh net-start`.
+    #   * `libvirt-clients`     — provides `virsh`, the primary
+    #     CLI the vm-menu script shells out to. Also hosts the
+    #     `virt-host-validate` diagnostic which is invaluable
+    #     when KVM isn't accelerating (kernel module missing,
+    #     nested-virt off in BIOS, etc).
+    #   * `bridge-utils`        — ships `brctl` for inspecting the
+    #     libvirt-managed `virbr0`. Tiny package, nice to have for
+    #     ad-hoc bridge debugging when networking misbehaves.
+    #   * `virtinst`            — provides `virt-install`, the
+    #     supported way to provision a new VM from an ISO without
+    #     going through the virt-manager GUI. Lets headless server
+    #     hosts spin up VMs from the shell.
+    #   * `qemu-system-modules-spice` — provides the SPICE
+    #     display backend module qemu loads at `-spice …` time.
+    #     Incus *always* invokes qemu with
+    #     `-spice unix=on,disable-ticketing=on,addr=…/qemu.spice`
+    #     so it can offer a graphical console socket for
+    #     `incus console --type=vga` (and so virt-viewer can
+    #     attach later if the user wants a GUI). Without this
+    #     module qemu errors at boot with "There is no option
+    #     group 'spice'" and the VM never starts — even though
+    #     the user never explicitly asked for a graphical console.
+    #     Debian splits the SPICE backend out of qemu-system-x86
+    #     to keep the base install lean for headless-only
+    #     workloads, but every incus VM trips this requirement.
+    #   * `qemu-utils`          — ships `qemu-img`, `qemu-nbd`,
+    #     `qemu-storage-daemon`. Incus shells out to `qemu-img` to
+    #     materialize a per-VM root disk from the cached image
+    #     (qcow2 inspect / convert / overlay), and without it
+    #     `incus init --vm` fails with "Failed reading image
+    #     info … Failed to find executable 'qemu-img'" *despite*
+    #     `qemu-system-x86` being installed — the two packages
+    #     are split on Debian and `qemu-system-x86` does NOT
+    #     pull `qemu-utils` as a dep. libvirt also needs
+    #     `qemu-img` for `virt-install --disk path=…,size=…`
+    #     to allocate a new qcow2 backing file. Treated as
+    #     virt-stack-critical, not optional.
+    #   * `ovmf`                — UEFI firmware blobs (OVMF_CODE.fd,
+    #     OVMF_VARS.fd) under /usr/share/OVMF/. Required by both
+    #     virt drivers we use:
+    #       - **incus**: `incus init --vm` defaults to UEFI boot.
+    #         Without ovmf the daemon's startup feature-check fails
+    #         with "Unable to locate a UEFI firmware" and the
+    #         `virtual-machine` instance type is marked
+    #         non-operational — every `incus init … --vm` then
+    #         errors with "Instance type 'virtual-machine' is not
+    #         supported on this server: QEMU failed to run feature
+    #         checks", *even though* qemu/kvm are installed.
+    #         Restart `incus.service` after install for the daemon
+    #         to re-probe.
+    #       - **libvirt/virt-install**: any guest template that
+    #         wants Secure Boot, > 2 TiB disks, or modern Windows
+    #         needs OVMF. virt-manager's "create new VM" wizard
+    #         silently downgrades to legacy SeaBIOS otherwise,
+    #         which surprises users on first boot of a UEFI-only
+    #         install ISO.
+    #     Pinned by `server_role_provisions_virt_stack` so a
+    #     refactor that drops it gets caught at `cargo test`,
+    #     not at `incus init --vm` on a fresh box.
+    "incus",
+    "incus-client",
+    "qemu-system-x86",
+    "qemu-system-modules-spice",
+    "qemu-kvm",
+    "qemu-utils",
+    "libvirt-daemon-system",
+    "libvirt-clients",
+    "bridge-utils",
+    "virtinst",
+    "ovmf",
+    # Unattended security + stable upgrades. Lives in `server` (the
+    # base role) so headless boxes inherit the policy too — every
+    # machine the user touches keeps itself patched without manual
+    # `apt upgrade` cycles. The package alone doesn't enable anything
+    # — the two post-command drop-ins below
+    # (/etc/apt/apt.conf.d/20auto-upgrades and
+    # /etc/apt/apt.conf.d/52unattended-upgrades-local.conf) are what
+    # turn the apt-daily-upgrade.timer into an actual upgrade run.
+    # Pinned by `server_role_provisions_unattended_upgrades`.
+    "unattended-upgrades",
 ]
 dotfiles = [
     ".bashrc",
@@ -92,15 +224,370 @@ dotfiles = [
     ".config/starship.toml",
     ".config/theme/**",
     ".config/environment.d/**",
+    ".config/containers/**",
 ]
 post = [
-    { run = "chsh -s /bin/zsh $(whoami)", check = "getent passwd $(whoami) | grep -q /bin/zsh" },
+    # Default the user's login shell to zsh.
+    #
+    # Wrapped in `sudo` deliberately. `chsh` is *not* a sudo-tool by
+    # design — it's setuid-root and routes through PAM (`/etc/pam.d/chsh`
+    # on Debian), which authenticates the *invoking* user against
+    # `common-auth` even when they're only changing their own shell.
+    # That means an unprefixed `chsh -s /bin/zsh august` interactively
+    # prompts for the user's password and then reads stdin via PAM's
+    # conversation function — fine on a manual run from a tty, fatal
+    # for forge which invokes post-commands non-interactively. A
+    # passwordless user (fresh LXC, CI test, freshly-useradded box)
+    # also fails this PAM step with "Authentication failure" because
+    # there is nothing for `pam_unix` to compare against.
+    #
+    # Going through `sudo` short-circuits the PAM auth chain entirely
+    # via `pam_rootok.so` (already-root → succeed without prompt) on
+    # the chsh PAM stack, and the user's NOPASSWD sudoers entry
+    # (documented as the host's setup baseline) means sudo itself
+    # doesn't prompt either. Net effect: forge's post-command runs
+    # to completion non-interactively on the user's host, in a fresh
+    # LXC, and on a Debian box where the user account was created
+    # without a password — same behavior across all three.
+    #
+    # The `check` is unchanged: `getent passwd | grep /bin/zsh`
+    # makes the post-cmd a no-op on every rerun once the user's shell
+    # is already zsh. Pinned by `server_role_chsh_uses_sudo`.
+    { run = "sudo chsh -s /bin/zsh $(whoami)", check = "getent passwd $(whoami) | grep -q /bin/zsh" },
+    # `bat` (the apt package) ships its binary as `/usr/bin/batcat`,
+    # not `bat`, because Debian's old `bacula-console-bat` package
+    # historically owned `/usr/bin/bat` (Debian bug #930299, won't-
+    # fix). The upstream-recommended workaround — quoted verbatim in
+    # `sharkdp/bat`'s README — is to symlink the renamed binary onto
+    # PATH as `bat`. Without this, the user's `cat = bat` zsh alias
+    # fails on every invocation with "command not found: bat", which
+    # is silly because the binary IS installed, just under a name
+    # nobody types. We drop the symlink at /usr/local/bin/bat
+    # (precedence over /usr/bin in the typical PATH; doesn't conflict
+    # with any future apt package owning /usr/bin/bat). The dev
+    # container creates the same symlink in its base.Containerfile so
+    # the host and container have the same binary at the same path.
+    #
+    # `ln -sf` is intentional — the post-cmd is idempotent on its
+    # own (reruns overwrite the existing symlink, no error), and
+    # `-f` also handles the case where someone created the file
+    # manually (e.g. as a script) before forge owned this path. The
+    # check is `test -L`, not `test -e`, so a regular file there
+    # (e.g. someone copied batcat instead of symlinked) fails the
+    # check and forge re-symlinks on the next run.
+    { run = "sudo ln -sf /usr/bin/batcat /usr/local/bin/bat", check = "test -L /usr/local/bin/bat" },
+    # Unattended-upgrades enable file. The `unattended-upgrades`
+    # package's debconf prompt asks whether to enable periodic
+    # upgrades and writes /etc/apt/apt.conf.d/20auto-upgrades when
+    # answered "yes". A non-interactive forge run never sees that
+    # prompt, so without this drop-in the package installs but
+    # apt-daily-upgrade.timer fires and exits silently every day —
+    # which is the failure mode the user just left behind on this
+    # box (see CLAUDE.md "How updates work").
+    #
+    # The four periodic knobs and what they do:
+    #   * Update-Package-Lists "1"  — run `apt-get update` daily
+    #     (already handled by apt-daily.timer + APT::Periodic, but
+    #     pinning it explicitly stops a future package upgrade or
+    #     stray edit from disabling it).
+    #   * Unattended-Upgrade "1"    — actually run unattended-upgrade
+    #     once per day. This is the bit that was previously absent.
+    #   * AutocleanInterval "7"     — `apt-get autoclean` weekly so
+    #     /var/cache/apt/archives doesn't grow unbounded with every
+    #     downloaded .deb.
+    #   * Download-Upgradeable-Packages "1" — pre-fetch upgrades
+    #     into the cache during the daily run, so the actual
+    #     unattended-upgrade pass doesn't have to download + install
+    #     in one shot. Speeds up the install pass and survives flaky
+    #     networks better (download retries don't block the install
+    #     window).
+    #
+    # The `check` is `test -f` matching the logind / NM pattern — if
+    # the file vanishes (someone purged unattended-upgrades and
+    # reinstalled it, say) the next forge run rewrites it; if it's
+    # already there we no-op.
+    { run = "sudo mkdir -p /etc/apt/apt.conf.d && printf 'APT::Periodic::Update-Package-Lists \"1\";\\nAPT::Periodic::Download-Upgradeable-Packages \"1\";\\nAPT::Periodic::Unattended-Upgrade \"1\";\\nAPT::Periodic::AutocleanInterval \"7\";\\n' | sudo tee /etc/apt/apt.conf.d/20auto-upgrades >/dev/null", check = "test -f /etc/apt/apt.conf.d/20auto-upgrades" },
+    # Local unattended-upgrades policy overrides. Lives at
+    # /etc/apt/apt.conf.d/52unattended-upgrades-local.conf so that it
+    # loads AFTER the package's shipped /etc/apt/apt.conf.d/50unattended-upgrades
+    # (apt.conf.d files merge alphabetically and later definitions
+    # win for scalar keys / append for list keys). We do NOT edit
+    # 50unattended-upgrades directly because it's owned by the apt
+    # package and would conflict on package upgrade.
+    #
+    # What this drop-in changes vs. shipped defaults:
+    #
+    #   1. **Origins-Pattern**: the package ships with security-only
+    #      origins (codename + codename-security, both labeled
+    #      Debian-Security). Adding the stable suite (`codename`,
+    #      label Debian) and the rolling updates suite
+    #      (`codename-updates`) opts the box in to point-release
+    #      fixes too — e.g. when trixie 13.1 → 13.2 lands, the box
+    #      picks it up overnight instead of waiting for a manual
+    #      `apt upgrade`. Debian stable's update cadence is
+    #      conservative enough that the user is comfortable
+    #      letting these land unattended; if a specific upgrade
+    #      ever breaks something, the fix is to pin that package
+    #      via `apt-mark hold`, not to revert this default.
+    #      The `::` operator appends to the list rather than
+    #      replacing it, so the security-only entries shipped in
+    #      50unattended-upgrades still apply.
+    #   2. **Automatic-Reboot "false"**: defaults already false on
+    #      stock Debian, but pinning the value explicitly closes
+    #      off a future upstream change or a stray admin edit
+    #      silently flipping it to true. The user prefers to
+    #      schedule reboots themselves so a kernel upgrade
+    #      doesn't drop in-progress work mid-afternoon.
+    #   3. **MinimalSteps "true"**: tells unattended-upgrade to
+    #      run dpkg in many small batches rather than one giant
+    #      transaction. The cost is a few extra seconds per run;
+    #      the benefit is that a Ctrl-C, power loss, or
+    #      `apt-daily-upgrade.service` deadline kill mid-run
+    #      leaves a coherent dpkg state that the *next* run
+    #      resumes cleanly, instead of a half-configured package
+    #      that requires manual `dpkg --configure -a`.
+    #
+    # The check is `test -f` for symmetry with the 20auto-upgrades
+    # file above and the logind / NM drop-ins.
+    { run = "sudo mkdir -p /etc/apt/apt.conf.d && printf '// Local overrides on top of /etc/apt/apt.conf.d/50unattended-upgrades.\\n// Loaded after 50 (apt merges conf.d alphabetically); managed by forge.\\n\\nUnattended-Upgrade::Origins-Pattern:: \"origin=Debian,codename=${distro_codename},label=Debian\";\\nUnattended-Upgrade::Origins-Pattern:: \"origin=Debian,codename=${distro_codename}-updates\";\\nUnattended-Upgrade::Automatic-Reboot \"false\";\\nUnattended-Upgrade::MinimalSteps \"true\";\\n' | sudo tee /etc/apt/apt.conf.d/52unattended-upgrades-local.conf >/dev/null", check = "test -f /etc/apt/apt.conf.d/52unattended-upgrades-local.conf" },
     { run = "ln -sf $HOME/.local/nvim/bin/nvim $HOME/.local/bin/nvim", check = "test -L $HOME/.local/bin/nvim" },
     { run = "sudo ln -sf /usr/bin/batcat /usr/local/bin/bat", check = "test -L /usr/local/bin/bat" },
     { run = "sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd", check = "test -L /usr/local/bin/fd" },
     { run = "sudo ln -sf $HOME/.local/bin/yazi /usr/local/bin/yazi", check = "test -L /usr/local/bin/yazi" },
     { run = "sudo ln -sf $HOME/.local/bin/ya /usr/local/bin/ya", check = "test -L /usr/local/bin/ya" },
     { run = "sudo ln -sf $HOME/.local/bin/starship /usr/local/bin/starship", check = "test -L /usr/local/bin/starship" },
+    # Virt stack group memberships. Add the user to each of the
+    # four groups that gate the runtimes the vm-menu script (Mod+c)
+    # talks to:
+    #
+    #   * `incus-admin` — owners can run `incus admin init` and
+    #     edit daemon-wide config. Strictly only needed for the
+    #     init step right below this block, but adding it on every
+    #     host means a future `forge teardown && forge setup` cycle
+    #     keeps re-init authoritative without sudo.
+    #   * `incus`       — daily-use group. Members can `incus
+    #     launch`, `incus exec`, `incus list`, etc. without sudo.
+    #     The vm-menu script runs as the user, so this is what
+    #     makes the menu's incus calls work.
+    #   * `libvirt`     — connects to `qemu:///system` without
+    #     sudo. The vm-menu hard-codes `qemu:///system` because
+    #     `qemu:///session` (the per-user, no-libvirtd default)
+    #     can't reach the libvirt-managed `virbr0` network — every
+    #     VM defined there would otherwise be invisible to the
+    #     menu, so this group is load-bearing.
+    #   * `kvm`         — owns /dev/kvm. Modern libvirt setups
+    #     don't strictly require the user to be in `kvm` (the
+    #     libvirtd helper opens /dev/kvm), but membership lets us
+    #     run qemu directly for ad-hoc debugging without sudo —
+    #     handy when libvirtd itself is the thing you're trying
+    #     to diagnose.
+    #
+    # `usermod -aG` is itself idempotent (re-affirms an existing
+    # membership without error), so the per-line `check` is a
+    # belt-and-braces short-circuit so reruns don't re-shell out
+    # through sudo. The check parses /etc/group via getent, which
+    # reflects what usermod just wrote without round-tripping
+    # through the user's session — important because newly-added
+    # group memberships don't take effect for the *current*
+    # session at all (they only attach to processes started after
+    # a re-login or a `newgrp`). See CLAUDE.md for the user-facing
+    # consequence: vm-menu shell actions can't talk to
+    # incus/libvirt until the user logs out + back in after the
+    # very first `forge setup` that adds them to these groups.
+    { run = "sudo usermod -aG incus-admin $(whoami)", check = "getent group incus-admin | grep -qw $(whoami)" },
+    { run = "sudo usermod -aG incus $(whoami)", check = "getent group incus | grep -qw $(whoami)" },
+    { run = "sudo usermod -aG libvirt $(whoami)", check = "getent group libvirt | grep -qw $(whoami)" },
+    { run = "sudo usermod -aG kvm $(whoami)", check = "getent group kvm | grep -qw $(whoami)" },
+    # Enable libvirtd. Debian's libvirt-daemon-system postinst
+    # usually starts the unit on install, but `enable --now` is
+    # defensive: a package-mgr crash mid-install or a manual
+    # `systemctl stop libvirtd` during debugging would otherwise
+    # leave the daemon down on the next forge run, breaking every
+    # `virsh` call from the vm-menu silently. The check matches
+    # the NetworkManager / bluetooth.service pattern above —
+    # `is-active` rather than `is-enabled` so a manually-stopped
+    # daemon gets brought back up by the next forge run rather
+    # than being silently left down because the symlink already
+    # exists.
+    { run = "sudo systemctl enable --now libvirtd.service", check = "systemctl is-active --quiet libvirtd.service" },
+    # Defensively register the `default` NAT network with libvirtd
+    # if it's not already defined.
+    #
+    # libvirt-daemon-system's postinst *usually* imports the seed
+    # XML at `/etc/libvirt/qemu/networks/default.xml` into libvirtd's
+    # runtime state on first start — but not always. We caught a
+    # real host (the developer's daily driver) in a state where the
+    # XML existed on disk but `virsh net-list --all` showed no
+    # networks at all, which means the next two post-commands
+    # (`net-autostart`, `net-start`) silently fail with
+    # `error: failed to get network 'default'` and the entire
+    # vm-menu libvirt path is dead until someone runs
+    # `virsh net-define` by hand.
+    #
+    # The fix is two-line: this post-cmd defines the network from
+    # the seed XML if it's not already in libvirtd's state, and the
+    # check below it (`net-list --all --name | grep -qx default`)
+    # makes reruns idempotent — once the network is registered, the
+    # define command never runs again. Order matters: this MUST run
+    # before the autostart + start post-commands below, otherwise
+    # those will hit the same "no network 'default'" error on a
+    # clean install where the postinst didn't auto-import.
+    #
+    # The XML path is the same one Debian's libvirt-daemon-system
+    # ships and is documented in `man virsh`: it's a stable
+    # interface within the package's lifetime. If a future libvirt
+    # release moves it, this command's exit-status-1 surfaces the
+    # change immediately rather than silently masking it. Pinned by
+    # `server_role_defines_libvirt_default_network`.
+    { run = "sudo virsh net-define /etc/libvirt/qemu/networks/default.xml", check = "sudo virsh net-list --all --name 2>/dev/null | grep -qx default" },
+    # Mark libvirt's `default` NAT network (the `virbr0` bridge)
+    # autostart, so VMs don't fail with "network 'default' is not
+    # active" after every host reboot. The check parses
+    # `virsh net-info default` for the `Autostart: yes` line —
+    # that's exactly the field `--autostart` flips, so checking it
+    # directly avoids relying on a separate state file. The
+    # `net-define` post-cmd above ensures the network exists in
+    # libvirtd's state before this runs.
+    { run = "sudo virsh net-autostart default", check = "sudo virsh net-info default 2>/dev/null | grep -q '^Autostart:.*yes'" },
+    # Bring the default network up in the *current* session as
+    # well, since `net-autostart` only takes effect on the next
+    # libvirtd start. Without this, the very first vm-menu
+    # invocation on a fresh box (before the next reboot) hits
+    # "network 'default' is not active" and every VM start fails.
+    # Separate command from net-autostart because the two flags
+    # do orthogonal things — autostart is persistence, net-start
+    # is "now". The check parses the `Active: yes` line, mirror
+    # of the autostart check above.
+    { run = "sudo virsh net-start default", check = "sudo virsh net-info default 2>/dev/null | grep -q '^Active:.*yes'" },
+    # Restart the incus daemon so it re-runs its qemu feature
+    # checks against the now-installed OVMF firmware. The daemon
+    # probes for `/usr/share/OVMF/OVMF_CODE.fd` ONCE at startup
+    # and caches the result; if `incus` was installed (and the
+    # postinst auto-started incus.service) before `ovmf` landed
+    # in the same forge run, the cached state is "no UEFI → VM
+    # driver non-operational", and `incus init --vm` then errors
+    # with "Instance type 'virtual-machine' is not supported on
+    # this server: QEMU failed to run feature checks" *despite*
+    # qemu/kvm being installed. A restart re-probes and clears
+    # the cache.
+    #
+    # Idempotency: a marker file under /var/lib/incus/. We write
+    # `.forge-uefi-restart-done` after a successful restart and
+    # short-circuit on its presence in subsequent runs. This
+    # avoids two failure modes the previous mtime-comparison
+    # approach had:
+    #
+    #   1. `/proc/<pid>` mtime is NOT a reliable
+    #      "process started at" signal on Linux — the proc
+    #      filesystem refreshes mtimes on access for many
+    #      entries, so the comparison evaluated false on every
+    #      rerun and the restart fired *every time*. On a
+    #      workstation with a running incus VM, that's
+    #      especially bad: systemd's incus.service stop drains
+    #      all managed instances first, so the restart hangs
+    #      for the VM's full ACPI-shutdown timeout (up to 30
+    #      minutes per `boot.host_shutdown_timeout`). One real
+    #      incident: forge setup hung for ~20 min waiting for a
+    #      live test VM to shut down because of this bug.
+    #   2. Marker is unambiguous: if the file exists, the
+    #      restart has been done at least once on this host
+    #      after ovmf was reachable. No date arithmetic, no
+    #      proc inspection, no daemon API calls (which would
+    #      need incus-admin group membership the user may not
+    #      have on the *current* session yet — the documented
+    #      "log out + back in" gotcha).
+    #
+    # The `&&` chain ensures the marker is only written if the
+    # restart itself succeeded. /var/lib/incus is created by the
+    # incus package's postinst before this post-cmd runs, so we
+    # don't need to mkdir.
+    { run = "sudo sh -c 'systemctl restart incus.service && touch /var/lib/incus/.forge-uefi-restart-done'", check = "test -f /var/lib/incus/.forge-uefi-restart-done" },
+    # Initialize incus with the auto/default config: a `dir`-
+    # backend storage pool at /var/lib/incus, an `incusbr0` bridge
+    # for the default profile, and a `default` profile wired up.
+    # Without this, `incus launch <image>` errors with "no storage
+    # pool defined" on a fresh box. We pin `--storage-backend=dir`
+    # rather than letting `--auto` pick because trixie ships
+    # tooling for ZFS / BTRFS that can change `--auto`'s mind from
+    # one release to the next, and we want every host using the
+    # same storage shape so the docs and the `vm-menu` UX stay
+    # predictable. (Filesystem-level snapshots from ZFS/BTRFS
+    # would be nice, but they're worth a dedicated decision
+    # later, not a silent default.)
+    #
+    # The check is load-bearing, not just a perf optimization:
+    # rerunning `incus admin init` against an already-initialized
+    # daemon errors out with "You have existing instances or
+    # images. 'incus admin init' requires an empty database.", so
+    # without the check every forge rerun fails at this step.
+    # `/var/lib/incus/database` only exists once init has
+    # succeeded, so it's a faithful "is incus initialized" probe.
+    { run = "sudo incus admin init --auto --storage-backend=dir", check = "test -d /var/lib/incus/database" },
+    # Host firewall: deliberately none.
+    #
+    # An earlier version of this role created an `inet forge_filter`
+    # nftables table with `policy drop` on input plus a small
+    # allowlist (lo / established,related / icmp / ssh). On paper
+    # that's the canonical default-deny posture. In practice it
+    # broke rootless podman + pasta UDP DNS replies on this kernel:
+    # pasta sends DNS queries through host sockets and the replies
+    # come back into the host's input chain, but `ct state
+    # established,related accept` did NOT match those replies
+    # reliably. Symptom: `forge dev build` failed at the very first
+    # `apt-get update` with `Temporary failure resolving
+    # 'deb.debian.org'` even though the host could curl the same
+    # URL fine, and a one-off `podman run --dns=10.10.20.1
+    # debian:trixie-slim getent hosts deb.debian.org` reproduced
+    # the failure 100% of the time. Same command with
+    # `--network=host` (which bypasses pasta and skips the host's
+    # input chain entirely) succeeded.
+    #
+    # Reasoning for dropping the firewall instead of working
+    # around the pasta breakage:
+    #
+    #   * This is a single-user developer laptop behind a NAT
+    #     router. Inbound traffic from the public internet is
+    #     already filtered by the router's NAT — packets to the
+    #     laptop's WAN-facing IP that don't match an outbound
+    #     connection get dropped at the router, not the laptop.
+    #   * Services on Debian default to binding `127.0.0.1` /
+    #     `::1`, not `0.0.0.0`. The notable exceptions are the
+    #     ones we *want* reachable on the LAN (sshd, the libvirt
+    #     bridge for VM consoles, future incus setups) — and a
+    #     default-drop firewall just made those harder to use
+    #     without giving meaningful protection.
+    #   * The LAN itself is trusted (the user's home network).
+    #   * Distro defaults — Debian, Ubuntu workstation, Fedora
+    #     workstation — all ship with no host-level filtering on
+    #     a fresh install. Our forge_filter was layering on top of
+    #     a sensible default to no benefit.
+    #
+    # We still write `/etc/nftables.conf` to a forge-managed
+    # marker so the path is owned (an ad-hoc edit can't squat it),
+    # and we still pin a negative invariant against `flush ruleset`
+    # in `server_role_provisions_host_firewall` because **even an
+    # empty/comment-only file with `flush ruleset` would wipe
+    # netavark / libvirt / incus tables** when nftables.service
+    # loads it. The rest of the file is comments — no rules, no
+    # tables, just documentation of why this file is intentionally
+    # empty.
+    #
+    # `nftables.service` is left as Debian shipped it (loaded but
+    # mostly inert against this empty config). We don't disable
+    # the service because netavark/libvirt/incus run `nft` against
+    # the same kernel subsystem; pulling the package or masking
+    # the service would risk surprising those daemons. With the
+    # file empty, the service starts, loads no rules, and gets out
+    # of the way.
+    #
+    # If a future host actually needs inbound filtering (e.g.
+    # exposing this laptop as a real server somewhere), don't
+    # restore `forge_filter` directly — investigate the pasta
+    # interaction first, since whatever rule shape we end up with
+    # has to coexist with rootless podman's DNS path. The original
+    # forge_filter design is preserved in git history as a
+    # starting point.
+    { run = "printf '#!/usr/sbin/nft -f\\n# Managed by forge: intentionally empty.\\n#\\n# A previous forge_filter table was rolled back — see\\n# config/roles.toml for the full rationale (rootless podman +\\n# pasta UDP DNS replies were not matching `ct state established`\\n# in our input chain, breaking `forge dev build` at apt-get\\n# update). On a single-user laptop behind NAT this filter was\\n# net-negative anyway; the kernel-side firewall now defers to\\n# distro defaults (no filtering).\\n#\\n# Do NOT add a global ruleset reset to this file (the Debian\\n# default did exactly that, which would wipe netavark / libvirt /\\n# incus tables on every nftables reload — pinned by a negative\\n# invariant in server_role_provisions_host_firewall).\\n' | sudo tee /etc/nftables.conf >/dev/null && sudo systemctl reload nftables.service 2>/dev/null || true", check = "grep -q '^# Managed by forge: intentionally empty' /etc/nftables.conf" },
 ]
 
 [[server.downloads]]
@@ -180,6 +667,38 @@ packages = [
     "brightnessctl",
     "playerctl",
     "wireplumber",
+    # Power-profiles-daemon: laptop power management. Sits at the
+    # sweet spot for a Wayland / sway desktop because:
+    #
+    #   * It exposes three profiles (`power-saver`, `balanced`,
+    #     `performance`) over D-Bus, switchable via
+    #     `powerprofilesctl set <profile>` with no reboot/relogin.
+    #     Tweaks the Intel P-state EPP, platform_profile (when the
+    #     firmware exposes one — Tiger Lake i7-1185G7 does), and
+    #     the CPU governor in lockstep. On battery-only metrics
+    #     it's not as aggressive as TLP, but it integrates cleanly
+    #     with UPower (battery state hooks) and avoids TLP's habit
+    #     of hard-coding policies that fight with kernel power
+    #     management.
+    #   * Pure system service, no desktop-environment specifics —
+    #     works the same under sway/Wayland, gnome, kde. We don't
+    #     need anything sway-specific here.
+    #   * Default profile on install is `balanced`, which is the
+    #     right neutral starting point. The user changes it via
+    #     `powerprofilesctl` (CLI) or D-Bus (any future status-bar
+    #     widget). We don't pin a default profile in this role —
+    #     auto-switching on AC plug/unplug is a polish task that
+    #     the user can opt into separately (PPD doesn't auto-switch
+    #     by design; if you want that, you wire it up via a UPower
+    #     dispatcher or sway hook).
+    #
+    # Lives in **desktop**, not server, because every knob it
+    # exposes is laptop-shaped (battery thresholds, EPP transitions,
+    # platform_profile). On a server-on-AC the daemon would just
+    # idle in `balanced` and burn ~5 MiB RAM for nothing. Pinned
+    # by `desktop_role_provisions_power_profiles_daemon` so a
+    # future "I don't need this" edit can't silently strip it.
+    "power-profiles-daemon",
     # PipeWire's PulseAudio API shim. Without this the PipeWire daemon
     # is fine and native-PipeWire callers (`pw-cat`, the dictate
     # script's `pw-record`) work, but anything speaking the
@@ -261,6 +780,66 @@ packages = [
     # kind of thing a Linux desktop expects to have available for
     # ad-hoc work.
     "cmake",
+    # virt-manager — GTK GUI front-end for libvirt. Lives in the
+    # desktop role only because the underlying daemons + CLIs
+    # (libvirtd, virsh, qemu-system-x86, virtinst) are already in
+    # the `server` base role; desktop just adds the graphical
+    # console viewer on top. Two reasons it earns its slot:
+    #
+    #   1. SPICE/VNC console for VMs that don't have a serial
+    #      console configured — `virsh console <name>` only works
+    #      if the guest XML declares `<console type='pty'>` AND a
+    #      getty is running on the matching tty inside the guest.
+    #      Legacy / minimal guest images often lack one or both,
+    #      and virt-manager's graphical viewer is the only
+    #      practical way to get a shell into them on this host
+    #      (no other VNC/SPICE client is installed). The vm-menu
+    #      script's `shell` action falls back to "console may
+    #      hang — open virt-manager" in that case.
+    #   2. ISO install flow. `virt-install --cdrom` works fine
+    #      headless, but watching the installer's graphical pane
+    #      tick through partitioning is much faster to debug
+    #      visually than tailing a serial log. virt-manager's
+    #      "create new VM" wizard wires up sane defaults (UEFI
+    #      firmware, virtio block, virtio net) without making
+    #      the user remember the flag soup.
+    #
+    # The SPICE GTK widget bindings (`gir1.2-spiceclientgtk-3.0`)
+    # are pinned explicitly below — they are a *Recommends* of
+    # virt-manager, NOT a Depends, and forge installs with
+    # `--no-install-recommends` (see `crates/common/src/packages.rs`),
+    # so without an explicit listing the GIR namespace is missing
+    # at runtime and opening any guest's console errors with
+    # "Error opening SPICE console: Namespace SpiceClientGtk not
+    # available". The viewer pane in virt-manager is then dead on
+    # arrival on a fresh install — exactly the case this role is
+    # meant to handle for VMs without a serial console.
+    "virt-manager",
+    "gir1.2-spiceclientgtk-3.0",
+    # virt-viewer — apt package shipping both the `virt-viewer` GTK
+    # binary and the `remote-viewer` CLI. Complements virt-manager:
+    # virt-manager is the heavier "browse + manage all my libvirt
+    # guests" UI; virt-viewer / remote-viewer are the lightweight
+    # "open a console for THIS specific URL" tools.
+    #
+    # The trigger for this addition was `incus console <name>
+    # --type=vga` shelling out to `remote-viewer` to render the
+    # SPICE display of an incus VM — without virt-viewer installed,
+    # the command silently fails with "remote-viewer not found"
+    # (or in some incus versions, opens nothing). With it, the SPICE
+    # window pops as expected. Same binary is also useful when you
+    # have a libvirt SPICE socket URL in hand
+    # (`spice+unix:///var/run/libvirt/...`) — `remote-viewer
+    # spice+unix://...` opens it without going through virt-manager's
+    # full guest-list UI.
+    #
+    # Side-shows the dbind/AT-SPI accessibility-bus warning at
+    # startup ("Error retrieving accessibility bus address: …
+    # org.a11y.Bus") — that's harmless and standard for any
+    # GTK-on-sway app where the a11y bus isn't running, not a
+    # configuration mistake on our end. Pinned by
+    # `desktop_role_provisions_virt_console_tools`.
+    "virt-viewer",
 ]
 dotfiles = [
     ".config/sway/**",
@@ -306,6 +885,213 @@ post = [
     # manually-stopped daemon (e.g. during debugging) gets restarted on
     # the next forge rerun instead of being silently left down.
     { run = "sudo systemctl enable --now NetworkManager", check = "systemctl is-active --quiet NetworkManager" },
+    # Migrate networking off ifupdown + dhcpcd onto NetworkManager —
+    # one manager owns every device. Three post-commands, each
+    # idempotent. The shipping Debian default is split: NM manages
+    # wifi, ifupdown (via networking.service) shells out to
+    # dhcpcd-base for any device declared in /etc/network/interfaces.
+    # That arrangement bit us with the ethernet-priority work in
+    # this same role: NM's `[connection-ethernet]` route-metric
+    # default applies only to NM-managed connections, and the wire
+    # was unmanaged (state shown by `nmcli device status` as
+    # `unmanaged`), so dhcpcd's metric=1006 on enxXXX won the
+    # default-route race against NM's wifi at metric=600. Symptom:
+    # ethernet plugged in, ethernet has carrier + DHCP lease,
+    # traffic still goes over wifi.
+    #
+    # The fix is structural, not a metric tweak: hand the wire to
+    # NM. With one manager, the existing 10-ethernet-priority.conf
+    # drop-in (one post-command below) actually does its job, and
+    # the MAC-derived interface name (`enxc8a362b69f16` etc.) is no
+    # longer hardcoded in /etc/network/interfaces — different USB
+    # ethernet dongle / dock = NM auto-detects, no edits.
+    #
+    # Step 1: tell NM not to cede ifupdown-listed devices. Debian's
+    # /etc/NetworkManager/NetworkManager.conf ships
+    # `[ifupdown] managed=false`, which is what made the wire
+    # unmanaged. We override via a conf.d/ drop-in (preferred over
+    # editing the package-owned main file, which would conflict on
+    # apt upgrades). The 05- prefix loads BEFORE 10-ethernet-priority.conf
+    # so NM has decided to manage the wire by the time the priority
+    # block applies.
+    { run = "sudo mkdir -p /etc/NetworkManager/conf.d && printf '[ifupdown]\\nmanaged=true\\n' | sudo tee /etc/NetworkManager/conf.d/05-ifupdown-managed.conf >/dev/null", check = "test -f /etc/NetworkManager/conf.d/05-ifupdown-managed.conf" },
+    # Step 2: strip /etc/network/interfaces down to loopback only.
+    # The original Debian-installer-written file contains an
+    # `iface enxXXXXXXXXXXXX inet dhcp` block keyed off the MAC
+    # address of whatever USB ethernet adapter was plugged in at
+    # install time — brittle (different dongle = wrong name) and
+    # redundant once NM owns every device. We keep `lo` because
+    # NM doesn't manage loopback by default (it shows up as
+    # `connected (externally)` in `nmcli device status`) and the
+    # kernel auto-configures it from this declaration anyway.
+    #
+    # The leading `# Managed by forge:` comment is load-bearing for
+    # the `check`: rather than diff the whole file content (fragile)
+    # or count lines (also fragile), we look for the marker as a
+    # signal that this file has been through a forge run. If a
+    # future re-image of Debian writes a different /etc/network/
+    # interfaces, the marker will be missing and forge will rewrite.
+    { run = "printf '# Managed by forge: only loopback lives here, NetworkManager owns every other device.\\n# Adding an iface block here re-introduces an ifupdown / dhcpcd manager that\\n# competes with NM for whatever device you list — see roles.toml for the full story.\\nauto lo\\niface lo inet loopback\\n' | sudo tee /etc/network/interfaces >/dev/null", check = "grep -q '^# Managed by forge' /etc/network/interfaces" },
+    # Step 3: disable networking.service. With /etc/network/interfaces
+    # down to just loopback (which the kernel brings up itself) the
+    # ifupdown unit has nothing useful to do, and leaving it enabled
+    # means the next apt upgrade or stray edit can re-introduce a
+    # competing manager for any new interface declared. `disable
+    # --now` both stops the running unit (ending the dhcpcd lease
+    # ifupdown was holding on the wire) and removes the
+    # multi-user.target.wants/ symlink so it doesn't restart at
+    # next boot.
+    #
+    # The check is `! is-enabled` rather than `is-disabled` because
+    # systemd reports `disabled` for both genuinely-disabled units
+    # and never-installed ones; a missing networking.service unit
+    # file (e.g. on a future Debian variant that drops ifupdown)
+    # should also be a no-op, not a forge failure. `is-enabled
+    # --quiet` exits 0 only when actively enabled, so the negation
+    # short-circuits correctly in both states.
+    { run = "sudo systemctl disable --now networking.service", check = "! systemctl is-enabled --quiet networking.service" },
+    # NetworkManager wired-vs-wireless route preference. NM ships
+    # per-device-type metric defaults — ethernet=100, wifi=600 — and
+    # the kernel picks the lower metric for the default route, which
+    # is why a freshly-installed Debian box already prefers the wire
+    # when both interfaces are up. Pinning the same values via a
+    # drop-in at /etc/NetworkManager/conf.d/10-ethernet-priority.conf
+    # is mostly belt-and-braces: the numbers match NM's compiled
+    # defaults, but those defaults live only as in-code constants
+    # (no on-disk config to diff), so a silent NM upstream change or
+    # a stray admin edit to a connection profile
+    # (`ipv4.route-metric=200` on the wifi profile, say) could
+    # quietly flip the preference. The drop-in makes the intent
+    # explicit and reproducible across boxes.
+    #
+    # We deliberately do NOT include `connection.autoconnect-priority`
+    # in this drop-in. Per `nm-settings(5)`, that property only
+    # chooses between *multiple profiles competing for the same
+    # device* (e.g. two saved wifi networks both autoconnect-eligible
+    # on wlan0). It does NOT influence cross-device preference —
+    # ethernet and wifi are different devices and both autoconnect
+    # independently when their carrier comes up. The version of this
+    # drop-in that pinned `autoconnect-priority=100` on
+    # `[connection-ethernet]` and `-10` on `[connection-wifi]` was
+    # dead config: it never affected which interface activated
+    # first, and routing was already correct via the metrics. We
+    # also observed Debian's NM auto-generate the default
+    # "Wired connection 1" with `autoconnect-priority=-999` (NM's
+    # default-wired sentinel — set so any user-created wired profile
+    # at the default 0 outranks it on the same device), which would
+    # have inverted our intent if the property had actually been
+    # cross-device. Removing it removes the confusion.
+    #
+    # The actual exclusive-failover behavior the user wants —
+    # "ethernet when plugged in, wifi only when not" — is
+    # implemented by the dispatcher script post-cmd that immediately
+    # follows this one. The route-metric pin alone is not enough on
+    # a host where wifi and ethernet share a subnet (RFC 6724
+    # source-address selection bypasses route metric for outbound
+    # binds); see the dispatcher block comment for the full story.
+    #
+    # `match-device=type:ethernet` / `type:wifi` is the documented
+    # NMSettingMatch syntax (see `man NetworkManager.conf`, the
+    # [connection-*] section). It applies as a *default* — a
+    # connection profile that explicitly sets its own
+    # `ipv4.route-metric` overrides this drop-in, which is the right
+    # escape hatch for the rare "I want this one wifi to win" case.
+    #
+    # `nmcli general reload conf` is the surgical way to pick up
+    # conf.d changes without bouncing the daemon — it re-reads
+    # NetworkManager.conf + everything in conf.d/ and applies the
+    # new defaults to subsequent activations. Existing in-flight
+    # connections keep their current metric until the next
+    # `nmcli connection up <name>` reactivation.
+    #
+    # The check has two halves: `test -f` on the conf.d path and
+    # a *negated* `grep -q autoconnect-priority` against it. The
+    # second half is the migration guard: we used to ship this
+    # drop-in with `connection.autoconnect-priority=100`/`-10`
+    # blocks (dead config, see comment above), and a plain
+    # `test -f` would let an old version of the file linger
+    # forever because the path exists. Negated grep failing on
+    # `autoconnect-priority` forces the rewrite when forge runs
+    # against a host that has the deprecated body. On a fresh
+    # box or a host that has already been migrated, both halves
+    # pass and the post-cmd is a no-op.
+    { run = "sudo mkdir -p /etc/NetworkManager/conf.d && printf '[connection-ethernet]\\nmatch-device=type:ethernet\\nipv4.route-metric=100\\nipv6.route-metric=100\\n\\n[connection-wifi]\\nmatch-device=type:wifi\\nipv4.route-metric=600\\nipv6.route-metric=600\\n' | sudo tee /etc/NetworkManager/conf.d/10-ethernet-priority.conf >/dev/null && sudo nmcli general reload conf", check = "test -f /etc/NetworkManager/conf.d/10-ethernet-priority.conf && ! grep -q autoconnect-priority /etc/NetworkManager/conf.d/10-ethernet-priority.conf" },
+    # NetworkManager dispatcher: exclusive ethernet-preferred failover.
+    #
+    # Why a dispatcher and not just the route-metric drop-in above:
+    # NM's per-device-type defaults already pin ethernet at metric
+    # 100 vs wifi at 600, and the kernel's default-route lookup
+    # correctly picks ethernet for outbound packets. But on a host
+    # where wifi and ethernet share the same /24 (common docking
+    # scenario — laptop plugged into a dock that connects to the
+    # same LAN the wifi AP is on), `getaddrinfo()` / `connect()`
+    # source-address selection per RFC 6724 picks the lower-ifindex
+    # interface for same-subnet destinations, NOT the route metric.
+    # Wifi often has the lower ifindex (it associates earlier in
+    # boot), so app-level outbound binds end up using the wifi IP
+    # even though the kernel routes through ethernet — and the
+    # remote peer's reply packets follow the source address back
+    # over wifi. Symptom: VPN client reports wifi as the active
+    # interface, `curl ifconfig.me` shows the wifi public IP, etc.,
+    # despite the wire being plugged in and "preferred" by metric.
+    # See RFC 6724 §6 and the kernel's `inet_select_addr` (in
+    # `Documentation/networking/ip-sysctl.rst`).
+    #
+    # The structural fix when same-subnet dual-homing is in play is
+    # exclusive failover: wifi gets disconnected when an ethernet
+    # device comes up, and reconnected when the last ethernet device
+    # goes down. NM has no built-in property for this (Fedora/Ubuntu
+    # ship the same UX via desktop-environment plumbing or a
+    # dispatcher hook; macOS does it in CoreWLAN), so we drop a
+    # tiny shell script into NM's dispatcher.d/ that NM invokes for
+    # every device transition.
+    #
+    # Script behavior:
+    #   * On any `en*` / `eth*` device transitioning to `up`: walks
+    #     every wifi device on the box and runs `nmcli device
+    #     disconnect <dev>`. That puts the wifi device in the
+    #     manually-disconnected state (NM won't auto-reactivate
+    #     until told to), and crucially does not touch the radio
+    #     rfkill — `iwlist scan` still works, the user can still
+    #     pick a different wifi network manually if they want to
+    #     override the dispatcher (`nmcli device connect <wifi>`).
+    #   * On any `en*` / `eth*` device transitioning to `down`: if
+    #     another ethernet connection is still active, no-op (a
+    #     docked laptop with two wired interfaces shouldn't
+    #     un-disable wifi just because one cable was unplugged).
+    #     If no ethernet is active, run `nmcli device connect <dev>`
+    #     for every wifi device — that lifts the
+    #     manually-disconnected flag and lets NM autoconnect the
+    #     highest-autoconnect-priority eligible wifi profile on
+    #     that device.
+    #
+    # Idempotency: `nmcli device disconnect/connect` is a no-op if
+    # the device is already in the requested state. Both branches
+    # are wrapped in `|| true` so a transient nmcli failure (e.g.
+    # NM mid-restart) doesn't cascade — the next dispatcher event
+    # gets another shot.
+    #
+    # Loop-prevention: the script filters on `en*` / `eth*` at the
+    # top, so wifi-up events triggered by our own `device connect`
+    # don't recurse. Loopback / virbr0 / tun device events also
+    # short-circuit at that filter.
+    #
+    # The script lands at /etc/NetworkManager/dispatcher.d/ because
+    # that path is hardcoded in NM's nm-dispatcher.service (see
+    # `man NetworkManager-dispatcher`). NM only invokes scripts in
+    # that directory that are owned by root with mode 0755 and no
+    # group/other write — the explicit `chmod 0755` here is
+    # mandatory or NM silently skips the script (the skip is logged
+    # at debug level only, which is a confusing failure mode). The
+    # `10-` prefix parallels the conf.d file above and reserves
+    # room for higher-numbered dispatcher hooks the user might
+    # layer on later (e.g. a VPN auto-reconnect hook).
+    #
+    # The check is `test -x` on the dispatcher path — if someone
+    # wipes the file (or a Debian apt operation rewrites it) the
+    # next forge run rewrites it; if it's already on disk and
+    # executable, no-op.
+    { run = "sudo mkdir -p /etc/NetworkManager/dispatcher.d && printf '#!/bin/bash\\n# Exclusive ethernet-preferred failover. Disconnects wifi when an\\n# ethernet device comes up; reconnects every wifi device when the last\\n# ethernet device goes down. See linux-config/config/roles.toml for\\n# the full design rationale (RFC 6724 source-address selection).\\ncase \"$1\" in en*|eth*) ;; *) exit 0 ;; esac\\ncase \"$2\" in\\n  up)\\n    for dev in $(nmcli -t -f DEVICE,TYPE device | grep \":wifi$\" | cut -d: -f1); do\\n      nmcli device disconnect \"$dev\" >/dev/null 2>&1 || true\\n    done\\n    ;;\\n  down)\\n    nmcli -t -f TYPE connection show --active | grep -q \"^802-3-ethernet$\" && exit 0\\n    for dev in $(nmcli -t -f DEVICE,TYPE device | grep \":wifi$\" | cut -d: -f1); do\\n      nmcli device connect \"$dev\" >/dev/null 2>&1 || true\\n    done\\n    ;;\\nesac\\n' | sudo tee /etc/NetworkManager/dispatcher.d/10-wifi-when-no-ethernet >/dev/null && sudo chmod 0755 /etc/NetworkManager/dispatcher.d/10-wifi-when-no-ethernet", check = "test -x /etc/NetworkManager/dispatcher.d/10-wifi-when-no-ethernet" },
     # bluetooth.service: the `bluez` package ships the unit but
     # Debian's postinst does not always enable it on a minimal
     # install (depends on debian-installer profile selection). Enable
@@ -316,6 +1102,21 @@ post = [
     # daemon — e.g. during BT debugging — gets brought back up by the
     # next forge run, matching the NetworkManager pattern above.
     { run = "sudo systemctl enable --now bluetooth.service", check = "systemctl is-active --quiet bluetooth.service" },
+    # power-profiles-daemon: enable + start. Debian's
+    # power-profiles-daemon postinst usually starts the unit, but
+    # the same defensive `enable --now` pattern as NetworkManager
+    # / bluetooth applies — we want the daemon both up in this
+    # session AND symlinked into multi-user.target so it returns
+    # after a reboot. The `is-active` check (not `is-enabled`)
+    # follows the established convention in this role: a
+    # manually-stopped daemon gets brought back up by the next
+    # forge run instead of being silently left down because the
+    # symlink already exists. Without PPD running the
+    # `powerprofilesctl` CLI errors with "No D-Bus name
+    # net.hadess.PowerProfiles", which is a confusing failure mode
+    # because the package is installed and the user's natural
+    # next move is to assume the daemon name has changed.
+    { run = "sudo systemctl enable --now power-profiles-daemon.service", check = "systemctl is-active --quiet power-profiles-daemon.service" },
     # systemd-logind lid-switch behavior. The defaults already match
     # what we want (suspend on lid close when undocked, ignore when
     # docked — i.e. when an external display is connected), but the
@@ -332,9 +1133,34 @@ post = [
     # is what makes "close the laptop while docked, keep working on
     # the externals" feel right.
     { run = "sudo mkdir -p /etc/systemd/logind.conf.d && printf '[Login]\\nHandleLidSwitch=suspend\\nHandleLidSwitchExternalPower=suspend\\nHandleLidSwitchDocked=ignore\\n' | sudo tee /etc/systemd/logind.conf.d/sway-lid.conf >/dev/null && sudo systemctl reload systemd-logind", check = "test -f /etc/systemd/logind.conf.d/sway-lid.conf" },
-    { run = "flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo", check = "flatpak remotes | grep -q '^flathub'" },
-    { run = "flatpak install -y --noninteractive flathub app.zen_browser.zen", check = "flatpak list --app | grep -q app.zen_browser.zen" },
-    { run = "flatpak install -y --noninteractive flathub md.obsidian.Obsidian", check = "flatpak list --app | grep -q md.obsidian.Obsidian" },
+    # System-scope flatpak operations (remote-add, install) need sudo.
+    #
+    # `flatpak` defaults to the *system* installation when invoked
+    # without `--user`, which means writing under /var/lib/flatpak
+    # (root-owned) and modifying the system-wide ostree repo + remote
+    # config. The non-root path goes through polkit
+    # (`org.freedesktop.Flatpak.app-install`,
+    # `…manage-installation`); on a graphical session a polkit auth
+    # agent prompts the user, but forge runs post-commands
+    # non-interactively so polkit returns
+    # `error: Flatpak system operation … not allowed for user` and
+    # the executor aborts the whole plan.
+    #
+    # Wrapping with `sudo` short-circuits polkit (root is already
+    # authorized) and the user's NOPASSWD sudoers entry means sudo
+    # itself doesn't prompt either. Net effect: same observable
+    # result — flathub remote + apps land at system scope, visible
+    # to every user on the box, updateable only by the daily
+    # flatpak-update systemd timer (also root-scoped, see below) —
+    # with no interactive prompts in the install path.
+    #
+    # The two `--user` `flatpak override` lines below intentionally
+    # do NOT take sudo, because `--user` writes to
+    # ~/.local/share/flatpak/overrides and never touches system
+    # state. Pinned by `desktop_role_system_flatpak_ops_use_sudo`.
+    { run = "sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo", check = "flatpak remotes | grep -q '^flathub'" },
+    { run = "sudo flatpak install -y --noninteractive flathub app.zen_browser.zen", check = "flatpak list --app | grep -q app.zen_browser.zen" },
+    { run = "sudo flatpak install -y --noninteractive flathub md.obsidian.Obsidian", check = "flatpak list --app | grep -q md.obsidian.Obsidian" },
     # Grant Wayland socket access to Electron flatpaks. Their default
     # manifests only ship x11 socket, which means they need Xwayland —
     # and Xwayland only runs if sway started AFTER the xwayland binary
@@ -343,6 +1169,106 @@ post = [
     # Xwayland-startup ordering problem.
     { run = "flatpak override --user --socket=wayland md.obsidian.Obsidian", check = "flatpak override --user --show md.obsidian.Obsidian | grep -q 'sockets=.*wayland'" },
     { run = "flatpak override --user --socket=wayland app.zen_browser.zen", check = "flatpak override --user --show app.zen_browser.zen | grep -q 'sockets=.*wayland'" },
+    # Daily flatpak-update systemd timer. The desktop role installs
+    # both Zen Browser and Obsidian system-wide (flatpak's default
+    # scope when the install command runs without --user / --system
+    # is system, and the install lines above intentionally omit the
+    # flag so the apps are visible to every user on the box). System
+    # installs can only be updated by root, which means a per-user
+    # cron / user-level systemd timer can't keep them current —
+    # hence a system-level timer running `flatpak update` as root.
+    #
+    # The unit pair is written via `printf | sudo tee` rather than
+    # shipped under dotfiles/ because the dotfiles tree is rooted at
+    # $HOME and these are /etc/systemd/system/ paths (system-level
+    # units, not user units). This matches the same pattern the
+    # logind drop-in and the NM ethernet-priority drop-in use.
+    #
+    # Three details on the timer body itself:
+    #   * `OnCalendar=daily` — fires once a day at midnight.
+    #   * `RandomizedDelaySec=30m` — adds up to 30 minutes of jitter
+    #     so a fleet of these laptops doesn't all hammer Flathub
+    #     simultaneously at 00:00. (This box is one of one, but the
+    #     setting costs nothing and matches systemd best practice.)
+    #   * `Persistent=true` — if the laptop was suspended / powered
+    #     off when the timer was scheduled to fire, run it once on
+    #     the next boot instead of skipping the missed run.
+    #
+    # And on the service body:
+    #   * `flatpak update -y --noninteractive` — `-y` answers yes to
+    #     prompts; `--noninteractive` suppresses progress UI and
+    #     downgrades any remaining prompt to "skip". Together they
+    #     make the run safe to invoke from a unit with no tty.
+    #   * `After=network-online.target` + `Wants=...` — flatpak
+    #     update has to reach Flathub. Without ordering against
+    #     network-online, a fast-booting laptop fires the service
+    #     before WiFi associates and the update fails with a DNS
+    #     error every boot when running with `Persistent=true`.
+    #
+    # Sandbox / hardening directives on the [Service] body. The unit
+    # has to run as root because system-scope flatpak installs live
+    # under /var/lib/flatpak (root-owned), but every privilege
+    # beyond "read+write that one tree" is unnecessary and worth
+    # taking away — defense in depth against a future flatpak (or
+    # its deps') privilege-escalation bug. Each directive and the
+    # specific blast-radius reduction it buys:
+    #
+    #   * `NoNewPrivileges=yes`   — exec-ed children can't gain new
+    #     caps via setuid binaries. Flatpak's own `bwrap` use during
+    #     update is the in-process variety that doesn't need
+    #     setuid (root → root, no escalation), so this is safe and
+    #     blocks any sneaky setuid path inside Flathub-shipped
+    #     update hooks.
+    #   * `PrivateTmp=yes`        — service gets its own private
+    #     /tmp + /var/tmp. Stops a hypothetical tmpfile-race or
+    #     symlink-attack against shared /tmp from leaking root.
+    #   * `ProtectSystem=strict`  — entire filesystem is read-only
+    #     except for /dev, /proc, /sys (handled separately) and the
+    #     paths in `ReadWritePaths=`. So even if flatpak update were
+    #     coerced into writing /etc/passwd or /usr/bin, the kernel
+    #     refuses the syscall.
+    #   * `ReadWritePaths=/var/lib/flatpak` — the one place the
+    #     service legitimately writes (OSTree repo + deployments +
+    #     exports). Pairs with ProtectSystem=strict.
+    #   * `ProtectHome=read-only` — service can read /home (because
+    #     a user might have a custom flatpak remote config under
+    #     ~/.local/share/flatpak that flatpak's CLI consults via
+    #     XDG_DATA_DIRS) but can't write any user file. System
+    #     flatpak update has no business modifying $HOME at all.
+    #   * `ProtectKernelTunables=yes` — read-only /proc/sys, /sys.
+    #     Blocks `echo > /proc/sys/...` style escapes.
+    #   * `ProtectKernelModules=yes` — denies module load/unload
+    #     syscalls. flatpak update never legitimately loads a
+    #     kernel module.
+    #   * `ProtectControlGroups=yes` — read-only cgroup hierarchy.
+    #     A compromised service can't reparent itself out of the
+    #     unit's slice or escape resource limits.
+    #   * `ProtectClock=yes`      — denies wall-clock changes and
+    #     adjtimex. flatpak update has no clock-setting need.
+    #   * `LockPersonality=yes`   — pins the personality(2) syscall
+    #     to its current value. Stops a binary from switching to
+    #     legacy x86 personality to evade syscall filters.
+    #   * `RestrictRealtime=yes`  — blocks SCHED_FIFO/SCHED_RR.
+    #     flatpak update doesn't need realtime priority; denying it
+    #     removes one tool from a hypothetical exploit.
+    #
+    # I deliberately do NOT add `RestrictNamespaces=` — flatpak's
+    # update path may call `bwrap` (which uses user / mount / pid
+    # namespaces) for some triggers, and the breakage from
+    # accidentally overconstraining that is harder to debug than
+    # the surface area being defended is worth.
+    #
+    # Pinned by `desktop_role_hardens_flatpak_update_service` so a
+    # future "I'll just simplify this" edit can't silently strip
+    # any of these directives without the test catching it.
+    #
+    # The post-command writes both files in a single shell
+    # invocation (using two `sudo tee` commands chained with `&&`),
+    # then `daemon-reload`s and `enable --now`s the timer. The
+    # check matches the timer file's existence — same `test -f`
+    # pattern as the logind / NM drop-ins. Pinned by
+    # `desktop_role_provisions_flatpak_update_timer`.
+    { run = "sudo mkdir -p /etc/systemd/system && printf '[Unit]\\nDescription=Update system flatpak applications\\nAfter=network-online.target\\nWants=network-online.target\\n\\n[Service]\\nType=oneshot\\nExecStart=/usr/bin/flatpak update -y --noninteractive\\nNoNewPrivileges=yes\\nPrivateTmp=yes\\nProtectSystem=strict\\nReadWritePaths=/var/lib/flatpak\\nProtectHome=read-only\\nProtectKernelTunables=yes\\nProtectKernelModules=yes\\nProtectControlGroups=yes\\nProtectClock=yes\\nLockPersonality=yes\\nRestrictRealtime=yes\\n' | sudo tee /etc/systemd/system/flatpak-update.service >/dev/null && printf '[Unit]\\nDescription=Daily flatpak update\\n\\n[Timer]\\nOnCalendar=daily\\nRandomizedDelaySec=30m\\nPersistent=true\\n\\n[Install]\\nWantedBy=timers.target\\n' | sudo tee /etc/systemd/system/flatpak-update.timer >/dev/null && sudo systemctl daemon-reload && sudo systemctl enable --now flatpak-update.timer", check = "systemctl is-active --quiet flatpak-update.timer && systemctl is-enabled --quiet flatpak-update.timer" },
     # NOTE: the whisper.cpp clone + cmake build + symlink steps that
     # used to live here are gone. whisper-server and whisper-cli are
     # now vendored prebuilt under `dotfiles/.local/bin/` (statically

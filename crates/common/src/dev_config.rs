@@ -71,10 +71,20 @@ pub struct NamedVolume {
 }
 
 /// A host path bind-mounted into the container.
+///
+/// `readonly` defaults to `false` (read-write) so an unmarked entry
+/// gives the container write access to the host path — matching
+/// podman's own default for `-v host:container` without a mode
+/// suffix. Set `readonly = true` for safe-by-default mounts of host
+/// system files like `/etc/localtime` and `/etc/timezone`, where
+/// the container should only ever read the host's value, never
+/// silently mutate it.
 #[derive(Debug, Clone, Deserialize)]
 pub struct BindMount {
     pub host: String,
     pub container: String,
+    #[serde(default)]
+    pub readonly: bool,
 }
 
 #[cfg(test)]
@@ -127,5 +137,55 @@ image_tag = "forge-dev"
     fn dev_container_missing_required_fields_errors() {
         let src = r#"default_ports = []"#;
         assert!(DevContainer::from_toml(src).is_err());
+    }
+
+    /// Bind mounts default `readonly = false` when the field is
+    /// omitted, matching podman's own default for plain
+    /// `-v host:container` (no mode suffix). The explicit
+    /// `readonly = true` form must round-trip.
+    ///
+    /// This matters because the dev-container.toml's TZ bind mounts
+    /// (`/etc/localtime`, `/etc/timezone`) MUST stay read-only —
+    /// under rootless podman + `--userns keep-id` a writable mount
+    /// would let the container mutate host system files. If a
+    /// future serde rename / refactor breaks the readonly bool
+    /// silently, this assertion catches it.
+    #[test]
+    fn dev_container_bind_readonly_field_roundtrips() {
+        let src = r#"
+image_tag = "forge-dev"
+
+[default_volumes]
+bind = [
+    { host = "/etc/localtime", container = "/etc/localtime", readonly = true },
+    { host = "/repo",          container = "/repo" },
+]
+"#;
+        let c = DevContainer::from_toml(src).unwrap();
+        assert_eq!(c.default_volumes.bind.len(), 2);
+
+        let tz = c
+            .default_volumes
+            .bind
+            .iter()
+            .find(|b| b.host == "/etc/localtime")
+            .expect("/etc/localtime bind must round-trip");
+        assert!(
+            tz.readonly,
+            "explicit `readonly = true` must round-trip — without it the TZ bind mounts \
+             become writable under --userns keep-id"
+        );
+
+        let rw = c
+            .default_volumes
+            .bind
+            .iter()
+            .find(|b| b.host == "/repo")
+            .expect("/repo bind must round-trip");
+        assert!(
+            !rw.readonly,
+            "omitted `readonly` must default to false (matches podman's default for plain \
+             `-v host:container`)"
+        );
     }
 }

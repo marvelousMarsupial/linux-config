@@ -1,0 +1,922 @@
+#!/usr/bin/env python3
+"""vm-menu - unified fuzzel picker for podman containers, incus
+LXCs, and KVM virtual machines.
+
+Bound to ``$mod+c`` in sway. The flow is:
+
+  1. Snapshot every instance across the three runtimes once at
+     launch (no live refresh — the menu is a discrete user
+     action, not a watch-mode dashboard).
+  2. Render them in a single fuzzel dmenu with fixed-width
+     columns: state glyph, runtime tag (``pod``/``lxc``/``vm``),
+     name, status, primary IPv4, uptime.
+  3. On selection, pop a second fuzzel containing only the
+     actions valid for the picked instance's current state
+     (start / stop / resume / shell).
+  4. Dispatch the action through the right runtime's CLI.
+     ``shell`` auto-starts a stopped instance first, then opens
+     a new ``foot`` window dropped into ``bash``/``sh``/serial
+     console as appropriate.
+
+Three things are deliberately out of scope:
+
+  * **No live refresh.** The user opens the menu when they want
+    a snapshot; a live mode would compete with `btop` /
+    `virt-manager` for "always-on dashboard" duty.
+  * **No create/destroy.** Provisioning a new container/VM is a
+    one-shot operation with too many knobs to fit a fuzzel
+    submenu — `incus launch`, `virt-install`, `podman run` are
+    where that lives. The menu is for "what's on this host
+    right now and how do I poke it".
+  * **No SSH fallback for VMs.** ``virsh console`` requires a
+    serial pty configured in the guest XML AND a getty running
+    on the matching tty; for guests without that, the user is
+    expected to fall back to virt-manager's SPICE/VNC viewer or
+    plain SSH manually. Auto-fallback would mean reading the
+    guest's IP, picking a username, and writing an ssh-config —
+    way more state than the menu wants to own.
+
+The script intentionally mirrors ``wifi-menu``'s shape (heavy
+docstrings, dbus-env shim, ``--help`` flag, fuzzel as the only
+graphical surface) so that maintainers get a familiar layout
+when jumping between menus.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+# Remote-desktop sessions started by `remote-start` write a dbus-env
+# file into the user's runtime dir so subprocesses launched outside
+# the original sway session (notify-send, fuzzel) can find the
+# session bus. Without this import, vm-menu can't pop fuzzel from a
+# remote session and the keybind silently does nothing — same gotcha
+# we hit in wifi-menu.
+dbus_env = Path(f"/run/user/{os.getuid()}/dbus-env")
+if dbus_env.exists() and "DBUS_SESSION_BUS_ADDRESS" not in os.environ:
+    for line in dbus_env.read_text().splitlines():
+        if line.startswith("export DBUS_SESSION_BUS_ADDRESS="):
+            addr = line.split("=", 1)[1].strip("'\"")
+            os.environ["DBUS_SESSION_BUS_ADDRESS"] = addr
+
+
+# ---------------------------------------------------------------------------
+# Data model
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Instance:
+    """One row in the fuzzel menu — a single container / LXC / VM.
+
+    The fields are deliberately stringly-typed: every value goes
+    straight into a fixed-width column in the menu, and the
+    runtime-specific list functions normalize their output into
+    these strings before returning. Keeping the dataclass small
+    means adding a new runtime is just "write a list_<x>() that
+    yields ``Instance``s".
+
+    Attributes:
+        kind:    Runtime tag — one of ``"pod"``, ``"lxc"``,
+                 ``"vm"``. Drives action dispatch.
+        name:    Instance name as the user knows it (the value
+                 ``podman start``/``incus start``/``virsh start``
+                 takes as an argument).
+        state:   Normalized state — ``"running"``, ``"stopped"``,
+                 or ``"paused"``. The runtime-specific list
+                 functions collapse the various native vocabularies
+                 (exited/created/shut off/frozen) into these three
+                 buckets so the action menu can pick valid verbs
+                 without re-doing the mapping.
+        ip:      Primary IPv4 if known, else ``"—"``. We don't
+                 attempt IPv6 — the menu has limited horizontal
+                 space and v4 is what 99% of the user's "did this
+                 thing get a network" muscle memory expects.
+        uptime:  Compact human duration (``"42m"``, ``"3h"``,
+                 ``"4d"``) for running instances; ``"—"`` otherwise.
+    """
+
+    kind: str
+    name: str
+    state: str
+    ip: str
+    uptime: str
+
+
+# ---------------------------------------------------------------------------
+# Subprocess + UX helpers
+# ---------------------------------------------------------------------------
+
+
+def run_output(cmd: list[str], timeout: float = 10.0) -> str:
+    """Run ``cmd`` and return stdout, or ``""`` on any failure.
+
+    Used for "best effort" reads where we want to degrade to
+    "no data" rather than raising — e.g. ``incus list`` against a
+    daemon the user can't reach yet (group not applied) should
+    yield an empty list, not a stack trace. Stderr is intentionally
+    discarded; surfaces of those errors are the empty list itself
+    and the per-runtime probes in :func:`runtime_health_hint`.
+    """
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout
+        )
+        return result.stdout if result.returncode == 0 else ""
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+
+
+def notify(title: str, msg: str, critical: bool = False) -> None:
+    """Send a desktop notification via notify-send.
+
+    Silently no-ops if notify-send is missing (minimal installs
+    or SSH sessions). Critical notifications use ``-u critical``
+    so mako keeps them visible until dismissed — the failure
+    path for a vm-menu action is something the user will want to
+    see even if they tabbed away in the half-second the action
+    was running.
+    """
+    try:
+        cmd = ["notify-send"]
+        if critical:
+            cmd.extend(["-u", "critical"])
+        cmd.extend([title, msg])
+        subprocess.run(cmd, capture_output=True)
+    except FileNotFoundError:
+        pass
+
+
+def state_glyph(state: str) -> str:
+    """Map a normalized state to a one-char column glyph.
+
+    Solid circle = running, half-circle = paused, hollow circle
+    = stopped. Block-element / geometric Unicode rather than Nerd
+    Font icons so the menu still renders correctly on a host
+    without the project's font installed (e.g. while debugging on
+    a fresh box where ``forge setup`` hasn't completed).
+    """
+    if state == "running":
+        return "●"
+    if state == "paused":
+        return "◐"
+    return "○"
+
+
+def format_elapsed(secs: int) -> str:
+    """Compact human duration: ``42s`` / ``3m`` / ``4h`` / ``7d``.
+
+    Two-character bucket instead of HH:MM so it fits in the
+    fixed-width uptime column without truncation. We round down
+    rather than round-nearest because ``"3h"`` for a 3h59m
+    instance is more useful than ``"4h"`` (the user reads the
+    column as "at least this old").
+    """
+    if secs < 0:
+        return "—"
+    if secs < 60:
+        return f"{secs}s"
+    if secs < 3600:
+        return f"{secs // 60}m"
+    if secs < 86400:
+        return f"{secs // 3600}h"
+    return f"{secs // 86400}d"
+
+
+def format_uptime_from_unix(ts: int | float | None) -> str:
+    """Format a unix epoch timestamp as a compact uptime, or ``"—"``."""
+    if not ts:
+        return "—"
+    try:
+        return format_elapsed(int(time.time()) - int(ts))
+    except (TypeError, ValueError):
+        return "—"
+
+
+def format_uptime_from_iso(iso: str) -> str:
+    """Format an ISO 8601 timestamp as a compact uptime.
+
+    Handles both the ``Z`` suffix (which ``datetime.fromisoformat``
+    only learned to accept in Python 3.11) and timezone-naive
+    strings (we assume UTC for those, since both incus and podman
+    emit UTC). Returns ``"—"`` on any parse failure — uptime is a
+    nice-to-have, not load-bearing, and we'd rather show nothing
+    than crash the menu over a date format change.
+    """
+    if not iso:
+        return "—"
+    s = iso.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - dt
+        return format_elapsed(int(delta.total_seconds()))
+    except ValueError:
+        return "—"
+
+
+# ---------------------------------------------------------------------------
+# Runtime listers
+# ---------------------------------------------------------------------------
+
+
+def list_podman() -> list[Instance]:
+    """Enumerate every podman container (running + stopped).
+
+    Reads ``podman ps -a --format json`` because that's the one
+    podman call that returns the full state in a single round-
+    trip; calling ``podman inspect`` per container would multiply
+    latency by N for no extra useful data here. Per-container IP
+    is left as ``"—"`` for podman: rootless containers' IPs live
+    inside a network namespace, are usually 10.88.0.x on the
+    pasta/slirp default, and aren't routable from the host
+    anyway. Showing them would be misleading "you can curl this"
+    UX without actually being usable.
+    """
+    out = run_output(["podman", "ps", "-a", "--format", "json"])
+    if not out:
+        return []
+    try:
+        items = json.loads(out)
+    except json.JSONDecodeError:
+        return []
+
+    result: list[Instance] = []
+    for c in items:
+        # `Names` is a list because podman supports multiple aliases
+        # per container; the first entry is the canonical one and
+        # is what `podman start <name>` accepts.
+        names = c.get("Names") or []
+        name = names[0] if names else (c.get("Id") or "?")[:12]
+        # `State` is one of: created, running, paused, exited,
+        # configured, removing, stopping. Collapse to our 3-state
+        # vocabulary so the action menu logic stays simple.
+        raw = (c.get("State") or "").lower()
+        if raw == "running":
+            state = "running"
+        elif raw == "paused":
+            state = "paused"
+        else:
+            state = "stopped"
+        # `StartedAt` is a unix epoch (int seconds) for podman 4+.
+        # Older podman emitted it as an ISO string; we don't see
+        # those on trixie but the format helper falls back gracefully.
+        started = c.get("StartedAt") or 0
+        uptime = (
+            format_uptime_from_unix(started) if state == "running" else "—"
+        )
+        result.append(Instance("pod", name, state, "—", uptime))
+    return result
+
+
+def list_incus() -> list[Instance]:
+    """Enumerate every incus instance.
+
+    Reads ``incus list --format json`` which returns the state
+    block (CPU/mem/network) inline, so we don't need a per-instance
+    follow-up call to read IPs and uptime. Frozen instances surface
+    as ``"paused"`` since the action menu treats them identically
+    (resume vs. start dispatch is hidden behind :func:`do_resume`).
+    """
+    out = run_output(["incus", "list", "--format", "json"])
+    if not out:
+        return []
+    try:
+        items = json.loads(out)
+    except json.JSONDecodeError:
+        return []
+
+    result: list[Instance] = []
+    for c in items:
+        name = c.get("name") or "?"
+        state_obj = c.get("state") or {}
+        # incus returns "Running" / "Stopped" / "Frozen" with caps;
+        # normalize to lowercase for the comparison.
+        raw = (state_obj.get("status") or c.get("status") or "").lower()
+        if raw == "running":
+            state = "running"
+        elif raw == "frozen":
+            state = "paused"
+        else:
+            state = "stopped"
+        # Pick the first non-loopback inet address from the network
+        # block. We deliberately don't aggregate multiple addresses —
+        # the column has 15 chars and showing a comma-separated list
+        # would just truncate. The first inet on the first non-lo
+        # iface is what the user means 95% of the time.
+        ip = "—"
+        for iface, info in (state_obj.get("network") or {}).items():
+            if iface == "lo":
+                continue
+            for addr in info.get("addresses") or []:
+                if addr.get("family") == "inet":
+                    ip = addr.get("address") or "—"
+                    break
+            if ip != "—":
+                break
+        # `state.startedAt` is ISO 8601; for stopped instances it's
+        # either absent or epoch-zero ("0001-01-01T00:00:00Z") which
+        # the formatter naturally returns "—" for.
+        started_iso = state_obj.get("startedAt") or ""
+        uptime = (
+            format_uptime_from_iso(started_iso) if state == "running" else "—"
+        )
+        result.append(Instance("lxc", name, state, ip, uptime))
+    return result
+
+
+def list_kvm() -> list[Instance]:
+    """Enumerate every libvirt-managed VM.
+
+    Two virsh calls per VM (``domstate`` + ``domifaddr``) is fine
+    in absolute terms — each is sub-100ms against a live libvirtd
+    — but does scale linearly with VM count. We hit ``qemu:///system``
+    explicitly rather than letting libvirt fall back to the per-user
+    ``qemu:///session`` URI: only ``qemu:///system`` can see the
+    VMs defined under ``virbr0`` / the libvirt-managed default
+    network, which is where ``virt-install`` puts everything.
+
+    VM uptime is left as ``"—"``: ``virsh dominfo`` has no
+    "started at" field, ``virsh domstats <name> --state`` only
+    reports the current state, and parsing ``ps -o etime`` against
+    the qemu PID is brittle (qemu PIDs change across migration /
+    save-restore). Not worth the complexity.
+    """
+    out = run_output(
+        ["virsh", "-c", "qemu:///system", "list", "--all", "--name"]
+    )
+    if not out:
+        return []
+    names = [line.strip() for line in out.splitlines() if line.strip()]
+    result: list[Instance] = []
+    for name in names:
+        ds = run_output(
+            ["virsh", "-c", "qemu:///system", "domstate", name]
+        ).strip()
+        if ds == "running":
+            state = "running"
+        elif ds == "paused":
+            state = "paused"
+        else:
+            # "shut off", "in shutdown", "crashed", "pmsuspended" all
+            # collapse to "stopped" for menu purposes — the start
+            # action does the right thing in every case.
+            state = "stopped"
+        ip = "—"
+        if state == "running":
+            # `domifaddr <name>` output:
+            #   Name     MAC address          Protocol  Address
+            #   ------------------------------------------------------
+            #   vnet0    52:54:00:ab:cd:ef    ipv4      192.168.122.42/24
+            # Skip the first two header lines; the address column
+            # carries a /CIDR suffix we strip.
+            ifaddr = run_output(
+                ["virsh", "-c", "qemu:///system", "domifaddr", name]
+            )
+            for line in ifaddr.splitlines():
+                parts = line.split()
+                if len(parts) >= 4 and parts[2] == "ipv4":
+                    ip = parts[3].split("/")[0]
+                    break
+        result.append(Instance("vm", name, state, ip, "—"))
+    return result
+
+
+def runtime_health_hint() -> str | None:
+    """If every runtime is unreachable, return a one-line hint
+    explaining why; otherwise ``None``.
+
+    The most common failure mode on a freshly-provisioned host is
+    "user not yet in libvirt/incus group" — ``forge setup``
+    successfully ran ``usermod -aG`` but the current shell hasn't
+    re-logged-in to pick up the membership. Surfacing that
+    diagnosis right in the empty-menu popup saves the user a
+    ``journalctl --user -e`` round trip.
+    """
+    # Cheap probes: is each runtime's CLI installed at all? If
+    # they're all installed but listing returned nothing, the
+    # cause is more likely "no instances yet" than "broken setup".
+    have_podman = run_output(["podman", "--version"]) != ""
+    have_incus = run_output(["incus", "version"]) != ""
+    have_virsh = run_output(["virsh", "--version"]) != ""
+    if not (have_podman or have_incus or have_virsh):
+        return "no runtimes installed"
+    # If at least one runtime is installed but every list call
+    # came back empty, also probe for the auth failure shape that
+    # comes from "user not in group yet".
+    incus_err = subprocess.run(
+        ["incus", "list", "--format", "csv"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    virsh_err = subprocess.run(
+        ["virsh", "-c", "qemu:///system", "list", "--all"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    haystack = (incus_err.stderr + virsh_err.stderr).lower()
+    if "permission denied" in haystack or "not authorized" in haystack:
+        return "log out + back in to activate incus/libvirt groups"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Fuzzel surfaces
+# ---------------------------------------------------------------------------
+
+
+def format_row(inst: Instance) -> str:
+    """Render an :class:`Instance` as one fixed-width menu line.
+
+    Column widths are tuned to the host's typical fuzzel font
+    (CaskaydiaCove Nerd Font Mono at 12pt, ~70-char window): a
+    20-char name column truncates long names rather than letting
+    them push the columns out of alignment. The state, ip, and
+    uptime columns sit at the right edge and don't truncate
+    because they're always short.
+    """
+    glyph = state_glyph(inst.state)
+    name = inst.name if len(inst.name) <= 20 else inst.name[:19] + "…"
+    return (
+        f"{glyph}  "
+        f"{inst.kind:<3}  "
+        f"{name:<20} "
+        f"{inst.state:<8} "
+        f"{inst.ip:<15} "
+        f"{inst.uptime}"
+    )
+
+
+def show_main_menu(rows: list[str]) -> int | None:
+    """Show the main fuzzel picker, return the selected index.
+
+    Uses fuzzel's ``--index`` mode so we get back the row's
+    integer position rather than its display string — round-
+    tripping through string parsing would be brittle (state /
+    uptime change between snapshot and selection). Returns
+    ``None`` if the user pressed Esc / closed the popup.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "fuzzel",
+                "--dmenu",
+                "--index",
+                "--prompt=VMs  ",
+                "--lines=15",
+                "--width=70",
+            ],
+            input="\n".join(rows),
+            text=True,
+            capture_output=True,
+            timeout=300,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    out = result.stdout.strip()
+    return int(out) if out.isdigit() else None
+
+
+def show_action_menu(inst: Instance) -> str | None:
+    """Show the action submenu for ``inst``, return the chosen verb.
+
+    Verbs are filtered by the instance's current state so the
+    user can't pick "stop" on an already-stopped instance:
+
+      * running → ``stop``, ``shell``
+      * paused  → ``resume``, ``stop``, ``shell``
+      * stopped → ``start``, ``shell`` (shell auto-starts)
+
+    Returning ``None`` means the user dismissed without picking
+    (Esc) — main() treats it as a no-op.
+    """
+    if inst.state == "running":
+        actions = ["stop", "shell"]
+    elif inst.state == "paused":
+        actions = ["resume", "stop", "shell"]
+    else:
+        actions = ["start", "shell"]
+    try:
+        result = subprocess.run(
+            [
+                "fuzzel",
+                "--dmenu",
+                f"--prompt={inst.name}  ",
+                "--lines=5",
+                "--width=30",
+            ],
+            input="\n".join(actions),
+            text=True,
+            capture_output=True,
+            timeout=120,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def show_empty_popup(msg: str) -> None:
+    """Show a one-line fuzzel popup explaining why the menu is empty.
+
+    Used when there are zero instances across all three runtimes
+    OR when the runtime probes detected an auth failure. We use
+    fuzzel rather than ``notify-send`` here because the user
+    explicitly invoked a menu — they expect a graphical popup
+    response, not a libnotify bubble that may have already been
+    auto-dismissed by mako.
+    """
+    subprocess.run(
+        ["fuzzel", "--dmenu", "--prompt=", "--lines=1", "--width=50"],
+        input=msg,
+        text=True,
+        capture_output=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Action dispatch
+# ---------------------------------------------------------------------------
+
+
+def _run_action(cmd: list[str], timeout: float) -> tuple[bool, str]:
+    """Run a state-changing CLI invocation, capture (ok, stderr).
+
+    Centralized so the start/stop/resume helpers below stay one-
+    liners; also gives us a single place to bump the timeout if
+    we ever care to differentiate between "container start"
+    (sub-second) and "VM start" (multi-second) — for now they
+    all use the caller's value.
+    """
+    try:
+        r = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        return False, "timed out"
+    return r.returncode == 0, (r.stderr or r.stdout).strip()
+
+
+def do_start(inst: Instance) -> tuple[bool, str]:
+    """Start a stopped instance via the right runtime CLI.
+
+    For incus, ``incus start`` also unfreezes a paused instance,
+    so :func:`do_resume` ends up calling here for the LXC case —
+    we keep it as one path to avoid runtime-specific branching
+    elsewhere.
+    """
+    cmd = {
+        "pod": ["podman", "start", inst.name],
+        "lxc": ["incus", "start", inst.name],
+        "vm": ["virsh", "-c", "qemu:///system", "start", inst.name],
+    }[inst.kind]
+    return _run_action(cmd, timeout=60)
+
+
+def do_stop(inst: Instance) -> tuple[bool, str]:
+    """Stop a running instance.
+
+    For VMs we send ACPI shutdown rather than ``destroy`` — power-
+    cutting a guest VM that's mid-write is the libvirt equivalent
+    of yanking the cord. The user can still force a destroy via
+    ``virsh destroy`` from a terminal if a guest is wedged; the
+    menu picks the safe default.
+
+    Podman/incus ``stop`` already gracefully sends SIGTERM with a
+    timeout before SIGKILL, so they don't need the same nuance.
+    """
+    cmd = {
+        "pod": ["podman", "stop", inst.name],
+        "lxc": ["incus", "stop", inst.name],
+        "vm": ["virsh", "-c", "qemu:///system", "shutdown", inst.name],
+    }[inst.kind]
+    # Stop can take 10s of seconds for a VM running a graceful
+    # systemd shutdown sequence; bump timeout accordingly.
+    return _run_action(cmd, timeout=120)
+
+
+def do_resume(inst: Instance) -> tuple[bool, str]:
+    """Resume a paused instance.
+
+    Each runtime spells "resume" differently:
+
+      * podman: ``podman unpause``
+      * incus:  ``incus start`` (transparently unfreezes)
+      * virsh:  ``virsh resume``
+
+    We hide that vocabulary mismatch behind one verb in the
+    action menu.
+    """
+    cmd = {
+        "pod": ["podman", "unpause", inst.name],
+        "lxc": ["incus", "start", inst.name],
+        "vm": ["virsh", "-c", "qemu:///system", "resume", inst.name],
+    }[inst.kind]
+    return _run_action(cmd, timeout=60)
+
+
+# Shell launcher used inside `podman exec` / `incus exec` to pick
+# the nicest shell the image actually ships. Preference order is
+# **zsh → bash → sh** — zsh first because it matches what the host
+# user runs interactively (the workstation's login shell is zsh),
+# bash second because it's the most common interactive shell
+# present in container images, and sh as the universal fallback
+# for minimal images (alpine, busybox, distroless-with-shell).
+#
+# The previous spelling — ``exec bash`` with a stderr-to-/dev/null
+# redirection and an ``|| exec sh`` fallback — looks obviously
+# equivalent to this one but has a load-bearing bug: bash (and
+# zsh) writes its prompt (``PS1``) and readline status lines to
+# **stderr**, not stdout. When ``exec`` replaces the wrapper
+# shell, the ``2>/dev/null`` redirection installed on the wrapper
+# is inherited by the new shell process, so every prompt and
+# every readline refresh disappears into ``/dev/null``. The user
+# sees a blank foot window, types into it, and nothing visible
+# happens — the shell is alive and reading input, just rendering
+# its UI to a black hole. (Foot itself behaves correctly; the
+# corruption is inside the container shell.)
+#
+# Probing with ``command -v`` keeps the graceful-fallback
+# behavior we want without ever clobbering the chosen shell's
+# stderr. The ``>/dev/null 2>&1`` here is scoped to the probe
+# and never survives the ``exec``.
+#
+# Caveat for zsh: in a container that ships zsh but has no
+# ``.zshrc`` for the exec'ing user, zsh will launch its
+# ``zsh-newuser-install`` wizard on first run. That's intended
+# zsh behavior — press ``q`` to skip — and we deliberately do
+# NOT pass ``-d -f`` to suppress it, since those flags would
+# also disable any actual ``.zshrc`` the image *does* ship,
+# which is exactly the case where preferring zsh has value.
+SHELL_LAUNCHER = (
+    "if command -v zsh >/dev/null 2>&1; then exec zsh; "
+    "elif command -v bash >/dev/null 2>&1; then exec bash; "
+    "else exec sh; fi"
+)
+
+
+def _wait_for_running(inst: Instance, deadline: float) -> bool:
+    """Poll the runtime until ``inst`` reaches running state.
+
+    Used by :func:`do_shell` after auto-starting a stopped
+    instance — we need the runtime to have actually allocated a
+    PID/namespace before exec-ing into it, otherwise the exec
+    races the start and fails with "container is not running" /
+    "domain is not running". 300ms poll interval keeps the loop
+    cheap; the deadline argument lets the caller scale tolerance
+    to the runtime (containers boot in <1s, VMs in 10-30s).
+    """
+    while time.time() < deadline:
+        if inst.kind == "pod":
+            s = run_output(
+                [
+                    "podman",
+                    "inspect",
+                    "--format",
+                    "{{.State.Status}}",
+                    inst.name,
+                ]
+            ).strip()
+            if s == "running":
+                return True
+        elif inst.kind == "lxc":
+            # `incus info` is the lighter call here than re-running
+            # the full `incus list` JSON parse; the output has a
+            # `Status: RUNNING` line near the top regardless of
+            # locale.
+            s = run_output(["incus", "info", inst.name])
+            if "Status: RUNNING" in s:
+                return True
+        else:
+            s = run_output(
+                ["virsh", "-c", "qemu:///system", "domstate", inst.name]
+            ).strip()
+            if s == "running":
+                return True
+        time.sleep(0.3)
+    return False
+
+
+def do_shell(inst: Instance) -> None:
+    """Open a shell into ``inst`` in a new foot terminal window.
+
+    Auto-starts the instance first if it's stopped — the user
+    chose `shell`, so they want a usable shell, and forcing them
+    back through a separate `start` action is busywork. After
+    starting, we poll for "running" before launching foot so
+    foot's ``-e`` doesn't race the runtime and exit immediately.
+
+    The shell command per runtime:
+
+      * podman/incus: ``/bin/sh -c <SHELL_LAUNCHER>`` — picks
+        zsh if the image ships it (matches the host's login
+        shell), bash if not, sh as the universal fallback for
+        minimal images (alpine, busybox, distroless-with-shell).
+        We exec through ``/bin/sh -c`` because plain ``-it bash``
+        would crash on an image that doesn't ship bash, leaving
+        the user staring at a "no such file" error. See
+        :data:`SHELL_LAUNCHER` for why the probe is ``command -v``
+        rather than the more obvious-but-broken approach of
+        exec'ing the chosen shell with its stderr redirected to
+        /dev/null (that variant silently hides the prompt — see
+        the ``SHELL_LAUNCHER`` comment).
+      * VM: ``virsh -c qemu:///system console <name>`` — connects
+        to the guest's serial pty. If the guest XML doesn't
+        declare a serial console, this just hangs at "Escape
+        character is ^]" and the user has to fall back to
+        virt-manager (desktop role) for a graphical console.
+        We notify them about that gotcha when the VM kind is
+        picked, since silent-hang is a confusing failure mode.
+
+    The new foot window is detached via ``start_new_session=True``
+    so vm-menu can exit without orphan-killing the shell — fuzzel
+    is a transient process and we don't want to keep it alive
+    just to babysit a long-lived terminal.
+    """
+    if inst.state == "stopped":
+        ok, err = do_start(inst)
+        if not ok:
+            notify(
+                "vm-menu",
+                f"Failed to start {inst.name}: {err}",
+                critical=True,
+            )
+            return
+        # 5s for containers (start is near-instant), 30s for VMs
+        # (BIOS + bootloader + initrd is comfortably under that on
+        # any reasonable guest image).
+        timeout = 30.0 if inst.kind == "vm" else 5.0
+        if not _wait_for_running(inst, time.time() + timeout):
+            notify(
+                "vm-menu",
+                f"{inst.name} did not reach running state in {timeout:.0f}s",
+                critical=True,
+            )
+            return
+    elif inst.state == "paused":
+        ok, err = do_resume(inst)
+        if not ok:
+            notify(
+                "vm-menu",
+                f"Failed to resume {inst.name}: {err}",
+                critical=True,
+            )
+            return
+
+    if inst.kind == "pod":
+        # ``-it`` is required: ``-i`` keeps stdin open across the
+        # exec hop, ``-t`` allocates a PTY in the container so
+        # readline / job control work. Dropping either one is what
+        # makes ``podman exec`` "open but do nothing".
+        inner = [
+            "podman",
+            "exec",
+            "-it",
+            inst.name,
+            "/bin/sh",
+            "-c",
+            SHELL_LAUNCHER,
+        ]
+    elif inst.kind == "lxc":
+        # ``incus exec`` auto-allocates a PTY when stdin is a TTY,
+        # which it is when invoked via ``foot -e``. The ``--``
+        # separator is required to stop incus from interpreting
+        # ``/bin/sh`` as one of its own flags.
+        inner = [
+            "incus",
+            "exec",
+            inst.name,
+            "--",
+            "/bin/sh",
+            "-c",
+            SHELL_LAUNCHER,
+        ]
+    else:
+        inner = ["virsh", "-c", "qemu:///system", "console", inst.name]
+        # Pre-emptively warn about the serial-pty gotcha so the
+        # user doesn't think foot is broken when the console
+        # window sits silent.
+        notify(
+            "vm-menu",
+            f"Connecting to {inst.name} serial console — "
+            "if it hangs, the VM may lack a serial pty (use virt-manager).",
+        )
+
+    foot_cmd = [
+        "foot",
+        "--app-id=vm-shell",
+        f"--title={inst.name}",
+        "-e",
+        *inner,
+    ]
+    try:
+        subprocess.Popen(foot_cmd, start_new_session=True)
+    except FileNotFoundError:
+        notify("vm-menu", "foot not installed", critical=True)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+HELP_TEXT = """\
+vm-menu - unified picker for podman / incus / KVM
+
+USAGE: vm-menu
+
+Snapshots every container, LXC, and VM on the host into a
+single fuzzel menu. Selecting one opens an action submenu
+(start / stop / resume / shell). The shell action auto-starts
+a stopped instance first.
+
+Columns:
+  glyph  ●  running    ◐  paused    ○  stopped
+  kind   pod | lxc | vm
+  name   instance name (truncated to 20 chars)
+  state  running | paused | stopped
+  ip     primary IPv4 (or — if none / podman rootless)
+  uptime compact: 42s, 5m, 3h, 4d
+"""
+
+
+def main() -> None:
+    """Entry point — gather, render, dispatch one user action."""
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        print(HELP_TEXT)
+        return
+
+    instances: list[Instance] = []
+    instances.extend(list_podman())
+    instances.extend(list_incus())
+    instances.extend(list_kvm())
+
+    if not instances:
+        # Show the most useful diagnosis we can: missing tools,
+        # auth failure, or simply "no instances yet".
+        hint = runtime_health_hint() or "No containers / VMs"
+        show_empty_popup(hint)
+        return
+
+    # Sort for stable, scannable output:
+    #   1. Running first (active state is what the user usually
+    #      cares about most).
+    #   2. Then paused, then stopped.
+    #   3. Within each state bucket: by kind (pod, lxc, vm) then
+    #      by name. Lex order on kind happens to match the natural
+    #      "lightest to heaviest virtualization" mental model.
+    state_rank = {"running": 0, "paused": 1, "stopped": 2}
+    instances.sort(
+        key=lambda i: (state_rank.get(i.state, 9), i.kind, i.name)
+    )
+
+    rows = [format_row(i) for i in instances]
+    idx = show_main_menu(rows)
+    if idx is None or idx >= len(instances):
+        return
+    inst = instances[idx]
+
+    action = show_action_menu(inst)
+    if action is None:
+        return
+
+    if action == "start":
+        ok, err = do_start(inst)
+        notify(
+            "vm-menu",
+            f"Started {inst.name}" if ok else f"Failed to start {inst.name}: {err}",
+            critical=not ok,
+        )
+    elif action == "stop":
+        ok, err = do_stop(inst)
+        notify(
+            "vm-menu",
+            f"Stopped {inst.name}" if ok else f"Failed to stop {inst.name}: {err}",
+            critical=not ok,
+        )
+    elif action == "resume":
+        ok, err = do_resume(inst)
+        notify(
+            "vm-menu",
+            f"Resumed {inst.name}" if ok else f"Failed to resume {inst.name}: {err}",
+            critical=not ok,
+        )
+    elif action == "shell":
+        do_shell(inst)
+
+
+if __name__ == "__main__":
+    main()

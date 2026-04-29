@@ -102,12 +102,47 @@ pub fn running(name: &str) -> bool {
     }
 }
 
+/// Render a [`Volume`] into the `host:container[:ro]` string podman
+/// accepts after `-v`.
+///
+/// Extracted from [`create`] so the formatting can be unit-tested
+/// without spawning podman. Named volumes never get a mode suffix
+/// (the data is podman-managed; ro/rw doesn't apply at the syntax
+/// level here). Bind mounts append `:ro` when `readonly` is set.
+fn format_volume(v: &Volume) -> String {
+    match v {
+        Volume::Named { volume, container } => format!("{volume}:{container}"),
+        Volume::Bind {
+            host,
+            container,
+            readonly: false,
+        } => format!("{host}:{container}"),
+        Volume::Bind {
+            host,
+            container,
+            readonly: true,
+        } => format!("{host}:{container}:ro"),
+    }
+}
+
 /// Volume argument for `create`: either a named volume or a host bind mount.
 pub enum Volume {
     /// Named podman volume: `volume_name:container_path`.
     Named { volume: String, container: String },
-    /// Host path bind mount: `host_path:container_path`.
-    Bind { host: String, container: String },
+    /// Host path bind mount: `host_path:container_path[:ro]`.
+    ///
+    /// When `readonly` is `true`, the mount is rendered with
+    /// podman's `:ro` suffix so the container cannot mutate the
+    /// host path. The Linux kernel mount-flag honours this even
+    /// under rootless podman + `--userns keep-id`, where the
+    /// container UID maps onto the host invoking-user UID; without
+    /// `:ro` a misbehaving container could rewrite host system
+    /// files like `/etc/localtime`.
+    Bind {
+        host: String,
+        container: String,
+        readonly: bool,
+    },
 }
 
 /// Create a new container from an image. Stays detached and running so
@@ -137,10 +172,7 @@ pub fn create(
     ];
     for v in volumes {
         argv.push("-v".into());
-        match v {
-            Volume::Named { volume, container } => argv.push(format!("{volume}:{container}")),
-            Volume::Bind { host, container } => argv.push(format!("{host}:{container}")),
-        }
+        argv.push(format_volume(v));
     }
     for p in ports {
         argv.push("-p".into());
@@ -286,5 +318,45 @@ mod tests {
         // Anyone who relies on the prefix externally (shell scripts,
         // completion, grep filters) should be able to trust the constant.
         assert_eq!(DEV_PREFIX, "forge-dev-");
+    }
+
+    /// Named volumes render as `volume:container` with no mode
+    /// suffix — podman manages the data so ro/rw doesn't enter the
+    /// syntax.
+    #[test]
+    fn format_volume_named() {
+        let v = Volume::Named {
+            volume: "myapp-home".into(),
+            container: "/home/dev".into(),
+        };
+        assert_eq!(format_volume(&v), "myapp-home:/home/dev");
+    }
+
+    /// Bind mounts default to read-write — no `:ro` suffix unless
+    /// the caller explicitly asks for it.
+    #[test]
+    fn format_volume_bind_rw() {
+        let v = Volume::Bind {
+            host: "/home/august/repo".into(),
+            container: "/home/dev/repo".into(),
+            readonly: false,
+        };
+        assert_eq!(format_volume(&v), "/home/august/repo:/home/dev/repo");
+    }
+
+    /// Read-only bind mounts gain podman's `:ro` mode suffix. This
+    /// is what makes the dev-container.toml `/etc/localtime` and
+    /// `/etc/timezone` mounts safe under rootless podman + `--userns
+    /// keep-id`, where the container UID maps onto the host invoking
+    /// user — without `:ro` a misbehaving container could rewrite
+    /// host system files.
+    #[test]
+    fn format_volume_bind_ro() {
+        let v = Volume::Bind {
+            host: "/etc/localtime".into(),
+            container: "/etc/localtime".into(),
+            readonly: true,
+        };
+        assert_eq!(format_volume(&v), "/etc/localtime:/etc/localtime:ro");
     }
 }

@@ -58,6 +58,52 @@ pub enum Command {
         #[command(subcommand)]
         sub: DevCmd,
     },
+    /// Spin up a clean Debian trixie LXC pre-bootstrapped for testing
+    /// `forge setup` from zero.
+    ///
+    /// Wraps the otherwise-by-hand sequence we discovered while
+    /// validating forge against fresh containers: launch the upstream
+    /// `images:debian/13` image, register a static IP with incusbr0's
+    /// dnsmasq, replace the in-guest networkd config with a static
+    /// one (DHCPv4 doesn't fire in the upstream image), swap
+    /// `/etc/resolv.conf` off the resolved stub for public DNS,
+    /// install sudo + ca-certificates, useradd `august` (UID 1000)
+    /// with NOPASSWD sudoers + `loginctl enable-linger`, push the
+    /// local `target/release/forge` binary in, and (by default) drop
+    /// you at a shell as `august` with `./forge` ready to run. After
+    /// the test, `incus delete --force <name>`.
+    Lxc {
+        /// Container name (default: `forge-scratch`). Must not collide
+        /// with an existing incus instance.
+        name: Option<String>,
+        /// Bootstrap and exit instead of dropping into a shell.
+        /// Useful when chaining into a script.
+        #[arg(long)]
+        no_shell: bool,
+        /// Static IPv4 to assign on incusbr0. Default `10.160.110.50`
+        /// — chosen to avoid the typical `forge-trixie` (.10),
+        /// `forge-vm` (.30), and gateway (.1) assignments.
+        #[arg(long)]
+        ip: Option<String>,
+    },
+    /// Spin up a clean Debian trixie KVM VM pre-bootstrapped for
+    /// testing `forge setup` from zero. Same shape as `forge lxc`
+    /// but spawns a real virtual machine via `incus launch --vm`,
+    /// which lets you exercise the systemd-user-service / graphical
+    /// session / virtio-gpu paths the LXC can't reach.
+    ///
+    /// VMs take longer to boot than LXCs (kernel + cloud-init), so
+    /// expect ~30-60s before the in-guest setup begins.
+    Vm {
+        /// VM name (default: `forge-scratch-vm`).
+        name: Option<String>,
+        /// Bootstrap and exit instead of dropping into a shell.
+        #[arg(long)]
+        no_shell: bool,
+        /// Static IPv4 on incusbr0. Default `10.160.110.51`.
+        #[arg(long)]
+        ip: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

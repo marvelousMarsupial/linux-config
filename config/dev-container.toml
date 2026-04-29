@@ -65,9 +65,50 @@ ssh_agent = true
 
 # Volumes attached to every container. The single named volume below
 # is what makes "start it and go back to work" actually work — see
-# the persistence-model section above.
+# the persistence-model section above. The bind mounts after it pull
+# the host's timezone into the container so timestamps inside match
+# the host's wall-clock perception of "now" — see comment on the
+# bind list itself.
 [default_volumes]
 named = [
     { name = "{name}-home", container = "/home/dev" },
 ]
-bind = []
+# Read-only bind mounts of host system files. Currently TZ-only.
+#
+# Why this and not just `-e TZ=...`: glibc's time-formatting code
+# reads `/etc/localtime` (the binary tzdata file describing the
+# active zone) by default; the `TZ` env var is consulted only as
+# a fallback. So `-e TZ=America/Los_Angeles` works in some tools
+# but plenty of others (cron-style schedulers, anything linked to
+# glibc's `tzset`) ignore it and fall back to UTC if
+# `/etc/localtime` is the trixie-slim base image's UTC default.
+# Bind-mounting the host's `/etc/localtime` (a symlink to the
+# zone binary in `/usr/share/zoneinfo/`) gives glibc the right
+# answer with zero per-container configuration. The Containerfile
+# installs `tzdata` so the underlying zone files in
+# `/usr/share/zoneinfo/` exist for the symlink target to resolve
+# inside the container.
+#
+# We deliberately do NOT bind-mount `/etc/timezone`. That file is
+# a Debian-specific human-readable zone name (e.g. `America/Los_Angeles`)
+# that older Debian tooling consulted, but on modern systemd-based
+# systems (including this trixie box) it doesn't exist — systemd's
+# `timedatectl` and glibc's `tzset` both work off `/etc/localtime`
+# alone. Trying to bind-mount a missing host file makes podman bail
+# at container create with `statfs /etc/timezone: no such file or
+# directory`, which is exactly the failure mode an earlier version
+# of this config hit. If a future tool inside the container actually
+# needs `/etc/timezone`, set the `TZ` env var instead — that's the
+# cross-distro signal everyone respects.
+#
+# `readonly = true` is non-negotiable here: a misbehaving
+# container under rootless podman + `--userns keep-id` maps its
+# UID onto the host invoking-user UID, which on this single-user
+# laptop is the user who actually owns `/etc/localtime`. Without
+# `:ro`, a container could rewrite the host's clock zone. The
+# field defaults to `false` on omitted entries (matching podman's
+# default for plain `-v host:container`), so future entries that
+# need rw stay terse.
+bind = [
+    { host = "/etc/localtime", container = "/etc/localtime", readonly = true },
+]

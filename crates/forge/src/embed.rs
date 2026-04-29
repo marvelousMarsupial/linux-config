@@ -877,6 +877,940 @@ mod tests {
         );
     }
 
+    /// The server role must own `/etc/nftables.conf` (so an ad-hoc
+    /// edit can't squat the path) but the file must NOT declare
+    /// any ruleset. We rolled back the previous `inet forge_filter`
+    /// table — see the comment block above the post-cmd in
+    /// `config/roles.toml` for the full rationale, but the short
+    /// version is that `policy drop` on input broke rootless
+    /// podman + pasta UDP DNS replies, and on a single-user
+    /// laptop behind NAT the firewall was net-negative anyway.
+    ///
+    /// Asserted invariants:
+    ///   * post-command writes `/etc/nftables.conf`
+    ///   * the file is forge-managed (carries the
+    ///     `# Managed by forge: intentionally empty` marker)
+    ///   * the file declares NO `table` blocks (no rules, no
+    ///     filter chains, no input policy)
+    ///   * **negative invariant**: NO post-command anywhere in
+    ///     either role contains `flush ruleset`. This is still
+    ///     the load-bearing assertion — even a comment-only
+    ///     /etc/nftables.conf containing `flush ruleset` would
+    ///     wipe netavark / libvirt / incus tables on every
+    ///     reload. The kernel's nftables subsystem is shared by
+    ///     every tool that programs it; we share the file but
+    ///     not the rules, and `flush ruleset` would violate that
+    ///     boundary.
+    #[test]
+    fn server_role_provisions_host_firewall() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Server).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        let firewall = plan
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                Action::PostCommand(p) if p.run().contains("/etc/nftables.conf") => Some(p),
+                _ => None,
+            })
+            .expect(
+                "server role should still own /etc/nftables.conf even though we no longer \
+                 ship a ruleset — the path needs to be forge-managed so an ad-hoc edit \
+                 can't squat it",
+            );
+
+        let run = firewall.run();
+
+        // The file's body must carry the marker the check greps for.
+        // Without it the post-cmd's idempotency check (greps for
+        // this exact string) breaks and the file gets rewritten on
+        // every forge run.
+        assert!(
+            run.contains("# Managed by forge: intentionally empty"),
+            "/etc/nftables.conf body must include the `# Managed by forge: intentionally \
+             empty` marker (the post-cmd's check greps for it); got: {run}"
+        );
+
+        // The file must NOT declare any ruleset. We assert on the
+        // canonical nftables keywords that introduce active rules.
+        // A comment containing the word `table` is fine (we're a
+        // comment-heavy file) — the assertion looks for the
+        // canonical `table <family> <name> {` shape, and `policy
+        // drop|accept` declarations.
+        for active_keyword in [
+            "table inet forge_filter",
+            "policy drop;",
+            "type filter hook input",
+        ] {
+            assert!(
+                !run.contains(active_keyword),
+                "/etc/nftables.conf must not contain `{active_keyword}` — the host firewall \
+                 was rolled back deliberately (see config/roles.toml comment block). If a \
+                 future host actually needs filtering, restore via a per-host drop-in, not \
+                 here. Got: {run}"
+            );
+        }
+
+        let check = firewall
+            .check()
+            .expect("nftables.conf post-command must carry a `check` so reruns are no-ops");
+        assert!(
+            check.contains("/etc/nftables.conf"),
+            "nftables.conf check must verify the conf file is in place; got: {check}"
+        );
+
+        // Negative invariant: flush ruleset must not appear in
+        // ANY post-command in EITHER role. Still the load-bearing
+        // assertion — a single `flush ruleset` slipped in
+        // anywhere wipes netavark / libvirt / incus tables on
+        // every nftables reload.
+        for role in [Role::Server, Role::Desktop] {
+            let cfg = roles.resolved(role).unwrap();
+            let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+            for action in plan.actions.iter() {
+                if let Action::PostCommand(p) = action {
+                    assert!(
+                        !p.run().contains("flush ruleset"),
+                        "no post-command in any role may use `flush ruleset` — it wipes \
+                         netavark / libvirt / incus tables along with ours, breaking every \
+                         container and VM on the host. Use `nft delete table <name>` to \
+                         scope your reset. Offending command in {role:?} role: {}",
+                        p.run()
+                    );
+                }
+            }
+        }
+    }
+
+    /// The desktop role must install and enable
+    /// `power-profiles-daemon` — the laptop power-management daemon
+    /// that exposes `power-saver` / `balanced` / `performance`
+    /// profiles over D-Bus. Without it the box has no
+    /// `powerprofilesctl` command, no battery-vs-AC tuning beyond
+    /// kernel defaults, and a future status-bar widget that talks
+    /// to PPD's D-Bus name (`net.hadess.PowerProfiles`) silently
+    /// no-ops. Pinned together — package + enable — so a refactor
+    /// that drops one or the other gets caught at `cargo test`.
+    #[test]
+    fn desktop_role_provisions_power_profiles_daemon() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Desktop).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        // Package half. Without it the post-command's
+        // `enable --now` errors with "Unit power-profiles-daemon
+        // not found".
+        assert!(
+            cfg.packages.iter().any(|p| p == "power-profiles-daemon"),
+            "desktop role must install the `power-profiles-daemon` apt package"
+        );
+
+        let enable = plan
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                Action::PostCommand(p)
+                    if p.run().contains("power-profiles-daemon.service") =>
+                {
+                    Some(p)
+                }
+                _ => None,
+            })
+            .expect(
+                "desktop role must `enable --now power-profiles-daemon.service` so PPD is up \
+                 in this session AND comes back after a reboot",
+            );
+        assert!(
+            enable.run().contains("enable --now"),
+            "PPD post-command must use `enable --now` (not just `start`) so the daemon comes \
+             back after a reboot; got: {}",
+            enable.run()
+        );
+        assert!(
+            enable.check().is_some(),
+            "PPD post-command must carry a `check` so reruns are no-ops"
+        );
+    }
+
+    /// The desktop role must hand every network device to a single
+    /// manager (NetworkManager). Debian's stock split is wifi via
+    /// NM and wired via ifupdown → dhcpcd-base, which made the
+    /// ethernet-priority drop-in dead config because NM never
+    /// claimed the wire to apply it to. Three post-commands
+    /// migrate to the unified setup; this test pins all three
+    /// together so a future "I'll just clean these up" edit can't
+    /// re-introduce the split.
+    ///
+    /// Asserted invariants:
+    ///   * /etc/NetworkManager/conf.d/05-ifupdown-managed.conf
+    ///     writes `[ifupdown] managed=true` (overrides the
+    ///     `managed=false` shipped in NetworkManager.conf)
+    ///   * /etc/network/interfaces gets rewritten to a
+    ///     loopback-only file marked with `# Managed by forge`
+    ///     (the marker is what the post-cmd's idempotency check
+    ///     greps for)
+    ///   * `networking.service` is `systemctl disable --now`'d
+    ///     so ifupdown / dhcpcd-base aren't holding any device
+    ///     across boots
+    ///   * negative invariant: no post-command writes a
+    ///     MAC-derived `enx` interface name into
+    ///     /etc/network/interfaces (catches a regression where
+    ///     someone re-adds the brittle hardcoded line we removed)
+    ///   * each of the three commands carries an idempotent `check`
+    #[test]
+    fn desktop_role_unifies_networking_under_nm() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Desktop).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        // Helper: find a post-command whose `run` contains the
+        // given marker. We match on a unique substring per step
+        // so the failure message names the missing piece.
+        let find = |marker: &str| -> Option<&forge_common::role::PostCmd> {
+            plan.actions.iter().find_map(|a| match a {
+                Action::PostCommand(p) if p.run().contains(marker) => Some(p),
+                _ => None,
+            })
+        };
+
+        let managed = find("/etc/NetworkManager/conf.d/05-ifupdown-managed.conf").expect(
+            "desktop role must install \
+             /etc/NetworkManager/conf.d/05-ifupdown-managed.conf so NM stops ceding wired \
+             devices to ifupdown",
+        );
+        assert!(
+            managed.run().contains("[ifupdown]") && managed.run().contains("managed=true"),
+            "05-ifupdown-managed.conf must contain `[ifupdown]` and `managed=true`; got: {}",
+            managed.run()
+        );
+        assert!(
+            managed.check().is_some(),
+            "managed=true drop-in post-command must carry a `check` so reruns are no-ops"
+        );
+
+        let interfaces = find("/etc/network/interfaces").expect(
+            "desktop role must rewrite /etc/network/interfaces to loopback-only so ifupdown \
+             stops claiming wired devices via the MAC-derived hardcode",
+        );
+        // The new file must declare loopback. Anything else is
+        // a regression of the brittle hardcoded interface block.
+        assert!(
+            interfaces.run().contains("iface lo inet loopback"),
+            "/etc/network/interfaces rewrite must include `iface lo inet loopback`; got: {}",
+            interfaces.run()
+        );
+        // The marker comment is load-bearing (the check greps for
+        // it). If someone deletes the marker the post-command's
+        // idempotency check breaks silently — the `run` keeps
+        // re-overwriting the file every forge run.
+        assert!(
+            interfaces.run().contains("# Managed by forge"),
+            "/etc/network/interfaces rewrite must include the `# Managed by forge` marker — \
+             the post-command's idempotency `check` greps for it; got: {}",
+            interfaces.run()
+        );
+        assert!(
+            interfaces.check().is_some(),
+            "/etc/network/interfaces rewrite post-command must carry a `check` so reruns are \
+             no-ops"
+        );
+
+        let disable = find("disable --now networking.service").expect(
+            "desktop role must `systemctl disable --now networking.service` so ifupdown / \
+             dhcpcd-base stop competing with NM for wired devices",
+        );
+        assert!(
+            disable.check().is_some(),
+            "networking.service disable post-command must carry a `check` so reruns are no-ops"
+        );
+
+        // Negative invariant: no post-command may re-introduce
+        // the MAC-derived `enx*` ifupdown declaration that the
+        // original Debian installer wrote and the migration
+        // removes. Catches a regression where a future change
+        // pastes back the old file.
+        for action in plan.actions.iter() {
+            if let Action::PostCommand(p) = action {
+                let run = p.run();
+                if run.contains("/etc/network/interfaces") {
+                    assert!(
+                        !run.contains("iface enx") && !run.contains("allow-hotplug enx"),
+                        "no post-command may re-introduce the MAC-derived `enx*` ifupdown block \
+                         to /etc/network/interfaces; got: {run}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The desktop role must install a NetworkManager drop-in pinning
+    /// ethernet ahead of wifi at the routing layer.
+    ///
+    /// NM's compiled-in defaults already favor wired (route-metric
+    /// 100) over wireless (route-metric 600), but those defaults live
+    /// only as in-code constants — there is no on-disk config to
+    /// diff against, so a stray `ipv4.route-metric=200` on a wifi
+    /// connection profile (or a future NM upstream change) can
+    /// silently flip the preference. The drop-in at
+    /// `/etc/NetworkManager/conf.d/10-ethernet-priority.conf` makes
+    /// the intent explicit and reproducible across boxes.
+    ///
+    /// We assert: the post-command writes to that exact path,
+    /// declares both `[connection-ethernet]` and `[connection-wifi]`
+    /// match-blocks, sets ethernet's IPv4 route-metric to 100 and
+    /// wifi's to 600 (the canonical NM defaults — pinning them is
+    /// the whole point), reloads NM's config so the change applies
+    /// without bouncing the daemon, and carries a `check` so reruns
+    /// are no-ops.
+    ///
+    /// Negative invariant: the drop-in must NOT contain
+    /// `connection.autoconnect-priority`. Per `nm-settings(5)` that
+    /// property only chooses between profiles competing for the
+    /// *same device*; setting it between an ethernet and a wifi
+    /// `[connection-*]` block is dead config (cross-device
+    /// activation is independent), and the actual exclusive-
+    /// failover behavior the user wants is implemented by the
+    /// dispatcher script the next test pins. If a future change
+    /// re-introduces `autoconnect-priority` here, this assertion
+    /// catches it before it ships.
+    #[test]
+    fn desktop_role_pins_networkmanager_ethernet_priority() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Desktop).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        // Identify the post-command by the unique conf-file path so a
+        // future unrelated NM tweak won't accidentally match.
+        let drop_in = plan
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                Action::PostCommand(p)
+                    if p.run()
+                        .contains("/etc/NetworkManager/conf.d/10-ethernet-priority.conf") =>
+                {
+                    Some(p)
+                }
+                _ => None,
+            })
+            .expect(
+                "desktop role should install an NM drop-in pinning ethernet over wifi at \
+                 /etc/NetworkManager/conf.d/10-ethernet-priority.conf",
+            );
+
+        let run = drop_in.run();
+
+        // Both match blocks must be present — without one of them the
+        // drop-in would only pin half of the priority pair, leaving
+        // the other side at NM's compile-time default and undermining
+        // the whole reproducibility argument for shipping the file.
+        assert!(
+            run.contains("[connection-ethernet]"),
+            "NM drop-in must contain a [connection-ethernet] section; got: {run}"
+        );
+        assert!(
+            run.contains("[connection-wifi]"),
+            "NM drop-in must contain a [connection-wifi] section; got: {run}"
+        );
+        assert!(
+            run.contains("match-device=type:ethernet"),
+            "NM drop-in must scope the ethernet section by `match-device=type:ethernet`; got: {run}"
+        );
+        assert!(
+            run.contains("match-device=type:wifi"),
+            "NM drop-in must scope the wifi section by `match-device=type:wifi`; got: {run}"
+        );
+
+        // Pin the canonical NM defaults: 100 for wired (preferred,
+        // low metric wins), 600 for wireless. If someone "improves"
+        // these numbers without thinking, this test catches it
+        // before the change ships.
+        assert!(
+            run.contains("ipv4.route-metric=100"),
+            "NM drop-in must pin ethernet ipv4.route-metric=100 (preferred default route); got: {run}"
+        );
+        assert!(
+            run.contains("ipv4.route-metric=600"),
+            "NM drop-in must pin wifi ipv4.route-metric=600 (fallback default route); got: {run}"
+        );
+
+        // Reload picks up conf.d changes without bouncing NM, which
+        // matters for live updates: the user keeps their current
+        // wifi association while the new defaults apply to the next
+        // activation.
+        assert!(
+            run.contains("nmcli general reload conf"),
+            "NM drop-in post-command must reload NM config so the new defaults take effect \
+             without restarting the daemon; got: {run}"
+        );
+        assert!(
+            drop_in.check().is_some(),
+            "NM drop-in post-command must carry a `check` so reruns are no-ops"
+        );
+
+        // Negative invariant: cross-device autoconnect-priority is
+        // dead config (per nm-settings(5) it only ranks profiles on
+        // the same device), so the drop-in must not pin it. The
+        // actual "ethernet preferred" exclusive-failover behavior
+        // is implemented by the dispatcher script the next test
+        // covers — keep these two concerns split.
+        assert!(
+            !run.contains("connection.autoconnect-priority"),
+            "NM drop-in must NOT pin `connection.autoconnect-priority` between ethernet and \
+             wifi — cross-device autoconnect-priority is a no-op (nm-settings(5)); the \
+             dispatcher script handles exclusive failover instead. Got: {run}"
+        );
+
+        // Migration guard: when forge runs against a host that has
+        // a previous version of this drop-in on disk (one with the
+        // deprecated `autoconnect-priority` lines), a plain
+        // `test -f` check would let the old file linger forever
+        // because the path still exists. The check must include a
+        // *negated* `grep -q autoconnect-priority` against the
+        // file so forge rewrites it when the deprecated body is
+        // detected. If a future edit drops this guard the
+        // migration regresses silently — this assertion catches
+        // that before it ships.
+        let check = drop_in.check().expect("drop-in must carry a check (asserted above)");
+        assert!(
+            check.contains("! grep -q autoconnect-priority"),
+            "NM drop-in `check` must include `! grep -q autoconnect-priority` so forge \
+             rewrites the file on hosts where a previous version's `autoconnect-priority` \
+             lines are still on disk. Got: {check}"
+        );
+    }
+
+    /// The desktop role must install a NetworkManager dispatcher
+    /// script that gives the host genuine "ethernet when plugged
+    /// in, wifi otherwise" behavior — the user-visible laptop UX.
+    ///
+    /// Why a dispatcher rather than just the route-metric drop-in:
+    /// kernel route-metric prefers ethernet correctly (NM defaults
+    /// already do this), but `getaddrinfo()` / `connect()` source-
+    /// address selection per RFC 6724 picks the lower-ifindex
+    /// interface for same-subnet destinations, which on a host
+    /// where wifi and ethernet share a subnet can be wifi even when
+    /// ethernet has the lower metric. Result: app-level outbound
+    /// binds use the wifi IP and reply traffic follows the source
+    /// address back over wifi. The dispatcher fixes this
+    /// structurally by removing the wifi connection (and its IP)
+    /// while ethernet is up, and reconnecting wifi when ethernet
+    /// goes away. See the post-cmd's block comment in
+    /// `config/roles.toml` for the full rationale.
+    ///
+    /// We assert:
+    ///   * a post-command writes
+    ///     `/etc/NetworkManager/dispatcher.d/10-wifi-when-no-ethernet`
+    ///   * the body filters on `en*`/`eth*` at the top (loop
+    ///     prevention — without this the wifi-up event from our
+    ///     own `device connect` recurses)
+    ///   * both `up)` and `down)` action branches are present
+    ///   * the `up` branch calls `nmcli device disconnect` (the
+    ///     canonical "stop using this device, but leave the
+    ///     radio on so the user can override manually" command)
+    ///   * the `down` branch calls `nmcli device connect` (lifts
+    ///     the manually-disconnected flag so NM autoconnect can
+    ///     pick the highest-priority eligible wifi profile)
+    ///   * the `down` branch short-circuits if any other ethernet
+    ///     is still active (matches `802-3-ethernet` in
+    ///     `connection show --active`) — a docked laptop with two
+    ///     wired interfaces shouldn't un-disable wifi when one
+    ///     cable is unplugged
+    ///   * the post-command `chmod 0755`s the file (NM silently
+    ///     skips dispatcher scripts that aren't 0755 — a confusing
+    ///     failure mode logged at debug level only)
+    ///   * the post-command carries a `check` so reruns are no-ops
+    #[test]
+    fn desktop_role_installs_wifi_failover_dispatcher() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Desktop).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        // Identify the post-command by the unique dispatcher path
+        // so a future unrelated NM change won't accidentally match.
+        let dispatcher = plan
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                Action::PostCommand(p)
+                    if p.run().contains(
+                        "/etc/NetworkManager/dispatcher.d/10-wifi-when-no-ethernet",
+                    ) =>
+                {
+                    Some(p)
+                }
+                _ => None,
+            })
+            .expect(
+                "desktop role should install an NM dispatcher script at \
+                 /etc/NetworkManager/dispatcher.d/10-wifi-when-no-ethernet for exclusive \
+                 ethernet-preferred failover",
+            );
+
+        let run = dispatcher.run();
+
+        // Loop prevention: the script must filter on en*/eth* before
+        // doing anything, otherwise the wifi-up event NM fires when
+        // we re-enable wifi recurses through this same script and
+        // we end up in a tight enable/disable cycle.
+        assert!(
+            run.contains("en*|eth*"),
+            "dispatcher script must filter on `en*|eth*` at the top to avoid recursing on \
+             wifi-up events triggered by its own `device connect`; got: {run}"
+        );
+
+        // Both action branches must be present. Without `up)` the
+        // "ethernet preferred" half does nothing; without `down)`
+        // wifi never comes back when the cable is unplugged.
+        assert!(
+            run.contains("  up)"),
+            "dispatcher script must handle the `up)` action (disconnects wifi when ethernet \
+             comes up); got: {run}"
+        );
+        assert!(
+            run.contains("  down)"),
+            "dispatcher script must handle the `down)` action (reconnects wifi when ethernet \
+             goes away); got: {run}"
+        );
+
+        // The two nmcli verbs that drive the actual behavior. We
+        // deliberately use `device disconnect/connect` rather than
+        // `radio off/on` so the wifi card keeps scanning and the
+        // user can manually override the dispatcher with
+        // `nmcli device connect <wifi>` if they want both
+        // interfaces active at once.
+        assert!(
+            run.contains("nmcli device disconnect"),
+            "dispatcher script's `up` branch must call `nmcli device disconnect` to drop the \
+             wifi IP while ethernet is up; got: {run}"
+        );
+        assert!(
+            run.contains("nmcli device connect"),
+            "dispatcher script's `down` branch must call `nmcli device connect` to reactivate \
+             wifi when the last ethernet leaves; got: {run}"
+        );
+
+        // The down-branch short-circuit: if another ethernet
+        // connection is still active, don't un-disable wifi. This
+        // pattern matches the connection.show --active output for
+        // 802-3-ethernet so a docked laptop with two wired
+        // interfaces behaves correctly when only one cable is
+        // unplugged. Asserting on the literal substring keeps a
+        // future edit from accidentally removing the guard.
+        assert!(
+            run.contains("802-3-ethernet"),
+            "dispatcher script must short-circuit the `down` branch when another \
+             802-3-ethernet connection is still active (multi-ethernet docking case); got: {run}"
+        );
+
+        // chmod 0755 is mandatory: NM silently skips dispatcher
+        // scripts whose mode is not exactly 0755 (logged at debug
+        // only). A common failure mode is "I wrote the script and
+        // nothing happens" — this assertion guards against an
+        // edit that drops the chmod.
+        assert!(
+            run.contains("chmod 0755"),
+            "dispatcher script post-command must `chmod 0755` the file — NM silently skips \
+             dispatcher scripts that aren't 0755; got: {run}"
+        );
+
+        assert!(
+            dispatcher.check().is_some(),
+            "dispatcher script post-command must carry a `check` so reruns are no-ops"
+        );
+    }
+
+    /// The server role must install `unattended-upgrades` AND ship the
+    /// two apt drop-ins that actually turn it on
+    /// (`/etc/apt/apt.conf.d/20auto-upgrades` for the periodic flags
+    /// and `/etc/apt/apt.conf.d/52unattended-upgrades-local.conf` for
+    /// the local policy). Without both halves, the package installs
+    /// quietly and the apt-daily-upgrade.timer fires every day to do
+    /// nothing — which is exactly the "looks configured, isn't" trap
+    /// we're guarding against here.
+    ///
+    /// We assert:
+    ///   * package present
+    ///   * 20auto-upgrades drop-in writes all four periodic keys
+    ///     (Update-Package-Lists, Download-Upgradeable-Packages,
+    ///     Unattended-Upgrade, AutocleanInterval) — losing any one of
+    ///     them silently degrades the upgrade behavior, so they're
+    ///     pinned as a set
+    ///   * 52unattended-upgrades-local.conf opts in to the stable +
+    ///     updates suites (Origins-Pattern), pins Automatic-Reboot
+    ///     false, and sets MinimalSteps true
+    ///   * both drop-ins carry a `check` so reruns are no-ops
+    #[test]
+    fn server_role_provisions_unattended_upgrades() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Server).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        // Package half. Without this, neither drop-in matters because
+        // there's no /usr/bin/unattended-upgrade for apt-daily-upgrade
+        // to invoke.
+        assert!(
+            cfg.packages.iter().any(|p| p == "unattended-upgrades"),
+            "server role must install the `unattended-upgrades` package; without it the apt \
+             drop-ins below have nothing to drive",
+        );
+
+        let periodic = plan
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                Action::PostCommand(p)
+                    if p.run().contains("/etc/apt/apt.conf.d/20auto-upgrades") =>
+                {
+                    Some(p)
+                }
+                _ => None,
+            })
+            .expect(
+                "server role should install /etc/apt/apt.conf.d/20auto-upgrades so the \
+                 apt-daily-upgrade.timer actually runs unattended-upgrade",
+            );
+
+        let periodic_run = periodic.run();
+        for key in [
+            "APT::Periodic::Update-Package-Lists \"1\"",
+            "APT::Periodic::Download-Upgradeable-Packages \"1\"",
+            "APT::Periodic::Unattended-Upgrade \"1\"",
+            "APT::Periodic::AutocleanInterval \"7\"",
+        ] {
+            assert!(
+                periodic_run.contains(key),
+                "20auto-upgrades drop-in must set `{key}` so the daily upgrade flow stays \
+                 fully configured; got: {periodic_run}"
+            );
+        }
+        assert!(
+            periodic.check().is_some(),
+            "20auto-upgrades drop-in post-command must carry a `check` so reruns are no-ops"
+        );
+
+        let local = plan
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                Action::PostCommand(p)
+                    if p.run()
+                        .contains("/etc/apt/apt.conf.d/52unattended-upgrades-local.conf") =>
+                {
+                    Some(p)
+                }
+                _ => None,
+            })
+            .expect(
+                "server role should install \
+                 /etc/apt/apt.conf.d/52unattended-upgrades-local.conf with the local policy \
+                 overrides on top of the package's shipped 50unattended-upgrades",
+            );
+
+        let local_run = local.run();
+        // Origins: opt in to stable + updates suites so point-release
+        // fixes land alongside security updates. The shipped
+        // 50unattended-upgrades is security-only — without these
+        // appends, the box would still skip every minor point release.
+        assert!(
+            local_run.contains("codename=${distro_codename},label=Debian"),
+            "local drop-in must add the Debian stable suite to Origins-Pattern; got: {local_run}"
+        );
+        assert!(
+            local_run.contains("codename=${distro_codename}-updates"),
+            "local drop-in must add the Debian -updates suite to Origins-Pattern; got: {local_run}"
+        );
+        // Automatic-Reboot false is also the stock default, but
+        // pinning it stops a future package upgrade from silently
+        // flipping the value (the user prefers to choose reboot
+        // windows themselves).
+        assert!(
+            local_run.contains("Unattended-Upgrade::Automatic-Reboot \"false\""),
+            "local drop-in must pin Automatic-Reboot=false; got: {local_run}"
+        );
+        // MinimalSteps makes a Ctrl-C / power-loss during the upgrade
+        // resumable on the next run instead of leaving a half-
+        // configured package; load-bearing for an unattended flow.
+        assert!(
+            local_run.contains("Unattended-Upgrade::MinimalSteps \"true\""),
+            "local drop-in must enable MinimalSteps=true so interrupted runs resume cleanly; \
+             got: {local_run}"
+        );
+        assert!(
+            local.check().is_some(),
+            "52unattended-upgrades-local.conf post-command must carry a `check` so reruns are \
+             no-ops"
+        );
+    }
+
+    /// The desktop role must install a system-level systemd timer that
+    /// runs `flatpak update` daily as root, so the system-installed
+    /// flatpaks (Zen Browser, Obsidian) keep themselves current
+    /// without manual intervention. The pair lives at
+    /// `/etc/systemd/system/flatpak-update.{service,timer}` (system
+    /// units, not user units, because system flatpak installs can
+    /// only be updated by root).
+    ///
+    /// We assert: both unit files are written, the service runs the
+    /// expected `flatpak update` command, the timer fires daily and
+    /// is `Persistent=true` (so a missed run on a powered-off laptop
+    /// runs once on next boot), the post-command reloads systemd and
+    /// `enable --now`s the timer, and it carries a `check` so reruns
+    /// are no-ops.
+    #[test]
+    fn desktop_role_provisions_flatpak_update_timer() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Desktop).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        // Match by the unique timer path so the test isn't fooled by
+        // an unrelated future edit that touches some other systemd
+        // unit.
+        let timer = plan
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                Action::PostCommand(p)
+                    if p.run()
+                        .contains("/etc/systemd/system/flatpak-update.timer") =>
+                {
+                    Some(p)
+                }
+                _ => None,
+            })
+            .expect(
+                "desktop role should install the flatpak-update systemd timer pair under \
+                 /etc/systemd/system/flatpak-update.{service,timer}",
+            );
+
+        let run = timer.run();
+
+        // Both unit files must be written — service alone won't fire
+        // on a schedule, timer alone has nothing to invoke.
+        assert!(
+            run.contains("/etc/systemd/system/flatpak-update.service"),
+            "post-command must write the flatpak-update.service unit; got: {run}"
+        );
+        assert!(
+            run.contains("/etc/systemd/system/flatpak-update.timer"),
+            "post-command must write the flatpak-update.timer unit; got: {run}"
+        );
+
+        // Service body must run flatpak update non-interactively.
+        // `-y --noninteractive` is the documented combination that
+        // suppresses both prompts and progress UI for unattended use.
+        assert!(
+            run.contains("flatpak update -y --noninteractive"),
+            "service must invoke `flatpak update -y --noninteractive`; got: {run}"
+        );
+
+        // Timer body: daily, persistent (catch up after suspend /
+        // power-off), randomized for fleet etiquette even though this
+        // box is one-of-one.
+        assert!(
+            run.contains("OnCalendar=daily"),
+            "timer must fire daily; got: {run}"
+        );
+        assert!(
+            run.contains("Persistent=true"),
+            "timer must be Persistent=true so missed runs catch up after suspend / shutdown; \
+             got: {run}"
+        );
+
+        // Reload + enable+start. Without daemon-reload, systemd
+        // doesn't see the freshly-written units; without `enable
+        // --now`, the timer is on disk but not scheduled.
+        assert!(
+            run.contains("systemctl daemon-reload"),
+            "post-command must `systemctl daemon-reload` after writing the units; got: {run}"
+        );
+        assert!(
+            run.contains("systemctl enable --now flatpak-update.timer"),
+            "post-command must `enable --now flatpak-update.timer` so the timer is both \
+             persistent across boots and active in the current session; got: {run}"
+        );
+
+        assert!(
+            timer.check().is_some(),
+            "flatpak-update timer post-command must carry a `check` so reruns are no-ops"
+        );
+    }
+
+    /// `flatpak-update.service` runs `flatpak update` as root because
+    /// system-scope flatpak installs live under /var/lib/flatpak. The
+    /// root authority is necessary; the rest of the privileges that
+    /// come with it are not. This test pins the systemd sandbox
+    /// directives that contain the blast radius if flatpak (or any of
+    /// its deps) ever has a privilege-escalation bug.
+    ///
+    /// The directives we require are all classic systemd hardening
+    /// tools that work with `flatpak update` specifically:
+    ///   * NoNewPrivileges — kills the setuid escape route
+    ///   * PrivateTmp — isolates /tmp from shared-tmp attacks
+    ///   * ProtectSystem=strict + ReadWritePaths=/var/lib/flatpak —
+    ///     the kernel refuses any write outside the OSTree repo
+    ///   * ProtectHome=read-only — system update has no business
+    ///     writing $HOME
+    ///   * ProtectKernelTunables / ProtectKernelModules /
+    ///     ProtectControlGroups / ProtectClock — block kernel-state
+    ///     modification syscalls flatpak never needs
+    ///   * LockPersonality / RestrictRealtime — close two more
+    ///     niche escape routes
+    ///
+    /// We do NOT assert RestrictNamespaces — flatpak's update path
+    /// may use bwrap (and thus namespaces) for triggers, and
+    /// over-constraining that breaks updates without a clear
+    /// security win.
+    ///
+    /// If a future edit deletes any of the asserted directives the
+    /// test fails — the goal is to make weakening this service a
+    /// loud, deliberate decision instead of a silent simplification.
+    #[test]
+    fn desktop_role_hardens_flatpak_update_service() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Desktop).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        // Same matcher as desktop_role_provisions_flatpak_update_timer
+        // — find the post-command that writes the unit pair.
+        let timer = plan
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                Action::PostCommand(p)
+                    if p.run()
+                        .contains("/etc/systemd/system/flatpak-update.service") =>
+                {
+                    Some(p)
+                }
+                _ => None,
+            })
+            .expect(
+                "desktop role should install flatpak-update.service alongside the timer; if \
+                 this expect fires the provisions test will too",
+            );
+
+        let run = timer.run();
+
+        // Each directive is asserted individually so the failure
+        // message names the specific knob someone removed, not a
+        // vague "hardening missing" blob.
+        for directive in [
+            "NoNewPrivileges=yes",
+            "PrivateTmp=yes",
+            "ProtectSystem=strict",
+            "ReadWritePaths=/var/lib/flatpak",
+            "ProtectHome=read-only",
+            "ProtectKernelTunables=yes",
+            "ProtectKernelModules=yes",
+            "ProtectControlGroups=yes",
+            "ProtectClock=yes",
+            "LockPersonality=yes",
+            "RestrictRealtime=yes",
+        ] {
+            assert!(
+                run.contains(directive),
+                "flatpak-update.service must include systemd hardening directive `{directive}`; \
+                 if you intentionally removed it, update both the service definition and this \
+                 test in the same commit. got: {run}"
+            );
+        }
+    }
+
+    /// The desktop role's system-scope flatpak post-commands must run
+    /// via `sudo`, not bare.
+    ///
+    /// Plain `flatpak remote-add` / `flatpak install` (no `--user`,
+    /// no `--system` flag) defaults to the system installation —
+    /// /var/lib/flatpak, root-owned. The non-root path goes through
+    /// polkit (`org.freedesktop.Flatpak.app-install`,
+    /// `…manage-installation`), which on a graphical session pops a
+    /// password dialog via the user's polkit auth agent. forge runs
+    /// post-commands non-interactively, so polkit returns
+    /// `error: Flatpak system operation … not allowed for user` and
+    /// the executor aborts the entire desktop plan.
+    ///
+    /// Wrapping with `sudo` short-circuits polkit (root is already
+    /// authorized) and the documented NOPASSWD sudoers entry on the
+    /// user's host means sudo doesn't prompt either. Same observable
+    /// result, no interactive prompts.
+    ///
+    /// Caught by running the desktop role inside a clean Debian
+    /// trixie LXC: bare `flatpak remote-add … flathub …` exited 1
+    /// with `Flatpak system operation ConfigureRemote not allowed
+    /// for user`. Same class of bug as the `chsh` PAM gotcha pinned
+    /// by `server_role_chsh_uses_sudo`.
+    ///
+    /// Note: the `flatpak override --user …` post-commands lower
+    /// down in the role intentionally do NOT take sudo because
+    /// `--user` writes to `~/.local/share/flatpak/overrides` and
+    /// never touches system state. This test only asserts the
+    /// system-scope ones (no `--user` flag).
+    #[test]
+    fn desktop_role_system_flatpak_ops_use_sudo() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Desktop).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        // Collect every post-command that invokes flatpak. We then
+        // partition by `--user` to separate the per-user override
+        // commands (no sudo needed) from the system-scope remote /
+        // install commands (sudo required).
+        let flatpak_cmds: Vec<&str> = plan
+            .actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::PostCommand(p) if p.run().contains("flatpak ") => Some(p.run()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            !flatpak_cmds.is_empty(),
+            "desktop role should include at least one flatpak post-command"
+        );
+
+        // Find the system-scope ones: bare `flatpak <subcmd>` with
+        // no `--user` AND no `--system` (latter would be redundant
+        // but still system scope). The flatpak-update.service
+        // post-cmd embeds a `flatpak update` invocation as part of
+        // an ExecStart line — that runs as root inside the
+        // systemd-managed unit, NOT directly via the executor, so
+        // skip any line that's writing to /etc/systemd/system.
+        for run in &flatpak_cmds {
+            let is_system_scope = !run.contains("--user");
+            let is_unit_definition = run.contains("/etc/systemd/system/flatpak-update");
+            if !is_system_scope || is_unit_definition {
+                continue;
+            }
+            assert!(
+                run.starts_with("sudo "),
+                "system-scope flatpak post-command must be invoked via `sudo` so polkit \
+                 short-circuits and forge's non-interactive run doesn't fail with `Flatpak \
+                 system operation … not allowed for user`; got `{run}`"
+            );
+        }
+    }
+
     /// The sway autostart for udiskie must use `--no-tray`, not `--tray`.
     /// This setup has no system tray daemon, so `udiskie --tray` (the
     /// default flag in older configs) silently fails to register the
@@ -1005,6 +1939,15 @@ mod tests {
     /// * `fuse-overlayfs` — overlay storage driver that works
     ///   without root; without it podman falls back to vfs and
     ///   copies the whole image on every layer
+    /// * `nftables` — ships the `nft` CLI that netavark (podman's
+    ///   network backend on trixie) shells out to for firewall /
+    ///   NAT rule programming. Without it, `podman build` and
+    ///   `podman run` fail deep inside the first `RUN` step with
+    ///   "netavark: nftables error: unable to execute nft: No
+    ///   such file or directory" — confusing because the failure
+    ///   appears after image pull, not at podman invocation
+    ///   time. We hit this on the freshly-provisioned incus VM
+    ///   that motivated the test loop.
     ///
     /// Dropping any one of these would leave a host where forge
     /// looks installed but `forge dev` silently fails. This test is
@@ -1020,6 +1963,7 @@ mod tests {
             "passt",
             "slirp4netns",
             "fuse-overlayfs",
+            "nftables",
         ] {
             assert!(
                 cfg.packages.iter().any(|p| p == pkg),
@@ -1578,6 +2522,656 @@ mod tests {
         }
     }
 
+    /// The `vm-menu` script must ship under `.local/bin/`, start
+    /// with a shebang (so the planner's shebang detection writes
+    /// it 0o755), and exercise every runtime the menu claims to
+    /// cover.
+    ///
+    /// We assert the script references all three runtime CLIs
+    /// (`podman`, `incus`, `virsh`) by substring rather than
+    /// exact-line matching so that future refactors that move
+    /// the references into helper functions / dispatch tables
+    /// don't break the test as long as the underlying coverage
+    /// stays put. Same logic for the action verbs — we just
+    /// check that the keywords `start`, `stop`, and `shell`
+    /// appear in the source, which catches accidental deletion
+    /// without forcing the test to mirror the script's exact
+    /// dispatch shape.
+    ///
+    /// The `--help` text must mention the column glyphs; this is
+    /// the user-facing legend that explains `●`/`◐`/`○`, and a
+    /// future refactor that drops the legend would silently
+    /// break the discoverability promise the keybind was added
+    /// for.
+    #[test]
+    fn vm_menu_script_ships() {
+        let script = EmbeddedDotfiles
+            .read(Path::new(".local/bin/vm-menu"))
+            .expect("vm-menu script must be embedded under .local/bin/");
+        let s = String::from_utf8(script).expect("vm-menu script must be utf8");
+        assert!(
+            s.starts_with("#!"),
+            "vm-menu script must start with a shebang so the planner's shebang \
+             detection writes it executable (0o755) — without that the keybind \
+             fires the script but the kernel refuses to exec it"
+        );
+        for cli in ["podman", "incus", "virsh"] {
+            assert!(
+                s.contains(cli),
+                "vm-menu script must reference `{cli}` — the menu's whole job is \
+                 enumerating + dispatching across all three runtimes; dropping a \
+                 reference would silently lose coverage of one of them"
+            );
+        }
+        for verb in ["start", "stop", "shell"] {
+            assert!(
+                s.contains(verb),
+                "vm-menu script must implement the `{verb}` action — these three \
+                 are the documented user-facing verbs in the action submenu"
+            );
+        }
+        // The --help legend lives in HELP_TEXT; assert the glyph
+        // characters and column names show up so a future refactor
+        // that drops the legend gets caught at test time, not by
+        // a confused user.
+        for legend in ["●", "◐", "○", "running", "paused", "stopped"] {
+            assert!(
+                s.contains(legend),
+                "vm-menu --help text must mention `{legend}` so users have a \
+                 self-contained reference for the menu's column glyphs"
+            );
+        }
+    }
+
+    /// The container shell launcher must use a `command -v` probe,
+    /// NOT `exec bash 2>/dev/null || exec sh`.
+    ///
+    /// Bash writes its `PS1` prompt to **stderr**, so the
+    /// previously-shipped form silently inherited the
+    /// `2>/dev/null` redirection across `exec` and rendered every
+    /// prompt and readline refresh into `/dev/null` — the user
+    /// saw a blank foot window with no prompt and assumed the
+    /// menu was broken. The fix lives in `vm-menu`'s
+    /// `SHELL_LAUNCHER` constant; this test exists to make sure
+    /// nobody innocently rewrites it back into the obvious-but-
+    /// wrong spelling.
+    ///
+    /// We assert three things:
+    ///
+    /// 1. The zsh probe (`command -v zsh`) is present and comes
+    ///    BEFORE the bash probe in source order — this encodes
+    ///    the documented preference of zsh → bash → sh, and a
+    ///    refactor that swapped the order would silently downgrade
+    ///    every container shell to bash even when zsh is available.
+    /// 2. The bash probe (`command -v bash`) is also present, so
+    ///    the middle step of the fallback chain stays intact for
+    ///    images that ship bash but not zsh.
+    /// 3. The buggy `exec bash 2>/dev/null` substring is NOT
+    ///    present anywhere in the script — that's the prompt-
+    ///    swallowing footgun the launcher was rewritten to avoid.
+    #[test]
+    fn vm_menu_shell_launcher_uses_command_v_probe() {
+        let script = EmbeddedDotfiles
+            .read(Path::new(".local/bin/vm-menu"))
+            .expect("vm-menu script must be embedded under .local/bin/");
+        let s = String::from_utf8(script).expect("vm-menu script must be utf8");
+        let zsh_at = s.find("command -v zsh").expect(
+            "vm-menu must probe for zsh with `command -v` so containers that \
+             ship zsh drop into the same shell the host user runs \
+             interactively; without this probe the launcher silently \
+             downgrades to bash",
+        );
+        let bash_at = s.find("command -v bash").expect(
+            "vm-menu must probe for bash with `command -v` as the middle step \
+             of the zsh → bash → sh fallback chain; dropping this leaves \
+             zsh-less images falling straight through to /bin/sh",
+        );
+        assert!(
+            zsh_at < bash_at,
+            "vm-menu's zsh probe must come BEFORE its bash probe in source \
+             order (zsh → bash → sh). Reversing them would make every \
+             container shell pick bash even when zsh is installed, which \
+             defeats the point of the zsh preference."
+        );
+        assert!(
+            !s.contains("exec bash 2>/dev/null"),
+            "vm-menu must NOT use `exec bash 2>/dev/null` — bash writes its \
+             PS1 prompt to stderr, so this redirection silently swallows the \
+             prompt across the exec and the foot window appears to hang. \
+             Use the `command -v` probes in SHELL_LAUNCHER instead."
+        );
+    }
+
+    /// The sway config must bind exactly one `$mod+c` and that bind
+    /// must point at `$bin/vm-menu`. We assert exactness (not just
+    /// "some line mentions $mod+c") so a refactor that accidentally
+    /// re-adds a duplicate / overlapping bind on the same chord —
+    /// which sway resolves by last-wins, silently shadowing the
+    /// vm-menu — gets caught here.
+    ///
+    /// We also negative-assert that `$mod+v` (the daily-use nvim
+    /// bind) is NOT pointed at vm-menu: when picking the keybind we
+    /// considered `$mod+v` for "virt" but rejected it because v was
+    /// already a load-bearing nvim shortcut. Pinning the negative
+    /// makes future "let's just move it to v" PRs explicit about
+    /// what they're displacing.
+    #[test]
+    fn vm_menu_keybind_present() {
+        let bytes = EmbeddedDotfiles
+            .read(Path::new(".config/sway/config"))
+            .expect("sway config should be embedded");
+        let cfg = String::from_utf8(bytes).expect("sway config should be utf8");
+
+        let matches: Vec<&str> = cfg
+            .lines()
+            .map(str::trim_start)
+            .filter(|l| {
+                l.starts_with("bindsym")
+                    && l.contains("$mod+c ")
+                    // Filter out chord modifiers that would also start with
+                    // "$mod+c" textually (none today, but $mod+Ctrl+c could
+                    // be added later and shouldn't satisfy this check).
+                    && !l.contains("$mod+Ctrl+c")
+                    && !l.contains("$mod+Shift+c")
+                    && !l.contains("$mod+Alt+c")
+            })
+            .collect();
+        assert_eq!(
+            matches.len(),
+            1,
+            "sway config must have exactly one `$mod+c` bind (the vm-menu \
+             keybind); found {}: {:?}",
+            matches.len(),
+            matches
+        );
+        assert!(
+            matches[0].contains("$bin/vm-menu"),
+            "the `$mod+c` bind must invoke `$bin/vm-menu`; got: {:?}",
+            matches[0]
+        );
+
+        // Defensive: `$mod+v` must still belong to nvim, not vm-menu.
+        // We picked $mod+c specifically because v was taken; if a
+        // future PR rebinds v to vm-menu they need to make that
+        // displacement explicit (and update this test).
+        let nvim_bind = cfg.lines().map(str::trim_start).find(|l| {
+            l.starts_with("bindsym") && l.contains("$mod+v ") && l.contains("nvim")
+        });
+        assert!(
+            nvim_bind.is_some(),
+            "$mod+v must remain bound to nvim — vm-menu was deliberately given \
+             $mod+c because v was already the nvim shortcut. If you're moving \
+             vm-menu to v, update this test and the keybind comment in the \
+             sway config in the same change."
+        );
+    }
+
+    /// The server role must install the full virt stack — incus
+    /// (system containers) plus libvirt/qemu (full VMs) — and run
+    /// the post-commands that wire them up.
+    ///
+    /// Pinned together so a future packages refactor that splits
+    /// the stack across files / drops a step gets caught: the
+    /// packages alone don't make incus usable (no init = no
+    /// storage pool = `incus launch` fails), and the systemd
+    /// enable alone doesn't help if the user isn't in the libvirt
+    /// group (vm-menu's virsh calls would all 401). We assert all
+    /// the moving parts together so the test has the same shape
+    /// as the audio-stack and dictation-stack tests.
+    ///
+    /// The post-commands all carry a `check` field — without one,
+    /// reruns would re-shell out to sudo for every step, and
+    /// `incus admin init` would actively fail on rerun (it errors
+    /// out against an already-initialized daemon). The check
+    /// presence is asserted explicitly per step.
+    #[test]
+    fn server_role_provisions_virt_stack() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Server).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        // Packages must all show up as InstallPackage actions in
+        // the resolved server plan. Listing them individually
+        // produces a per-package failure message so an accidental
+        // single-line drop is obvious in the test output.
+        let installed: Vec<&str> = plan
+            .actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::InstallPackage(p) => Some(p.as_str()),
+                _ => None,
+            })
+            .collect();
+        for pkg in [
+            "incus",
+            "incus-client",
+            "qemu-system-x86",
+            // `qemu-system-modules-spice` is the SPICE display
+            // backend module. Incus *always* starts VMs with
+            // `-spice unix=on,…` to offer a graphical console
+            // socket (for `incus console --type=vga` and for
+            // virt-viewer attach), regardless of whether the
+            // user asked for one. Without this module qemu
+            // refuses to start with "There is no option group
+            // 'spice'" and every incus VM fails on the very
+            // first start. Debian splits this out of the base
+            // qemu-system-x86 to keep headless installs lean,
+            // but it's mandatory for our incus-on-the-host case.
+            "qemu-system-modules-spice",
+            "qemu-kvm",
+            // `qemu-utils` ships `qemu-img`, which incus shells
+            // out to in order to materialize a per-VM root disk
+            // from the cached image (qcow2 inspect / convert /
+            // overlay). Without it, `incus init --vm` errors
+            // with "Failed reading image info … Failed to find
+            // executable 'qemu-img'" — which is *especially*
+            // confusing because qemu-system-x86 IS installed.
+            // The two are separate packages on Debian and
+            // qemu-system-x86 does not pull qemu-utils as a dep.
+            "qemu-utils",
+            "libvirt-daemon-system",
+            "libvirt-clients",
+            "bridge-utils",
+            "virtinst",
+            // `ovmf` is the UEFI firmware blob (OVMF_CODE.fd /
+            // OVMF_VARS.fd under /usr/share/OVMF/). Without it
+            // incus refuses to register the virtual-machine
+            // driver at all — the daemon log shows "Unable to
+            // locate a UEFI firmware" and every `incus init --vm`
+            // fails with "QEMU failed to run feature checks"
+            // even though qemu/kvm are installed. libvirt's
+            // virt-install also silently downgrades UEFI guest
+            // templates to legacy SeaBIOS without it. Treated
+            // as virt-stack-critical, not optional.
+            "ovmf",
+        ] {
+            assert!(
+                installed.contains(&pkg),
+                "server role must install `{pkg}` for the virt stack — without \
+                 it the vm-menu (Mod+c) and CLI users lose coverage of one of \
+                 the three runtimes (containers / LXCs / VMs)"
+            );
+        }
+
+        // Group memberships: vm-menu shells out without sudo, so
+        // the user must be in incus + libvirt at minimum, and
+        // incus-admin / kvm for full functionality. We grep for
+        // each group's `usermod -aG <group>` pattern individually
+        // so a missing group produces a targeted error.
+        let post_cmds: Vec<&str> = plan
+            .actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::PostCommand(p) => Some(p.run()),
+                _ => None,
+            })
+            .collect();
+        for group in ["incus-admin", "incus", "libvirt", "kvm"] {
+            let needle = format!("usermod -aG {group}");
+            assert!(
+                post_cmds.iter().any(|cmd| cmd.contains(&needle)),
+                "server role must include a `{needle} $(whoami)` post-command \
+                 — without it the user can't talk to the corresponding daemon \
+                 from vm-menu (which runs as the user, not root)"
+            );
+        }
+
+        // libvirtd must be enabled — the vm-menu's virsh calls all
+        // talk to /var/run/libvirt/libvirt-sock and the socket
+        // doesn't appear until libvirtd has started at least once.
+        let libvirtd_enable = plan.actions.iter().find_map(|a| match a {
+            Action::PostCommand(p)
+                if p.run().contains("systemctl enable")
+                    && p.run().contains("libvirtd") =>
+            {
+                Some(p)
+            }
+            _ => None,
+        });
+        assert!(
+            libvirtd_enable.is_some(),
+            "server role must include a `systemctl enable --now libvirtd` \
+             post-command — without it the libvirt socket never appears and \
+             every vm-menu virsh call errors out at connect time"
+        );
+        assert!(
+            libvirtd_enable.unwrap().check().is_some(),
+            "libvirtd enable post-command must carry a `check` so reruns are \
+             cheap no-ops"
+        );
+
+        // virsh net-autostart on the default network: required so
+        // VMs come back up after a reboot without manual
+        // intervention.
+        let net_autostart = plan.actions.iter().find_map(|a| match a {
+            Action::PostCommand(p)
+                if p.run().contains("virsh net-autostart")
+                    && p.run().contains("default") =>
+            {
+                Some(p)
+            }
+            _ => None,
+        });
+        assert!(
+            net_autostart.is_some(),
+            "server role must mark the default libvirt network autostart — \
+             otherwise every VM defined on virbr0 fails to start after a host \
+             reboot with `network 'default' is not active`"
+        );
+        assert!(
+            net_autostart.unwrap().check().is_some(),
+            "virsh net-autostart post-command must carry a `check` so reruns \
+             skip when autostart is already configured"
+        );
+
+        // incus restart-after-ovmf: load-bearing for VM support
+        // on first-run boxes. The incus package's postinst starts
+        // incus.service immediately, but ovmf installs *later* in
+        // the same plan (alphabetical order in roles.toml puts it
+        // after `virtinst`), so the running daemon's UEFI feature
+        // check has already cached "no UEFI" by the time ovmf
+        // lands on disk. Without an explicit restart, the daemon
+        // stays in its degraded state until the next host reboot,
+        // and `incus init --vm` fails with "QEMU failed to run
+        // feature checks" on an apparently-correctly-provisioned
+        // host. The restart re-runs the feature check and the
+        // virtual-machine driver becomes operational.
+        let incus_restart = plan.actions.iter().find_map(|a| match a {
+            Action::PostCommand(p)
+                if p.run().contains("systemctl restart")
+                    && p.run().contains("incus") =>
+            {
+                Some(p)
+            }
+            _ => None,
+        });
+        assert!(
+            incus_restart.is_some(),
+            "server role must include a `systemctl restart incus.service` \
+             post-command — without it the daemon caches its pre-OVMF \
+             feature-check result and `incus init --vm` keeps failing with \
+             'QEMU failed to run feature checks' until the next host reboot, \
+             even though ovmf is installed"
+        );
+        let incus_restart = incus_restart.unwrap();
+        assert!(
+            incus_restart.check().is_some(),
+            "incus restart post-command must carry a `check` so reruns are \
+             cheap no-ops once the daemon has already been restarted after \
+             ovmf landed — every forge run otherwise re-bounces incus, \
+             which (a) momentarily kills any running containers' control-\
+             plane access and (b) wastes seconds per run"
+        );
+        // The check must be a marker-file probe under
+        // /var/lib/incus/, written only after a successful
+        // restart. We deliberately moved away from the previous
+        // /proc/<pid> mtime comparison: /proc entry mtimes are
+        // not a reliable "process start time" on Linux (the
+        // proc filesystem refreshes mtimes on access), so the
+        // mtime check evaluated false on every rerun and the
+        // restart fired every time — and on a workstation with
+        // a running incus VM, that drained the VM via ACPI on
+        // every forge run (~20 min hang in the worst observed
+        // case). A marker file is unambiguous, requires no
+        // group membership the user may not yet have, and makes
+        // the post-cmd a true no-op once incus has UEFI
+        // capability.
+        let restart_check = incus_restart.check().unwrap();
+        assert!(
+            restart_check.contains("/var/lib/incus/")
+                && restart_check.contains(".forge-uefi-restart-done"),
+            "incus restart `check` must probe for the marker file \
+             /var/lib/incus/.forge-uefi-restart-done. Do NOT regress to \
+             a /proc/<pid> mtime comparison — that approach drains live \
+             VMs on every forge run because /proc mtimes are not stable \
+             process-start signals on Linux. Got: {restart_check:?}"
+        );
+        // The run command must write the marker only after a
+        // successful restart — a `&&` chain (or equivalent
+        // sh-level conjunction) is the only correct shape.
+        // Independently running the touch would mark the host
+        // as "restarted" even when the restart failed, which
+        // would silently leave incus in its degraded pre-OVMF
+        // state on every subsequent run.
+        let restart_run = incus_restart.run();
+        assert!(
+            restart_run.contains("systemctl restart incus")
+                && restart_run.contains(".forge-uefi-restart-done")
+                && restart_run.contains("&&"),
+            "incus restart `run` must chain `systemctl restart incus.service` \
+             with the marker-file touch via `&&` so the marker is only \
+             written when the restart succeeded — otherwise a failing \
+             restart would leave the host falsely marked as 'done' and \
+             every subsequent forge run would skip the restart while \
+             incus stayed in its broken pre-OVMF state. Got: {restart_run:?}"
+        );
+
+        // incus admin init: required for `incus launch` to work at
+        // all (no storage pool exists otherwise). The check is
+        // load-bearing — `incus admin init` errors out on rerun
+        // against an already-initialized daemon, so without the
+        // guard every forge rerun fails.
+        let incus_init = plan.actions.iter().find_map(|a| match a {
+            Action::PostCommand(p)
+                if p.run().contains("incus admin init") =>
+            {
+                Some(p)
+            }
+            _ => None,
+        });
+        assert!(
+            incus_init.is_some(),
+            "server role must run `incus admin init` so a fresh box ends up \
+             with a storage pool + default profile + incusbr0 bridge wired up"
+        );
+        let incus_init = incus_init.unwrap();
+        assert!(
+            incus_init.check().is_some(),
+            "incus admin init post-command MUST carry a `check` — running it \
+             twice errors out with `existing instances or images. 'incus admin \
+             init' requires an empty database`, so without the guard every \
+             forge rerun fails at this step"
+        );
+        assert!(
+            incus_init.run().contains("--storage-backend=dir"),
+            "incus admin init must pin `--storage-backend=dir` rather than \
+             letting --auto pick: trixie's tooling for ZFS/BTRFS can change \
+             --auto's mind across releases, and we want every host using the \
+             same storage shape so the docs stay predictable"
+        );
+    }
+
+    /// The server role must defensively register libvirt's `default`
+    /// network with libvirtd via `virsh net-define` BEFORE the
+    /// subsequent `net-autostart` / `net-start` post-commands run.
+    ///
+    /// libvirt-daemon-system's postinst usually auto-imports the seed
+    /// XML at `/etc/libvirt/qemu/networks/default.xml` into libvirtd's
+    /// runtime state on first start, but not always — we caught a
+    /// real host (the developer's daily driver) where the XML was on
+    /// disk but `virsh net-list --all` showed no networks at all,
+    /// which means `net-autostart` and `net-start` then fail with
+    /// `error: failed to get network 'default'` and the entire
+    /// vm-menu libvirt path is dead until someone runs `virsh
+    /// net-define` by hand.
+    ///
+    /// This test pins three invariants together:
+    ///
+    ///   1. A post-command exists that calls `virsh net-define` on
+    ///      the seed XML path. Without it, the post-cmd order below
+    ///      assumes a registration step that doesn't exist.
+    ///   2. It carries an idempotency `check` so reruns are no-ops
+    ///      (otherwise every `forge setup` would shell out to sudo
+    ///      to define an already-defined network for no reason).
+    ///   3. It precedes `virsh net-autostart` and `virsh net-start`
+    ///      in the post-cmd order. The order matters: those two
+    ///      both need the network to exist in libvirtd's state, so
+    ///      defining it second would still leave the first run
+    ///      broken. We assert ordering by index in the action list.
+    #[test]
+    fn server_role_defines_libvirt_default_network() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Server).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        // Find each of the three virsh net-* post-commands by index
+        // in the plan's actions. We need indices (not just refs) so
+        // we can compare ordering.
+        let mut define_idx = None;
+        let mut autostart_idx = None;
+        let mut start_idx = None;
+        for (i, a) in plan.actions.iter().enumerate() {
+            if let Action::PostCommand(p) = a {
+                let run = p.run();
+                if run.contains("virsh net-define") {
+                    define_idx = Some((i, p));
+                } else if run.contains("virsh net-autostart") {
+                    autostart_idx = Some((i, p));
+                } else if run.contains("virsh net-start") {
+                    start_idx = Some((i, p));
+                }
+            }
+        }
+
+        let (define_i, define_cmd) = define_idx.expect(
+            "server role must include a `virsh net-define …default.xml` \
+             post-command so the libvirt `default` network is registered \
+             with libvirtd before net-autostart / net-start run on a fresh \
+             box where the package postinst didn't auto-import it",
+        );
+        let (autostart_i, _) = autostart_idx.expect(
+            "server role must still include `virsh net-autostart default` — \
+             the net-define test is layered on top, not a replacement",
+        );
+        let (start_i, _) = start_idx.expect(
+            "server role must still include `virsh net-start default` — the \
+             net-define test is layered on top, not a replacement",
+        );
+
+        // Idempotency: the define post-cmd MUST carry a check (else
+        // every rerun re-shells to sudo for nothing).
+        assert!(
+            define_cmd.check().is_some(),
+            "virsh net-define post-command must carry a `check` so reruns \
+             skip the redundant sudo invocation once the network is \
+             registered in libvirtd's state"
+        );
+
+        // Order: define BEFORE both autostart and start. Strict `<`
+        // because they must be distinct steps; `<=` would let a
+        // future "merge into one big command" refactor sneak past.
+        assert!(
+            define_i < autostart_i,
+            "virsh net-define must precede virsh net-autostart in the \
+             post-cmd order (define={define_i}, autostart={autostart_i}) — \
+             autostart on an undefined network fails with `failed to get \
+             network 'default'`"
+        );
+        assert!(
+            define_i < start_i,
+            "virsh net-define must precede virsh net-start in the post-cmd \
+             order (define={define_i}, start={start_i}) — start on an \
+             undefined network fails with `failed to get network 'default'`"
+        );
+    }
+
+    /// The desktop role must install the full virt-console GUI
+    /// stack — `virt-manager` (heavyweight management UI),
+    /// `gir1.2-spiceclientgtk-3.0` (SPICE GTK widget bindings),
+    /// and `virt-viewer` (the lightweight `remote-viewer` CLI that
+    /// `incus console --type=vga` shells out to) — and none of
+    /// them must appear in the server role's package list.
+    ///
+    /// Three packages, three failure modes if any one is dropped:
+    ///
+    /// * Without `virt-manager`: vm-menu's "open virt-manager"
+    ///   fallback (for VMs lacking a serial pty) is dead, and
+    ///   there's no GUI for inspecting libvirt's guest list.
+    /// * Without `gir1.2-spiceclientgtk-3.0`: virt-manager's
+    ///   window opens but the SPICE viewer pane errors with
+    ///   "Namespace SpiceClientGtk not available" because the GIR
+    ///   typelib is missing — Recommends of virt-manager, dropped
+    ///   by our `--no-install-recommends` apt flag.
+    /// * Without `virt-viewer`: `incus console <name> --type=vga`
+    ///   silently fails with "remote-viewer not found" (or just
+    ///   opens nothing in some incus versions). Same root cause
+    ///   shape as the GIR case — incus invokes `remote-viewer`
+    ///   on PATH and gives up if it's missing.
+    ///
+    /// All three are asserted together so a "let me trim the
+    /// virt deps" pass that drops any one is loud at `cargo test`,
+    /// not silent until the user hits the missing-tool path.
+    /// The negative half (server must NOT install these) catches
+    /// the inverse refactor — "move them to the base for
+    /// symmetry" — which would add ~50 MiB of GTK / SPICE / GUI
+    /// deps to every server provision.
+    #[test]
+    fn desktop_role_provisions_virt_console_tools() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let desktop = roles.resolved(Role::Desktop).unwrap();
+        let server = roles.resolved(Role::Server).unwrap();
+        let desktop_plan = build_plan(&desktop, &EmbeddedDotfiles).unwrap();
+
+        let desktop_pkgs: Vec<&str> = desktop_plan
+            .actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::InstallPackage(p) => Some(p.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        // Each package gets a per-package assertion so the failure
+        // message names the specific missing piece, not a vague
+        // "virt console stack incomplete".
+        assert!(
+            desktop_pkgs.contains(&"virt-manager"),
+            "desktop role must install `virt-manager` — it's the SPICE/VNC \
+             console fallback for VMs without a serial pty (where vm-menu's \
+             `shell` action would otherwise hang at `Escape character is ^]`)"
+        );
+        assert!(
+            desktop_pkgs.contains(&"gir1.2-spiceclientgtk-3.0"),
+            "desktop role must explicitly install `gir1.2-spiceclientgtk-3.0` \
+             — it's a Recommends of virt-manager, not a Depends, and forge's \
+             apt invocations pass --no-install-recommends, so the GIR \
+             namespace is missing at runtime and virt-manager's SPICE viewer \
+             errors with `Namespace SpiceClientGtk not available` on every \
+             console open"
+        );
+        assert!(
+            desktop_pkgs.contains(&"virt-viewer"),
+            "desktop role must install `virt-viewer` — it ships the \
+             `remote-viewer` CLI that `incus console <name> --type=vga` \
+             shells out to. Without it, opening an incus VM's SPICE display \
+             fails with `remote-viewer not found` (or, in some incus versions, \
+             silently opens nothing)"
+        );
+
+        // Server role's authored package list is checked directly
+        // (not via build_plan) because we want to assert these
+        // packages aren't even *authored* into the base, regardless
+        // of how the planner deduplicates. This pins the layering
+        // intent: the GUI tier is desktop-only by construction,
+        // not by accident of dedupe.
+        for pkg in ["virt-manager", "gir1.2-spiceclientgtk-3.0", "virt-viewer"] {
+            assert!(
+                !server.packages.iter().any(|p| p == pkg),
+                "server role must NOT install `{pkg}` — it's part of the GUI \
+                 console tier and pulls in GTK / SPICE deps that belong on \
+                 workstation boxes only. The shared CLI virt stack (libvirtd, \
+                 virsh, qemu) lives in `server` already; the GUI tier layers \
+                 on top in `desktop`."
+            );
+        }
+    }
+
     /// `dev-container.toml` is embedded into the binary by `commands::dev`
     /// the same way `roles.toml` is — via `include_str!`. A bad edit
     /// (typo in a key, missing required field, dangling containerfile
@@ -1671,6 +3265,822 @@ mod tests {
             "the home volume's name must contain the `{{name}}` placeholder so each container \
              gets its own volume; got {:?}",
             home_volume.name
+        );
+    }
+
+    /// `config/dev-container.toml` must bind-mount the host's
+    /// `/etc/localtime` into every dev container, read-only, and
+    /// must NOT bind-mount `/etc/timezone`.
+    ///
+    /// Why `/etc/localtime`: glibc's time-formatting code reads
+    /// it directly to determine the active zone (the `TZ` env
+    /// var is only a fallback). Without the bind mount, the
+    /// trixie-slim base image's UTC default leaks into every
+    /// container — `date`, `git log --date=local`, anything that
+    /// timestamps to a log, all show UTC even though the host is
+    /// in a different zone.
+    ///
+    /// Why NOT `/etc/timezone`: that file is a Debian-specific
+    /// human-readable zone name that doesn't exist on modern
+    /// systemd-based hosts (this trixie laptop included).
+    /// Bind-mounting a missing host path makes podman bail at
+    /// container create time with `statfs /etc/timezone: no such
+    /// file or directory` — the exact failure mode an earlier
+    /// version of this test pinned in the wrong direction.
+    ///
+    /// `readonly = true` on the localtime bind is a hard
+    /// requirement: under rootless podman + `--userns keep-id`
+    /// the container UID maps onto the invoking host user, which
+    /// on this single-user laptop is the user who actually owns
+    /// `/etc/localtime`. A read-write mount would let a
+    /// misbehaving container rewrite the host's zone.
+    #[test]
+    fn dev_container_provisions_tz_bind_mounts() {
+        use forge_common::dev_config::DevContainer;
+
+        const DEV_CONTAINER_TOML: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../config/dev-container.toml"
+        ));
+
+        let cfg = DevContainer::from_toml(DEV_CONTAINER_TOML)
+            .expect("dev-container.toml should parse");
+
+        let localtime = cfg
+            .default_volumes
+            .bind
+            .iter()
+            .find(|b| b.host == "/etc/localtime" && b.container == "/etc/localtime")
+            .expect(
+                "dev-container.toml must bind-mount `/etc/localtime` so the container \
+                 inherits the host timezone instead of falling back to the trixie-slim \
+                 base image's UTC default",
+            );
+        assert!(
+            localtime.readonly,
+            "bind mount of `/etc/localtime` must be `readonly = true` — under rootless \
+             podman + `--userns keep-id` a writable mount would let a container mutate the \
+             host's zone configuration"
+        );
+
+        // Negative invariant: `/etc/timezone` must NOT be bind-
+        // mounted. That file is missing on systemd-based hosts
+        // (no `/etc/timezone` on this trixie laptop) and trying
+        // to bind it makes podman fail at container create with
+        // `statfs /etc/timezone: no such file or directory`.
+        assert!(
+            !cfg.default_volumes
+                .bind
+                .iter()
+                .any(|b| b.host == "/etc/timezone"),
+            "dev-container.toml must NOT bind-mount `/etc/timezone` — the file doesn't \
+             exist on modern systemd-based hosts and binding a missing host path makes \
+             `podman run` bail at container create time"
+        );
+    }
+
+    /// The base Containerfile must install the `batcat`→`bat`
+    /// symlink at `/usr/local/bin/bat`.
+    ///
+    /// Debian's `bat` apt package installs the binary as
+    /// `/usr/bin/batcat` (not `bat`) due to the long-standing
+    /// filename clash with the `bacula-console-bat` package
+    /// (Debian bug #930299, won't-fix). The user's `cat = bat` zsh
+    /// alias relies on `bat` being on PATH; without the symlink,
+    /// every `cat <file>` in the container fails with "command
+    /// not found: bat" despite the binary being installed. The
+    /// upstream `sharkdp/bat` README documents this exact symlink
+    /// as the recommended Debian workaround.
+    #[test]
+    fn base_containerfile_installs_bat_symlink() {
+        assert!(
+            BASE_CONTAINERFILE.contains("ln -s /usr/bin/batcat /usr/local/bin/bat"),
+            "Containerfile must symlink `/usr/bin/batcat` to `/usr/local/bin/bat` so the user's \
+             `cat = bat` zsh alias works inside the container (Debian's bat package installs \
+             as `batcat` due to a filename clash)"
+        );
+    }
+
+    /// The base Containerfile must install lazygit from upstream.
+    ///
+    /// `lazygit` is bound to the `lg` zsh alias and is part of the
+    /// dotfile experience. Debian trixie main has no `lazygit`
+    /// package (it only ships in unstable/sid which we avoid for
+    /// reproducibility), so we pull the upstream static tarball at
+    /// image-build time — same pattern the Containerfile uses for
+    /// nvim/yazi/uv/fnm.
+    #[test]
+    fn base_containerfile_installs_lazygit() {
+        assert!(
+            BASE_CONTAINERFILE.contains("jesseduffield/lazygit"),
+            "Containerfile must install lazygit from upstream (no apt package on trixie) so the \
+             `lg` zsh alias works"
+        );
+        assert!(
+            BASE_CONTAINERFILE.contains("/usr/local/bin/lazygit"),
+            "lazygit binary must land at /usr/local/bin/lazygit so it's on PATH and not \
+             shadowed by the home volume"
+        );
+    }
+
+    /// The base Containerfile must install git-delta + tzdata via apt.
+    ///
+    /// `git-delta` (binary `delta`) is in trixie main; the user can
+    /// opt in via `[core] pager = delta` without forge configuring
+    /// global git for them. `tzdata` ships the zoneinfo database that
+    /// the `/etc/localtime` bind mount layers on top of.
+    #[test]
+    fn base_containerfile_installs_git_delta_and_tzdata() {
+        assert!(
+            BASE_CONTAINERFILE.contains("git-delta"),
+            "Containerfile apt layer must install `git-delta` (the `delta` git pager binary)"
+        );
+        assert!(
+            BASE_CONTAINERFILE.contains("tzdata"),
+            "Containerfile apt layer must install `tzdata` so the host /etc/localtime bind \
+             mount has a zoneinfo layout to layer on top of"
+        );
+    }
+
+    /// The base Containerfile must install `file` so yazi's mime
+    /// detection works inside the container.
+    ///
+    /// Yazi shells out to `file --mime-type <path>` whenever a
+    /// directory entry's extension is ambiguous or absent (the
+    /// preview pane, the `open` action, and the per-row mime
+    /// rendering all consult it). On a stock `debian:trixie-slim`
+    /// base image the `file` binary is NOT present — it gets
+    /// transitively pulled in by heavier packages like `git`'s
+    /// recommends list, but `--no-install-recommends` (which the
+    /// Containerfile uses to keep the image small) suppresses that
+    /// pull. The visible failure mode is yazi greeting the user
+    /// with `Cannot find 'file' to detect the file's mime type` on
+    /// every navigation event. Adding `file` to the apt list
+    /// resolves it; the package is ~1.4 MiB installed, so the
+    /// image-size cost is negligible.
+    #[test]
+    fn base_containerfile_installs_file_for_yazi_mime_detection() {
+        // Match the package as a whitespace-delimited token so this
+        // doesn't false-positive on `git-delta`, `dotfile`, etc.
+        let in_apt_list = BASE_CONTAINERFILE
+            .split_whitespace()
+            .any(|tok| tok == "file");
+        assert!(
+            in_apt_list,
+            "Containerfile apt layer must install `file` so yazi's `file --mime-type` shell-out \
+             works (without it, yazi prints `Cannot find 'file' to detect the file's mime type` \
+             on every directory listing inside the container)"
+        );
+    }
+
+    /// The base Containerfile must declare `ENV COLORTERM=truecolor`
+    /// so TUI apps inside the container detect 24-bit color support.
+    ///
+    /// Most modern TUI apps (nvim, opencode, lazygit, btop, bat)
+    /// check `$COLORTERM` before the terminfo `Tc` capability.
+    /// `podman exec -t` propagates `TERM` but NOT arbitrary env;
+    /// without this `ENV`, the container shell ends up with
+    /// `COLORTERM` unset, apps quantise their palette to the
+    /// 256-color cube, and catppuccin's gradients render visibly
+    /// off — the "TUI graphics are wrong" symptom we saw in
+    /// practice. Pair with the `terminal-features ',foot*:RGB'`
+    /// line in `dotfiles/.tmux.conf` so the truecolor escapes
+    /// actually make it through tmux to foot.
+    #[test]
+    fn base_containerfile_sets_colorterm_truecolor() {
+        assert!(
+            BASE_CONTAINERFILE.contains("ENV COLORTERM=truecolor"),
+            "Containerfile must declare `ENV COLORTERM=truecolor` so TUI apps inside the \
+             container detect truecolor support and don't fall back to 256-color quantisation"
+        );
+    }
+
+    /// The base Containerfile must install a `forge` stub at
+    /// `/usr/local/bin/forge` that prints a host-only hint and exits 127.
+    ///
+    /// Without this, typing `forge` in the container hits zsh's
+    /// command_not_found handler with a generic "command not
+    /// found" + apt-index suggestion miss, which is misleading
+    /// (suggesting forge is something installable). The stub
+    /// intercepts and emits a one-line hint pointing at the host.
+    /// Same pattern Gitpod uses for its `gp` command.
+    #[test]
+    fn base_containerfile_installs_forge_stub() {
+        assert!(
+            BASE_CONTAINERFILE.contains("/usr/local/bin/forge"),
+            "Containerfile must drop a stub at `/usr/local/bin/forge` so typing `forge` inside \
+             the container produces a useful host-only hint instead of a generic \
+             command-not-found"
+        );
+        assert!(
+            BASE_CONTAINERFILE.contains("host-only"),
+            "the forge stub's body must mention `host-only` so the user understands the \
+             command runs outside the container; got Containerfile lacking that string"
+        );
+    }
+
+    /// The base Containerfile must install a `wl-copy` OSC52 shim at
+    /// `/usr/local/bin/wl-copy` so the `clip` zsh alias and any
+    /// tmux copy-pipe binding that shells out to `wl-copy` works
+    /// inside the container.
+    ///
+    /// The host's `wl-copy` talks to the Wayland compositor, which
+    /// doesn't exist inside a podman container. The shim emits the
+    /// OSC52 escape (`ESC ] 52 ; c ; <base64> ESC \\`); foot
+    /// supports OSC52 since v1.4 (default-on), and the host's
+    /// tmux is configured (in dotfiles/.tmux.conf) to pass the
+    /// escape through with `set-clipboard on` and
+    /// `terminal-features ',foot*:clipboard'`.
+    #[test]
+    fn base_containerfile_installs_wl_copy_shim() {
+        assert!(
+            BASE_CONTAINERFILE.contains("/usr/local/bin/wl-copy"),
+            "Containerfile must drop an OSC52 shim at `/usr/local/bin/wl-copy` so the `clip` \
+             alias and tmux copy-pipe work inside the container (no Wayland in container)"
+        );
+        // The OSC52 selection identifier `52;c;` is the load-bearing
+        // marker — it's what the outer terminal recognises as
+        // "place this on clipboard". A future edit that drops it
+        // would silently break clipboard while still creating a
+        // file at the right path.
+        assert!(
+            BASE_CONTAINERFILE.contains("52;c;"),
+            "wl-copy shim body must contain the OSC52 marker `52;c;` (the clipboard selection \
+             identifier the outer terminal interprets); the file at /usr/local/bin/wl-copy \
+             must emit this escape sequence to be functional"
+        );
+    }
+
+    /// The base Containerfile must pre-create `/run/user/1000`
+    /// (mode 0700, owned by the `dev` user) so tools that read
+    /// `$XDG_RUNTIME_DIR` work inside the container.
+    ///
+    /// On a host, systemd-logind creates this path as a tmpfs at
+    /// user login. Inside a podman container there's no logind,
+    /// so without this RUN step `/run/user/1000` doesn't exist
+    /// and anything that writes per-session runtime state there
+    /// fails with `No such file or directory`. The visible
+    /// surface was `fnm` failing to create its multishell
+    /// symlink the first time the user ran `node` in a fresh
+    /// dev pod, but anything XDG-RUNTIME-DIR-consuming
+    /// (gpg-agent, dbus user session, certain editors' caches)
+    /// hits the same wall.
+    ///
+    /// Mode 0700 matches what logind creates on a host — many
+    /// tools refuse to use the directory if it's group/world-
+    /// readable since it can hold session secrets. Ownership is
+    /// `dev:dev` because the path is per-user state and the
+    /// container's UID 1000 maps onto the host UID via
+    /// `--userns keep-id`.
+    #[test]
+    fn base_containerfile_creates_xdg_runtime_dir() {
+        // The directory must be created with 0700 perms and owned
+        // by the dev user. We assert on the load-bearing string
+        // fragments rather than the exact whitespace, since that
+        // would couple to formatting.
+        for marker in ["mkdir -p /run/user/1000", "chown dev:dev /run/user/1000", "chmod 700 /run/user/1000"] {
+            assert!(
+                BASE_CONTAINERFILE.contains(marker),
+                "Containerfile must contain `{marker}` so $XDG_RUNTIME_DIR exists for the \
+                 dev user inside the container — without this, fnm / gpg-agent / dbus user \
+                 session all fail on first use with `No such file or directory` errors"
+            );
+        }
+    }
+
+    /// Negative invariant: the base Containerfile must NOT copy
+    /// `dotfiles/.config/theme/` into the container.
+    ///
+    /// The theme tree is templates + base16 schemes consumed by
+    /// `forge theme apply` on the host. Inside the container forge
+    /// is intentionally unavailable (see the host-only stub
+    /// asserted above), so the templates can never be rendered —
+    /// they'd just sit as ~100 KiB of inert .j2 + .yaml in
+    /// `/home/dev/.config/theme/`. The container consumes the
+    /// *rendered* outputs (`nvim/lua/plugins/colorscheme.lua`,
+    /// `yazi/theme.toml`, `tmux/colors.conf`) which DO get copied
+    /// via the explicit dotfile COPYs. Re-introducing this COPY
+    /// brings back the dead weight.
+    #[test]
+    fn base_containerfile_does_not_copy_dead_theme_dir() {
+        // Match an actual COPY directive — not any mention of the path
+        // string (the Containerfile contains an explanatory comment
+        // referencing it). Walk every non-comment line and look for
+        // a COPY whose source is the theme tree.
+        for (lineno, line) in BASE_CONTAINERFILE.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with('#') {
+                continue;
+            }
+            assert!(
+                !(trimmed.starts_with("COPY") && trimmed.contains("dotfiles/.config/theme")),
+                "Containerfile line {} contains `COPY ... dotfiles/.config/theme ...` — that \
+                 tree is templates + schemes that only `forge theme apply` (host-only) can \
+                 render; inside the container they're inert dead weight. The rendered \
+                 outputs (nvim/lua/plugins/colorscheme.lua, yazi/theme.toml, etc.) are \
+                 copied via the explicit per-target COPYs.\n  line: {}",
+                lineno + 1,
+                line,
+            );
+        }
+    }
+
+    /// The server role must install the `bat` symlink as a
+    /// post-cmd: `ln -sf /usr/bin/batcat /usr/local/bin/bat`.
+    ///
+    /// Same Debian-rename gotcha as `base_containerfile_installs_bat_symlink`,
+    /// but on the host. The user previously had a manual symlink
+    /// at /usr/local/bin/bat — undocumented drift that would
+    /// vanish on a fresh re-image. This post-cmd makes the
+    /// symlink reproducible and survives `forge teardown` +
+    /// re-setup.
+    #[test]
+    fn server_role_installs_bat_symlink() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Server).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        let symlink = plan
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                Action::PostCommand(p)
+                    if p.run().contains("ln -sf /usr/bin/batcat /usr/local/bin/bat") =>
+                {
+                    Some(p)
+                }
+                _ => None,
+            })
+            .expect(
+                "server role must install a post-cmd creating /usr/local/bin/bat as a symlink \
+                 to /usr/bin/batcat — Debian's bat package installs the binary under the \
+                 `batcat` name only",
+            );
+
+        // The check guards against forge re-running the symlink on
+        // every invocation. `test -L` is intentionally stricter
+        // than `test -e` — if a regular file ever ends up at this
+        // path (e.g. someone copied batcat instead of symlinked),
+        // forge corrects it on the next run.
+        assert_eq!(
+            symlink.check(),
+            Some("test -L /usr/local/bin/bat"),
+            "server role bat symlink post-cmd must check `test -L /usr/local/bin/bat` (link, \
+             not just any file) so a copied binary or stub at that path triggers a re-symlink"
+        );
+    }
+
+    /// The server role's `chsh` post-command must run via `sudo`,
+    /// not bare.
+    ///
+    /// `chsh` is setuid-root on Debian and routes through PAM
+    /// (`/etc/pam.d/chsh`) which authenticates the invoking user
+    /// against `common-auth` even when changing their own shell —
+    /// i.e. it interactively prompts for the user's password.
+    /// forge's executor invokes post-commands non-interactively, so
+    /// a bare `chsh -s /bin/zsh ...` fails with `chsh: PAM:
+    /// Authentication failure` and the whole `forge setup server`
+    /// run aborts mid-plan.
+    ///
+    /// Wrapping with `sudo` short-circuits the chsh PAM auth chain
+    /// via `pam_rootok.so` (already-root → succeed without prompt),
+    /// and the documented NOPASSWD sudoers entry on the user's host
+    /// means sudo itself doesn't prompt either. Net effect: the
+    /// post-command works the same way on a tty-attached host run,
+    /// inside a fresh LXC test container, or on any minimally
+    /// provisioned Debian box where the target user happens to have
+    /// no password set yet.
+    ///
+    /// The original failure was caught by running the server role
+    /// inside a clean Debian trixie LXC where `august` was created
+    /// via plain `useradd` (no password). The bare `chsh` line in
+    /// the post-cmd hit PAM's `common-auth`, returned exit status
+    /// 1, and the executor surfaced it as
+    /// `Error: post-command \`chsh -s /bin/zsh $(whoami)\` exited
+    /// with exit status: 1`. This test pins the `sudo` prefix so a
+    /// future "clean up the role file" pass can't silently drop it
+    /// and reintroduce the regression.
+    #[test]
+    fn server_role_chsh_uses_sudo() {
+        use forge_common::plan::Action;
+
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Server).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        let chsh = plan
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                Action::PostCommand(p) if p.run().contains("chsh ") => Some(p),
+                _ => None,
+            })
+            .expect(
+                "server role must include a post-command that calls `chsh` to default the \
+                 user's login shell to zsh",
+            );
+
+        assert!(
+            chsh.run().starts_with("sudo "),
+            "the chsh post-command must be invoked via `sudo` so PAM's `chsh` stack \
+             short-circuits via pam_rootok and forge's non-interactive run doesn't hang \
+             on a password prompt; got `{}`",
+            chsh.run()
+        );
+
+        // The check should still gate idempotency — once the user's
+        // shell is zsh, reruns must be no-ops. We don't pin the exact
+        // form of the check string (getent vs grep /etc/passwd vs
+        // anything else that detects /bin/zsh) so a reasonable
+        // future tweak doesn't break this test, but the field must
+        // be present.
+        assert!(
+            chsh.check().is_some(),
+            "the chsh post-command must carry a `check` so reruns of `forge setup server` \
+             skip a redundant chsh once the user's shell is already zsh"
+        );
+    }
+
+    /// `dotfiles/.tmux.conf` must declare RGB and clipboard
+    /// capabilities for the host's foot terminal so 24-bit color
+    /// and OSC52 clipboard escapes propagate from inner pty
+    /// programs (host shells, dev container shells) up through
+    /// tmux to foot.
+    ///
+    /// The previous config had `terminal-overrides ",xterm-256color:RGB"`
+    /// — a regex match against `xterm-256color` that does NOT
+    /// match `foot` or `foot-extra`, so tmux stripped truecolor
+    /// escapes when running under foot. Symptom: TUI apps inside
+    /// the dev container quantised their palette to 256-color
+    /// even though every layer in the chain (foot, tmux,
+    /// container shell) was technically truecolor-capable.
+    ///
+    /// This test pins the modern (tmux ≥3.2) `terminal-features`
+    /// declarations for both RGB and clipboard, plus the
+    /// `set-clipboard on` switch that actually enables OSC52
+    /// passthrough inside tmux.
+    #[test]
+    fn tmux_conf_advertises_foot_truecolor_and_clipboard() {
+        const TMUX_CONF: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../dotfiles/.tmux.conf"
+        ));
+
+        for marker in [
+            // Truecolor passthrough for foot (covers `foot` AND
+            // `foot-extra` via the glob).
+            "terminal-features \",foot*:RGB\"",
+            // Clipboard passthrough for foot.
+            "terminal-features \",foot*:clipboard\"",
+            // The actual switch that enables OSC52 forwarding.
+            "set -g set-clipboard on",
+        ] {
+            assert!(
+                TMUX_CONF.contains(marker),
+                "dotfiles/.tmux.conf must contain `{marker}` — without it, truecolor and/or \
+                 OSC52 clipboard escapes get stripped at the tmux boundary when running under \
+                 foot, breaking dev-container TUI rendering and the `wl-copy` shim"
+            );
+        }
+
+        // Negative invariant: the legacy `xterm-256color`-only
+        // override must not be the SOLE truecolor declaration. We
+        // still allow it to be present (covers ssh-from-an-xterm
+        // sessions), but if it's the only declaration the foot
+        // path is broken.
+        let has_legacy_only = TMUX_CONF.contains(",xterm-256color:RGB")
+            && !TMUX_CONF.contains(",foot*:RGB");
+        assert!(
+            !has_legacy_only,
+            "dotfiles/.tmux.conf has `xterm-256color:RGB` but is missing `foot*:RGB` — under \
+             foot, tmux strips truecolor escapes and dev-container TUIs quantise to 256-color"
+        );
+    }
+
+    /// `themes/schemes/catppuccin-mocha.yaml` must use catppuccin's
+    /// *style-guide* recommended colors for base03 (comments) and
+    /// base04 (subtle text / line numbers), not the upstream
+    /// catppuccin/base16 export's choice of surface1/surface2.
+    ///
+    /// Background: catppuccin's surface1 (#45475a) and surface2
+    /// (#585b70) are part of the *structural background* palette
+    /// tier, intentionally low-contrast against base00 (#1e1e2e).
+    /// catppuccin's own style guide (catppuccin/catppuccin
+    /// docs/style-guide.md) explicitly assigns:
+    ///
+    ///   * Subtle text / Line numbers  → Overlay 1  (#7f849c)
+    ///   * Comments                    → Overlay 2  (#9399b2)
+    ///
+    /// The upstream base16 export uses surface1/surface2 anyway,
+    /// which causes zsh-autosuggest (ANSI bright0 = base03), nvim
+    /// comments, and TUI line numbers to render at ~1.5:1
+    /// contrast — well below WCAG's 3:1 minimum, visibly
+    /// unreadable. This test pins the divergence so a future
+    /// "sync from upstream" doesn't silently regress the fix.
+    /// `~/.config/containers/containers.conf` must ship as a
+    /// forge-owned dotfile but must NOT pin `dns_servers`.
+    ///
+    /// Why we ship it at all: the path is reserved for future
+    /// per-user podman overrides, and shipping it (even with no
+    /// active overrides) keeps it forge-managed so an ad-hoc
+    /// edit can't squat the path. The body documents what was
+    /// previously tried and why it was the wrong fix.
+    ///
+    /// Why we DON'T set `dns_servers` here: a previous version of
+    /// this file pinned public DNS (1.1.1.1 / 8.8.8.8) for
+    /// `podman run`, but networks that block outbound DNS to
+    /// anything except the gateway (the user's actual LAN, plus
+    /// many hotels / coffee shops / corporate networks / captive
+    /// portals) drop those queries — `forge dev up` would then
+    /// fail to resolve anything. The build-side DNS issue this
+    /// originally tried to solve is fixed structurally in
+    /// `crates/forge/src/commands/dev.rs` instead, by passing
+    /// `--dns=` flags read from the host's resolv.conf to
+    /// `podman build` directly. For `podman run`, pasta's default
+    /// behaviour (auto-discover from host resolv.conf) is correct
+    /// on every network the host itself works on.
+    ///
+    /// This test pins both sides: the file SHIPS (path is
+    /// forge-owned), and it does NOT set `dns_servers` (regression
+    /// guard against re-introducing the public-DNS-on-filtered-
+    /// LAN failure mode).
+    #[test]
+    fn dotfiles_ship_containers_conf_with_no_dns_override() {
+        let entry = DOTFILES
+            .get_file(".config/containers/containers.conf")
+            .expect(
+                "dotfiles tree must ship .config/containers/containers.conf so the path is \
+                 forge-owned (even though we deliberately set no overrides — see the file \
+                 body for the design rationale)",
+            );
+        let body = entry
+            .contents_utf8()
+            .expect("containers.conf must be UTF-8");
+
+        // Negative invariant: the body must not have a live
+        // `dns_servers` setting. We allow the *word* in comments
+        // (the body documents what was tried and why), so the
+        // assertion has to look for the key+`=` pattern, not just
+        // the word — `# was previously dns_servers = ...` is fine.
+        for (lineno, line) in body.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with('#') {
+                continue;
+            }
+            assert!(
+                !trimmed.starts_with("dns_servers"),
+                "containers.conf must NOT set `dns_servers` — pinning public DNS here \
+                 broke `podman run` on LANs that block outbound DNS to anything except \
+                 the gateway, and the build-side fix lives in \
+                 crates/forge/src/commands/dev.rs instead. Got line {}: {}",
+                lineno + 1,
+                line
+            );
+        }
+
+        // The file must be picked up by the server role's dotfile
+        // glob — without this the file lives in the embedded tree
+        // but never lands at $HOME/.config/containers/containers.conf
+        // and forge can't claim ownership of the path.
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Server).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        use forge_common::plan::Action;
+        let written = plan.actions.iter().any(|a| match a {
+            Action::WriteFile { rel, .. } => rel
+                .to_string_lossy()
+                .ends_with(".config/containers/containers.conf"),
+            _ => false,
+        });
+        assert!(
+            written,
+            "server role dotfiles glob must match \
+             `.config/containers/containers.conf` so the file actually lands at \
+             $HOME/.config/containers/containers.conf during forge setup. The embedded \
+             entry exists but no WriteFile action targets it — the role's `dotfiles` \
+             list is missing a `.config/containers/**` (or equivalent) entry."
+        );
+    }
+
+    /// `dotfiles/.config/nvim/lua/plugins/hardtime.lua` must ship in
+    /// the embedded tree, reference the right upstream plugin, and
+    /// land at `~/.config/nvim/lua/plugins/hardtime.lua` via the
+    /// server role's nvim dotfile glob.
+    ///
+    /// hardtime.nvim coaches the user out of inefficient motions
+    /// (`jjjj` → "use `5j`"). The file's existence is half the
+    /// invariant; the other half is the disabled-filetype list,
+    /// which is where this user's experience lives or dies.
+    ///
+    /// Specifically `"markdown"` MUST be in the disabled-filetypes
+    /// list. Without it, hardtime fires inside Obsidian / note
+    /// buffers where line-by-line `j` movement through prose is
+    /// the right motion, not a sin — at which point the user's
+    /// note-taking flow gets interrupted by a "use `5j` instead"
+    /// notification on every paragraph and the plugin gets
+    /// disabled in frustration. We assert this single override
+    /// because it's the one a future "let's also coach in
+    /// markdown" tweak would silently regress.
+    ///
+    /// We do NOT assert on the upstream defaults (max_count,
+    /// disable_mouse, hint, etc.) because those are tunable
+    /// preferences, not invariants — the user might decide
+    /// `max_count = 5` is gentler and still right for them. The
+    /// pin is just: the plugin is wired up, points at the right
+    /// repo, and excludes prose buffers.
+    #[test]
+    fn dotfiles_ship_hardtime_with_markdown_disabled() {
+        let entry = DOTFILES
+            .get_file(".config/nvim/lua/plugins/hardtime.lua")
+            .expect(
+                "dotfiles tree must ship .config/nvim/lua/plugins/hardtime.lua so the user's \
+                 nvim picks up the m4xshen/hardtime.nvim coaching plugin via lazy.nvim's \
+                 `{ import = \"plugins\" }` auto-discovery",
+            );
+        let body = entry
+            .contents_utf8()
+            .expect("hardtime.lua must be UTF-8");
+
+        // Pin the upstream repo. A future rename / fork that drops
+        // the m4xshen identifier would silently break the plugin
+        // installation since lazy.nvim resolves the URL from the
+        // first string in the spec table. The literal `"m4xshen/`
+        // segment is unambiguous.
+        assert!(
+            body.contains("\"m4xshen/hardtime.nvim\""),
+            "hardtime.lua must reference the m4xshen/hardtime.nvim upstream repo verbatim — \
+             a fork or renamed identifier would silently fail to install. Got body:\n{body}"
+        );
+
+        // The disabled_filetypes block must contain `"markdown"`.
+        // We look for the literal quoted token rather than parsing
+        // Lua because (a) the surrounding context is a Lua list,
+        // (b) any other appearance of the word "markdown" in the
+        // file would be inside a comment, and (c) a comment with
+        // the bare word doesn't satisfy the assertion since we
+        // require the quotes — Lua list entries are quoted, prose
+        // mentions aren't.
+        assert!(
+            body.contains("\"markdown\""),
+            "hardtime.lua must include `\"markdown\"` in disabled_filetypes — without it the \
+             plugin fires inside Obsidian / note buffers where line-by-line `j` motion \
+             through prose is the right keystroke, not a sin, and the constant \"use 5j \
+             instead\" notifications make the plugin unbearable for note-taking. Got \
+             body:\n{body}"
+        );
+
+        // The file must be picked up by the server role's nvim
+        // dotfile glob — without this the file lives in the
+        // embedded tree but never lands at $HOME, and the user's
+        // nvim doesn't see it. The glob is `.config/nvim/**`
+        // which should match anything under that subtree.
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Server).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        use forge_common::plan::Action;
+        let written = plan.actions.iter().any(|a| match a {
+            Action::WriteFile { rel, .. } => rel
+                .to_string_lossy()
+                .ends_with(".config/nvim/lua/plugins/hardtime.lua"),
+            _ => false,
+        });
+        assert!(
+            written,
+            "server role dotfiles glob must match \
+             `.config/nvim/lua/plugins/hardtime.lua` so the plugin actually lands in the \
+             user's nvim config tree during forge setup. The embedded entry exists but no \
+             WriteFile action targets it — the role's `.config/nvim/**` glob may have been \
+             narrowed."
+        );
+    }
+
+    /// `dotfiles/.config/nvim/lua/plugins/notify.lua` must ship in
+    /// the embedded tree, point at the right upstream repo, AND
+    /// re-apply the noise filter that lives in
+    /// `lua/config/options.lua`.
+    ///
+    /// nvim-notify replaces `vim.notify` when it loads, which would
+    /// silently undo the options.lua wrapper that filters out
+    /// mason / lspconfig / "not found" / "spawn" startup spam. The
+    /// notify.lua plugin spec has to re-wrap the new vim.notify
+    /// with the same filter; otherwise the visual upgrade lands
+    /// alongside a regression where the toast UI starts showing
+    /// every dropped LSP warning. This test pins the four pattern
+    /// literals so a future "let me clean up the filter" pass that
+    /// drops one would be caught at `cargo test`, not at the next
+    /// `nvim` startup.
+    ///
+    /// We deliberately pin the LITERAL string tokens (e.g.
+    /// `"mason"`) rather than parse the Lua: the patterns are
+    /// short, the file is small, and a regex/parse approach would
+    /// be overkill for what amounts to a "did you keep these four
+    /// strings in there" check.
+    ///
+    /// We do NOT pin the visual settings (render, stages, timeout,
+    /// background_colour) — those are tunable preferences a future
+    /// edit should be free to change without a test-and-fix dance.
+    /// The pin is just: the plugin is wired up, points at the right
+    /// repo, and preserves the noise-filter behavior.
+    #[test]
+    fn dotfiles_ship_nvim_notify_with_filter_preserved() {
+        let entry = DOTFILES
+            .get_file(".config/nvim/lua/plugins/notify.lua")
+            .expect(
+                "dotfiles tree must ship .config/nvim/lua/plugins/notify.lua so nvim-notify \
+                 is auto-discovered by lazy.nvim's `{ import = \"plugins\" }`",
+            );
+        let body = entry
+            .contents_utf8()
+            .expect("notify.lua must be UTF-8");
+
+        assert!(
+            body.contains("\"rcarriga/nvim-notify\""),
+            "notify.lua must reference the rcarriga/nvim-notify upstream repo verbatim — a \
+             rename or fork identifier would silently fail to install. Got body:\n{body}"
+        );
+
+        // Pin every filter pattern from lua/config/options.lua. If
+        // the user adds a new pattern there but forgets to add it
+        // here, the toast UI starts leaking the spam — these four
+        // are the original set; new patterns should be added in
+        // both places (and pinned here) in the same change.
+        for pattern in ["\"mason\"", "\"lspconfig\"", "\"not found\"", "\"spawn\""] {
+            assert!(
+                body.contains(pattern),
+                "notify.lua must re-apply the same vim.notify filter that lives in \
+                 lua/config/options.lua — pattern {pattern} is missing, which means the \
+                 corresponding mason/LSP startup messages will leak into the toast UI \
+                 once nvim-notify replaces vim.notify on plugin load. Got body:\n{body}"
+            );
+        }
+
+        // The file must be picked up by the server role's nvim
+        // dotfile glob — without this the file lives in the
+        // embedded tree but never lands at $HOME during forge
+        // setup, and nvim never loads the spec.
+        let roles = RolesFile::from_toml(ROLES_TOML).unwrap();
+        let cfg = roles.resolved(Role::Server).unwrap();
+        let plan = build_plan(&cfg, &EmbeddedDotfiles).unwrap();
+
+        use forge_common::plan::Action;
+        let written = plan.actions.iter().any(|a| match a {
+            Action::WriteFile { rel, .. } => rel
+                .to_string_lossy()
+                .ends_with(".config/nvim/lua/plugins/notify.lua"),
+            _ => false,
+        });
+        assert!(
+            written,
+            "server role dotfiles glob must match \
+             `.config/nvim/lua/plugins/notify.lua` so the plugin actually lands in the \
+             user's nvim config tree during forge setup"
+        );
+    }
+
+    #[test]
+    fn catppuccin_mocha_uses_overlay_for_text_tiers() {
+        let entry = SCHEMES
+            .get_file("catppuccin-mocha.yaml")
+            .expect("themes/schemes/catppuccin-mocha.yaml must ship");
+        let body = entry
+            .contents_utf8()
+            .expect("catppuccin-mocha.yaml must be UTF-8");
+
+        // base03 = Overlay 2 (comments). The literal hex must
+        // appear on a `base03:` line. We assert on the line shape
+        // rather than just "contains 9399b2" so a future edit that
+        // accidentally puts overlay2 on the wrong slot still fails.
+        assert!(
+            body.contains(r#"base03: "9399b2""#),
+            "catppuccin-mocha.yaml base03 must be `9399b2` (Overlay 2 — comments per \
+             catppuccin's style guide). The upstream base16 export uses surface1 (#45475a) \
+             which is too dim for text and renders zsh-autosuggest / nvim comments \
+             unreadable at ~1.5:1 contrast against base00"
+        );
+        assert!(
+            body.contains(r#"base04: "7f849c""#),
+            "catppuccin-mocha.yaml base04 must be `7f849c` (Overlay 1 — subtle text / line \
+             numbers per catppuccin's style guide). The upstream base16 export uses surface2 \
+             (#585b70) which is too dim for text"
+        );
+
+        // Negative invariant: the dim surface tones must NOT
+        // appear on base03/base04 lines. Catches a regression
+        // where someone "syncs from catppuccin/base16" and
+        // re-introduces the readability bug.
+        assert!(
+            !body.contains(r#"base03: "45475a""#),
+            "catppuccin-mocha.yaml base03 must not be `45475a` (surface1) — that's the value \
+             from catppuccin/base16's upstream Mocha export, which causes the readability \
+             regression this scheme deliberately diverges from"
+        );
+        assert!(
+            !body.contains(r#"base04: "585b70""#),
+            "catppuccin-mocha.yaml base04 must not be `585b70` (surface2) — same regression"
         );
     }
 

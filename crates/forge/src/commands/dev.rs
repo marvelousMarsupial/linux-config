@@ -106,15 +106,9 @@ fn build() -> Result<()> {
     let containerfile_path = context.join("Containerfile");
     let spinner = cliclack::spinner();
     spinner.start(format!("podman build -t {}", cfg.image_tag));
-    let status = std::process::Command::new("podman")
-        .args([
-            "build",
-            "-f",
-            &containerfile_path.to_string_lossy(),
-            "-t",
-            &cfg.image_tag,
-            &context.to_string_lossy(),
-        ])
+    let argv = build_argv(&containerfile_path, &cfg.image_tag, context);
+    let status = std::process::Command::new(&argv[0])
+        .args(&argv[1..])
         .status()
         .context("invoking `podman build`")?;
     if !status.success() {
@@ -124,6 +118,66 @@ fn build() -> Result<()> {
     spinner.stop(format!("built {}", cfg.image_tag));
     cliclack::outro("done")?;
     Ok(())
+}
+
+/// Construct the argv for `podman build`, with `--network=host`
+/// so the build container shares the host's network namespace.
+///
+/// **Why `--network=host` and not pasta**. Builds need to reach
+/// the public internet to fetch apt packages, language toolchains,
+/// upstream release tarballs, npm registries, etc. — that's the
+/// only network behaviour the build container needs. Pasta
+/// (rootless podman's default network backend) wraps that in a
+/// separate netns with userspace UDP forwarding, which sounds fine
+/// in theory but turned out to be unreliable on this host: pasta's
+/// UDP DNS replies were not getting back into the build container,
+/// and we burned multiple debugging passes on it (containers.conf
+/// `dns_servers`, `--dns=...` from host resolv.conf, the host
+/// firewall's input chain, kernel conntrack tracking of pasta
+/// sockets) without finding a clean fix that keeps pasta in
+/// the path.
+///
+/// `--network=host` makes the build container literally use the
+/// host's netns: same `/etc/resolv.conf`, same routes, same
+/// firewall context. DNS works the same way `curl` works on the
+/// host. Verified by `podman run --network=host
+/// debian:trixie-slim getent hosts deb.debian.org` succeeding
+/// directly on this machine.
+///
+/// **Security tradeoff is acceptable here.** A build container
+/// runs arbitrary code from `RUN` steps — apt-installing
+/// packages, fetching tarballs, executing npm/python install
+/// scripts. Anything compromised in those steps already has full
+/// effect on the build. Network isolation between "the build is
+/// fetching packages" and "the host is the build's network" was
+/// never a meaningful boundary on a single-user dev workstation.
+/// On shared CI infra this might matter; if `forge dev build`
+/// ever runs there, revisit.
+///
+/// **Run containers (`forge dev up`) deliberately stay on pasta.**
+/// The dev pod is a long-lived workspace where the user runs
+/// services, opens ports, and pokes at random networking. Sharing
+/// the host's netns there would mean the dev pod's services bind
+/// host ports — surprising and easy to footgun. For run, pasta's
+/// isolation matters; for build, it doesn't.
+///
+/// Extracted so the build invocation can be asserted in unit
+/// tests without spawning podman.
+fn build_argv(
+    containerfile: &std::path::Path,
+    image_tag: &str,
+    context: &std::path::Path,
+) -> Vec<String> {
+    vec![
+        "podman".into(),
+        "build".into(),
+        "--network=host".into(),
+        "-f".into(),
+        containerfile.to_string_lossy().into(),
+        "-t".into(),
+        image_tag.into(),
+        context.to_string_lossy().into(),
+    ]
 }
 
 /// Dump the embedded Containerfile + dotfiles into `target` so podman
@@ -208,13 +262,16 @@ fn up(name: &str) -> Result<()> {
         }
 
         // Bind mounts: expand `~` in host paths so podman sees absolutes.
-        // Empty by default — the dev container is intentionally
-        // self-contained, with all state in the named volume.
+        // Defaults are TZ-related (read-only mounts of /etc/localtime
+        // and /etc/timezone) — see config/dev-container.toml. The
+        // `readonly` flag flows through to the `-v host:container:ro`
+        // mode suffix so the container can't mutate host system files.
         for v in &cfg.default_volumes.bind {
             let host = expand_tilde(&v.host)?;
             volumes.push(Volume::Bind {
                 host: host.to_string_lossy().into(),
                 container: v.container.clone(),
+                readonly: v.readonly,
             });
         }
 
@@ -281,4 +338,71 @@ fn rm(name: &str) -> Result<()> {
     podman::remove(name, true)?;
     cliclack::log::info(format!("removed {name}"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `forge dev build` must pass `--network=host` to
+    /// `podman build` so the build container shares the host's
+    /// network namespace.
+    ///
+    /// Why this is the load-bearing invariant (not a "nice to
+    /// have"): on this host, rootless podman + pasta DNS works
+    /// reliably over wifi but fails reproducibly over the USB
+    /// ethernet adapter (`enxc8a362b69f16`) — almost certainly
+    /// pasta interface auto-detection getting confused by the
+    /// long MAC-derived interface name or USB-ethernet quirks.
+    /// Reproducible: identical `podman run --dns=...
+    /// debian:trixie-slim getent hosts deb.debian.org` succeeds
+    /// when wifi is the active interface and fails when ethernet
+    /// is. With `--network=host` the build container literally
+    /// uses the host's netns, so pasta is out of the picture
+    /// entirely and DNS works the same way `curl` does on the
+    /// host. If a future edit drops this flag, builds will start
+    /// failing whenever the user is on ethernet — this assertion
+    /// catches it before it ships.
+    ///
+    /// See `build_argv`'s rustdoc and CLAUDE.md "Dev container UX"
+    /// for the full history.
+    #[test]
+    fn build_argv_uses_host_network() {
+        let argv = build_argv(
+            std::path::Path::new("/tmp/build/Containerfile"),
+            "forge-dev",
+            std::path::Path::new("/tmp/build"),
+        );
+        assert_eq!(argv[0], "podman");
+        assert_eq!(argv[1], "build");
+        assert!(
+            argv.contains(&"--network=host".to_string()),
+            "podman build argv must include `--network=host` so the build container shares \
+             the host's netns (pasta + this host's USB ethernet adapter is unreliable for \
+             DNS). Got argv: {argv:?}"
+        );
+
+        // The --network flag must appear BEFORE the positional
+        // context arg. Podman parses the trailing positional as
+        // the build context path.
+        let net_pos = argv
+            .iter()
+            .position(|s| s == "--network=host")
+            .expect("--network=host must be present (asserted above)");
+        let context_pos = argv
+            .iter()
+            .position(|s| s == "/tmp/build")
+            .expect("context positional must be present");
+        assert!(
+            net_pos < context_pos,
+            "--network=host must come before the positional context arg in the argv"
+        );
+
+        // Sanity-check the rest of the argv shape.
+        assert_eq!(argv.last().map(String::as_str), Some("/tmp/build"));
+        assert!(argv.contains(&"-f".to_string()));
+        assert!(argv.contains(&"-t".to_string()));
+        assert!(argv.contains(&"forge-dev".to_string()));
+        assert!(argv.contains(&"/tmp/build/Containerfile".to_string()));
+    }
 }
