@@ -98,15 +98,3 @@ output = "~/.config/gtk-4.0/gtk.css"
 name = "obsidian"
 template = "obsidian.css.j2"
 output = "~/Documents/Obsidian/*/.obsidian/snippets/base16-theme.css"
-
-[[targets]]
-name = "zen"
-template = "zen-userchrome.css.j2"
-output = "~/.zen/*/chrome/userChrome.css"
-restart = "Zen Browser"
-
-[[targets]]
-name = "zen-flatpak"
-template = "zen-userchrome.css.j2"
-output = "~/.var/app/app.zen_browser.zen/.zen/*/chrome/userChrome.css"
-restart = "Zen Browser"

@@ -233,10 +233,19 @@ bindsym $mod+Return exec env -u TMUX $term
 # Launcher (Space is easy to hit)
 bindsym $mod+Space exec $menu
 
-# Browser. --ozone-platform-hint=auto lets Electron use Wayland when the
-# wayland socket is granted (see flatpak overrides in the desktop role).
-# bindsym --to-code $mod+b exec flatpak run app.zen_browser.zen --ozone-platform-hint=auto
-bindsym --to-code $mod+b exec zen
+# Browser. `$bin/zen` is the wrapper at ~/.local/bin/zen that execs the
+# tarball-installed launcher at ~/.local/zen/zen with MOZ_ENABLE_WAYLAND=1.
+# (Was previously `flatpak run app.zen_browser.zen --ozone-platform-hint=auto`
+# — see the desktop role's `zen-browser` Download for the migration.)
+#
+# We spell the path in full via `$bin/...` instead of bare `zen` for the
+# same reason every other dotfile-script bindsym in this file does:
+# sway's `exec` shells out via `/bin/sh -c` against whatever PATH the
+# sway process inherited at launch, which on a headless / non-login
+# session can omit `~/.local/bin` entirely. `$bin` is pinned absolute
+# (`/home/august/.local/bin`) so the keybind works regardless of how
+# sway got started.
+bindsym --to-code $mod+b exec $bin/zen
 
 # Notes - new vim note (foot+nvim with timestamp filename)
 bindsym $mod+n exec $bin/notes-toggle

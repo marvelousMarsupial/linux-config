@@ -24,6 +24,12 @@ packages = [
     "eza",
     "bat",
     "unzip",
+    # `trash-cli` provides the `trash`/`trash-put`/`trash-list`/
+    # `trash-restore`/`trash-empty` commands that move files to the
+    # XDG trash spec location (`~/.local/share/Trash`) instead of
+    # `rm`'s unrecoverable unlink. Aliased so a fat-fingered `rm`
+    # on a real file is recoverable.
+    "trash-cli",
     # Extended terminfo entries — ncurses-term provides terminfo for
     # foot, foot-extra, tmux-256color, alacritty, kitty, and the rest
     # of the modern terminal lineup. The Debian default `ncurses-base`
@@ -1159,7 +1165,6 @@ post = [
     # ~/.local/share/flatpak/overrides and never touches system
     # state. Pinned by `desktop_role_system_flatpak_ops_use_sudo`.
     { run = "sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo", check = "flatpak remotes | grep -q '^flathub'" },
-    { run = "sudo flatpak install -y --noninteractive flathub app.zen_browser.zen", check = "flatpak list --app | grep -q app.zen_browser.zen" },
     { run = "sudo flatpak install -y --noninteractive flathub md.obsidian.Obsidian", check = "flatpak list --app | grep -q md.obsidian.Obsidian" },
     # Grant Wayland socket access to Electron flatpaks. Their default
     # manifests only ship x11 socket, which means they need Xwayland —
@@ -1167,8 +1172,13 @@ post = [
     # was installed. Granting wayland directly + passing
     # --ozone-platform-hint=auto in the sway bind sidesteps the whole
     # Xwayland-startup ordering problem.
+    #
+    # Zen Browser used to live here too (flatpak install + wayland
+    # override). It now ships as an upstream tarball — see the
+    # `[[desktop.downloads]]` block named `zen-browser` above — because
+    # the tarball runs noticeably faster on this stack (direct Wayland
+    # path, no flatpak portal round-trips, no first-launch sandbox lag).
     { run = "flatpak override --user --socket=wayland md.obsidian.Obsidian", check = "flatpak override --user --show md.obsidian.Obsidian | grep -q 'sockets=.*wayland'" },
-    { run = "flatpak override --user --socket=wayland app.zen_browser.zen", check = "flatpak override --user --show app.zen_browser.zen | grep -q 'sockets=.*wayland'" },
     # Daily flatpak-update systemd timer. The desktop role installs
     # both Zen Browser and Obsidian system-wide (flatpak's default
     # scope when the install command runs without --user / --system
@@ -1387,6 +1397,28 @@ name = "caskaydia-cove-nerd-font"
 url = "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/CascadiaCode.zip"
 dest = "~/.local/share/fonts/CaskaydiaCove"
 extract = "tree:0"
+
+# Zen Browser tarball install. Replaces the previous flatpak install
+# (`app.zen_browser.zen` from flathub) because the tarball runs noticeably
+# better on this stack — direct GTK Wayland path with no flatpak portal
+# round-trips, no Xwayland fallback, and no first-launch lag while flatpak
+# stitches its sandbox.
+#
+# Upstream only ships `.tar.xz` for Linux (not .tar.gz / .zip), which is
+# why `crates/common/src/executor.rs::tar_decompress_flag` learned the
+# `.tar.xz` → `xJf` mapping. The tarball's top-level entry is `zen/`
+# containing the launcher (`zen`), `firefox`/`zen-bin` and the supporting
+# libs/assets — `extract = "tree:1"` strips that one level so contents
+# land directly under `~/.local/zen/`. The `~/.local/bin/zen` wrapper
+# (in dotfiles) is what `bindsym $mod+b exec zen` actually executes; it
+# sets `MOZ_ENABLE_WAYLAND=1` (Gecko's equivalent of Chromium's
+# `--ozone-platform-hint=auto`, the flag the old flatpak bindsym used)
+# and execs `~/.local/zen/zen`.
+[[desktop.downloads]]
+name = "zen-browser"
+url = "https://github.com/zen-browser/desktop/releases/latest/download/zen.linux-x86_64.tar.xz"
+dest = "~/.local/zen"
+extract = "tree:1"
 
 # Whisper small.en Q5_1-quantized GGML model (~182 MiB). The `dictate`
 # script POSTs WAV audio to whisper-server which keeps this model

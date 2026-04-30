@@ -9,6 +9,15 @@ padding=15
 border-size=2
 border-radius=8
 default-timeout=5000
+# Force mako's default-timeout to apply even when the originating app
+# passes its own `expire_timeout` over the freedesktop notifications
+# bus. Without this, `default-timeout` is only a fallback for apps
+# that omit the field — apps that send `expire_timeout=0` (battery
+# low, update prompts, browser permission popups, plenty of others)
+# still pin the notification on screen forever, which reads as "mako
+# is broken / notifications never go away" even though the config
+# looks right.
+ignore-timeout=1
 max-visible=3
 anchor=top-right
 

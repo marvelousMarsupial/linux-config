@@ -125,7 +125,7 @@ Run `keybinds` for the full list.
 ## Theme system
 
 Base16 colors applied across foot, sway, fuzzel, mako, swaylock, gtk3/4, tmux,
-neovim, yazi, obsidian, zen browser. Schemes: `gruvbox-dark-hard`,
+neovim, yazi, obsidian. Schemes: `gruvbox-dark-hard`,
 `catppuccin-mocha`, `kanagawa`, `tokyonight-moon`, `onehalfdark-black`,
 `summer-dusk`.
 

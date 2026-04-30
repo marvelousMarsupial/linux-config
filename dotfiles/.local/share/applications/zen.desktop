@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Zen Browser
+Comment=Firefox-based browser with focus on productivity and privacy
+Exec=/home/august/.local/bin/zen %U
+Icon=/home/august/.local/zen/browser/chrome/icons/default/default128.png
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/vnd.mozilla.xul+xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+StartupWMClass=zen

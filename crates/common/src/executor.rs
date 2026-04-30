@@ -251,6 +251,25 @@ where
     }
 }
 
+/// Pick the right `tar` short-option for a URL based on its suffix.
+///
+/// Returns `Some(flag)` for tar archives we know how to drive (the flag
+/// is the single-letter form: `xzf` for gzip, `xJf` for xz). Returns
+/// `None` for non-tar archives (zip) and unknown suffixes — the caller
+/// then falls through to its zip branch or a "unknown archive format"
+/// error. xz support exists so the desktop role's Zen Browser tarball
+/// (`zen.linux-x86_64.tar.xz`, the upstream-provided format) lands the
+/// same way nvim and yazi do.
+fn tar_decompress_flag(url: &str) -> Option<&'static str> {
+    if url.ends_with(".tar.gz") || url.ends_with(".tgz") {
+        Some("xzf")
+    } else if url.ends_with(".tar.xz") {
+        Some("xJf")
+    } else {
+        None
+    }
+}
+
 /// Download an archive and extract it. Two modes based on `pattern`:
 ///
 /// - `"tree:<N>"` — extract entire archive to `dest` directory, stripping
@@ -277,15 +296,15 @@ fn download_and_extract_tree(url: &str, dest: &Path, strip: u32) -> Result<()> {
 
     std::fs::create_dir_all(dest).with_context(|| format!("creating {}", dest.display()))?;
 
-    if url.ends_with(".tar.gz") || url.ends_with(".tgz") {
+    if let Some(flag) = tar_decompress_flag(url) {
         let status = Command::new("tar")
-            .arg("xzf")
+            .arg(flag)
             .arg(&archive)
             .arg("-C")
             .arg(dest)
             .arg(format!("--strip-components={strip}"))
             .status()
-            .context("extracting tar.gz")?;
+            .context("extracting tar archive")?;
         if !status.success() {
             anyhow::bail!("tar extraction failed for {url}");
         }
@@ -331,14 +350,14 @@ fn download_and_extract_file(url: &str, dest: &Path, pattern: &str) -> Result<()
     let archive = tmp.path().join("archive");
     download_raw(url, &archive)?;
 
-    if url.ends_with(".tar.gz") || url.ends_with(".tgz") {
+    if let Some(flag) = tar_decompress_flag(url) {
         let status = Command::new("tar")
-            .arg("xzf")
+            .arg(flag)
             .arg(&archive)
             .arg("-C")
             .arg(tmp.path())
             .status()
-            .context("extracting tar.gz")?;
+            .context("extracting tar archive")?;
         if !status.success() {
             anyhow::bail!("tar extraction failed for {url}");
         }
@@ -354,7 +373,7 @@ fn download_and_extract_file(url: &str, dest: &Path, pattern: &str) -> Result<()
             anyhow::bail!("unzip failed for {url}");
         }
     } else {
-        anyhow::bail!("unknown archive format for {url} (expected .tar.gz or .zip)");
+        anyhow::bail!("unknown archive format for {url} (expected .tar.gz, .tar.xz, or .zip)");
     }
 
     let glob = globset::GlobBuilder::new(pattern)
@@ -705,6 +724,59 @@ mod tests {
         .unwrap_err();
         assert_eq!(attempts.get(), 1);
         assert!(err.to_string().contains("nope"));
+    }
+
+    /// Extract handles `.tar.xz` archives the same way it handles
+    /// `.tar.gz` — the desktop role's Zen Browser download relies on
+    /// xz support since upstream only publishes `zen.linux-x86_64.tar.xz`.
+    #[test]
+    fn extract_tar_xz_finds_binary() {
+        let d = tempdir().unwrap();
+        let staging = tempdir().unwrap();
+        std::fs::write(staging.path().join("mybinary"), b"xz-payload").unwrap();
+        let archive = d.path().join("test.tar.xz");
+        let status = Command::new("tar")
+            .args(["cJf"])
+            .arg(&archive)
+            .arg("-C")
+            .arg(staging.path())
+            .arg("mybinary")
+            .status()
+            .unwrap();
+        assert!(status.success(), "tar cJf failed (is xz-utils installed?)");
+
+        let dest = d.path().join("extracted");
+        download_and_extract(&format!("file://{}", archive.display()), &dest, "mybinary").unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"xz-payload");
+    }
+
+    /// Tree-mode extraction (the `tree:N` pattern used for nvim and zen)
+    /// works for `.tar.xz` archives too. Pinned because zen's Download
+    /// uses `extract = "tree:1"` against an xz tarball — a regression
+    /// that broke xz support in the tree branch wouldn't be caught by
+    /// the single-file `extract_tar_xz_finds_binary` test above.
+    #[test]
+    fn extract_tar_xz_tree_strips_components() {
+        let d = tempdir().unwrap();
+        let staging = tempdir().unwrap();
+        std::fs::create_dir_all(staging.path().join("zen")).unwrap();
+        std::fs::write(staging.path().join("zen/zen"), b"zen-launcher").unwrap();
+        std::fs::write(staging.path().join("zen/libxul.so"), b"lib").unwrap();
+        let archive = d.path().join("zen.linux-x86_64.tar.xz");
+        let status = Command::new("tar")
+            .args(["cJf"])
+            .arg(&archive)
+            .arg("-C")
+            .arg(staging.path())
+            .arg("zen")
+            .status()
+            .unwrap();
+        assert!(status.success(), "tar cJf failed (is xz-utils installed?)");
+
+        let dest = d.path().join("extracted");
+        download_and_extract(&format!("file://{}", archive.display()), &dest, "tree:1").unwrap();
+        assert_eq!(std::fs::read(dest.join("zen")).unwrap(), b"zen-launcher");
+        assert_eq!(std::fs::read(dest.join("libxul.so")).unwrap(), b"lib");
     }
 
     /// Extract with no matching file produces a clear error.
