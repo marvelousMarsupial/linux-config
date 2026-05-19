@@ -32,9 +32,6 @@ pub struct DevContainer {
     /// what makes per-project state persistent across `forge dev rm`.
     #[serde(default)]
     pub default_volumes: Volumes,
-    /// Host ports forwarded into every container as `-p X:X`.
-    #[serde(default)]
-    pub default_ports: Vec<u16>,
     /// Forward the host's `$SSH_AUTH_SOCK` into the container. The agent
     /// holds the keys — the container only gets a socket to request
     /// signatures, never the key material itself.
@@ -99,7 +96,6 @@ mod tests {
     fn parse_dev_container() {
         let src = r#"
 image_tag = "forge-dev"
-default_ports = [3000, 8080]
 ssh_agent = true
 
 [default_volumes]
@@ -108,7 +104,6 @@ bind = [{ host = "~/.ssh", container = "/home/dev/.ssh:ro" }]
 "#;
         let c = DevContainer::from_toml(src).unwrap();
         assert_eq!(c.image_tag, "forge-dev");
-        assert_eq!(c.default_ports, vec![3000, 8080]);
         assert!(c.ssh_agent);
         assert_eq!(c.default_volumes.named.len(), 1);
         assert_eq!(c.default_volumes.named[0].name, "{name}-home");
@@ -126,7 +121,6 @@ image_tag = "forge-dev"
         let c = DevContainer::from_toml(src).unwrap();
         assert!(c.default_volumes.named.is_empty());
         assert!(c.default_volumes.bind.is_empty());
-        assert!(c.default_ports.is_empty());
         assert!(!c.ssh_agent);
     }
 
@@ -135,7 +129,7 @@ image_tag = "forge-dev"
     /// in `image_tag` produce a buildable-but-untagged image.
     #[test]
     fn dev_container_missing_required_fields_errors() {
-        let src = r#"default_ports = []"#;
+        let src = r#"ssh_agent = true"#;
         assert!(DevContainer::from_toml(src).is_err());
     }
 

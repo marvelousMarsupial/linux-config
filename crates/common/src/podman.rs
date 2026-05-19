@@ -145,21 +145,27 @@ pub enum Volume {
     },
 }
 
-/// Create a new container from an image. Stays detached and running so
-/// subsequent `attach`/`exec` calls can enter it. `sleep infinity` keeps
-/// PID 1 alive; real shells are opened via `podman exec`.
+/// Build the `podman run` argv for a dev container.
 ///
-/// When `ssh_agent` is true, the host's `$SSH_AUTH_SOCK` is mounted into
-/// the container and the env var is set so git/ssh can request signatures
-/// from the host agent. No key files are copied — the agent holds the
-/// keys and the container only talks to it via the socket.
-pub fn create(
+/// Extracted from [`create`] so the network / volume / agent flags
+/// can be unit-tested without spawning podman.
+///
+/// The container always uses `--network=host`: rootless podman can't
+/// give a container its own LAN identity (CAP_NET_ADMIN lives on the
+/// host namespace), and the only practical "reach the container from
+/// elsewhere" story for `forge dev` is for whatever the container
+/// binds to also be bound on the host. Host networking gives that for
+/// free — no per-project port lists to maintain, no `-p` enumeration —
+/// at the cost of `localhost` inside the container meaning the host
+/// (so any port collision with a host service is a real collision).
+/// True LAN-citizen workloads belong on `forge lxc` / `forge vm`.
+fn build_run_argv(
     name: &str,
     image: &str,
     volumes: &[Volume],
-    ports: &[u16],
     ssh_agent: bool,
-) -> Result<()> {
+    ssh_auth_sock: Option<&str>,
+) -> Vec<String> {
     let q = qualified(name);
     let mut argv: Vec<String> = vec![
         "podman".into(),
@@ -169,17 +175,15 @@ pub fn create(
         q,
         "--userns".into(),
         "keep-id".into(),
+        "--network".into(),
+        "host".into(),
     ];
     for v in volumes {
         argv.push("-v".into());
         argv.push(format_volume(v));
     }
-    for p in ports {
-        argv.push("-p".into());
-        argv.push(format!("{p}:{p}"));
-    }
     if ssh_agent {
-        if let Ok(sock) = std::env::var("SSH_AUTH_SOCK") {
+        if let Some(sock) = ssh_auth_sock {
             let ctr_sock = "/tmp/ssh-agent.sock";
             argv.push("-v".into());
             argv.push(format!("{sock}:{ctr_sock}"));
@@ -190,7 +194,20 @@ pub fn create(
     argv.push(image.to_string());
     argv.push("sleep".into());
     argv.push("infinity".into());
+    argv
+}
 
+/// Create a new container from an image. Stays detached and running so
+/// subsequent `attach`/`exec` calls can enter it. `sleep infinity` keeps
+/// PID 1 alive; real shells are opened via `podman exec`.
+///
+/// When `ssh_agent` is true, the host's `$SSH_AUTH_SOCK` is mounted into
+/// the container and the env var is set so git/ssh can request signatures
+/// from the host agent. No key files are copied — the agent holds the
+/// keys and the container only talks to it via the socket.
+pub fn create(name: &str, image: &str, volumes: &[Volume], ssh_agent: bool) -> Result<()> {
+    let sock = std::env::var("SSH_AUTH_SOCK").ok();
+    let argv = build_run_argv(name, image, volumes, ssh_agent, sock.as_deref());
     let refs: Vec<&str> = argv.iter().map(|s| s.as_str()).collect();
     checked(&refs).context("`podman run`")?;
     Ok(())
@@ -358,5 +375,69 @@ mod tests {
             readonly: true,
         };
         assert_eq!(format_volume(&v), "/etc/localtime:/etc/localtime:ro");
+    }
+
+    /// `podman run` argv must always include `--network host` and must
+    /// not include any `-p` port mappings. Rootless podman can't put a
+    /// container on the LAN as its own host, so the dev container's
+    /// only "reachable from elsewhere" story is host networking;
+    /// pinning the flag here keeps a future refactor from silently
+    /// reverting to port-forward semantics (which would leave a
+    /// container's services unreachable until the user enumerated
+    /// every port by hand).
+    #[test]
+    fn run_argv_uses_host_network() {
+        let argv = build_run_argv("myapp", "forge-dev", &[], false, None);
+        assert!(
+            argv.windows(2)
+                .any(|w| w[0] == "--network" && w[1] == "host"),
+            "argv must contain `--network host`; got {argv:?}"
+        );
+        assert!(
+            !argv.iter().any(|a| a == "-p"),
+            "argv must not contain any `-p` port mappings under host networking; got {argv:?}"
+        );
+    }
+
+    /// `--userns keep-id` survives the host-networking switch: user
+    /// namespace and network namespace are independent in podman, and
+    /// the container UID-mapping is the reason files written into bind
+    /// mounts come back owned by the host user. Pinning here so a
+    /// future "simplify the flags" refactor doesn't drop it together
+    /// with the port loop.
+    #[test]
+    fn run_argv_keeps_userns_keep_id() {
+        let argv = build_run_argv("myapp", "forge-dev", &[], false, None);
+        assert!(
+            argv.windows(2)
+                .any(|w| w[0] == "--userns" && w[1] == "keep-id"),
+            "argv must keep `--userns keep-id`; got {argv:?}"
+        );
+    }
+
+    /// ssh-agent forwarding rides on `-v` + `-e SSH_AUTH_SOCK=…`, both
+    /// of which are independent of network mode. Verify the agent
+    /// plumbing is present when a socket is supplied and absent
+    /// otherwise.
+    #[test]
+    fn run_argv_ssh_agent_forwarding() {
+        let with = build_run_argv("a", "img", &[], true, Some("/run/user/1000/keyring/ssh"));
+        assert!(
+            with.iter()
+                .any(|a| a.contains("SSH_AUTH_SOCK=/tmp/ssh-agent.sock")),
+            "argv must set SSH_AUTH_SOCK env when agent forwarding is on; got {with:?}"
+        );
+        assert!(
+            with.iter()
+                .any(|a| a == "/run/user/1000/keyring/ssh:/tmp/ssh-agent.sock"),
+            "argv must bind the host's auth socket to /tmp/ssh-agent.sock; got {with:?}"
+        );
+
+        let without = build_run_argv("a", "img", &[], false, Some("/whatever"));
+        assert!(
+            !without.iter().any(|a| a.contains("SSH_AUTH_SOCK")),
+            "ssh_agent=false must suppress the SSH_AUTH_SOCK env even when a socket is set; \
+             got {without:?}"
+        );
     }
 }

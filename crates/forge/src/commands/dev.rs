@@ -276,13 +276,7 @@ fn up(name: &str) -> Result<()> {
         }
 
         cliclack::log::info(format!("creating from image {}", cfg.image_tag))?;
-        podman::create(
-            name,
-            &cfg.image_tag,
-            &volumes,
-            &cfg.default_ports,
-            cfg.ssh_agent,
-        )?;
+        podman::create(name, &cfg.image_tag, &volumes, cfg.ssh_agent)?;
     } else if !podman::running(name) {
         podman::start(name)?;
     }

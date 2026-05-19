@@ -50,13 +50,22 @@
 # with random other images on the host.
 image_tag = "forge-dev"
 
-# Host ports forwarded into every container as `-p X:X`. Empty by
-# default — most dev work is initiated from inside the container
-# (running tests, talking to the LSP, ssh-pushing to remotes) and
-# doesn't need inbound access. Add per-project ports here if you
-# routinely run a web server inside that the host browser needs to
-# reach.
-default_ports = []
+# Networking model: `--network=host`, baked in at `podman run` time
+# in `crates/common/src/podman.rs::build_run_argv`. The container
+# shares the host's network namespace, so anything it binds to
+# `0.0.0.0:<port>` is automatically reachable on the host's LAN IP at
+# the same port — no `-p` enumeration, no per-project port list. This
+# is the only practical "reach the container from elsewhere" story
+# for rootless podman: macvlan / bridge networking would give the
+# container its own LAN identity but requires CAP_NET_ADMIN on the
+# host namespace, which rootless deliberately doesn't have. Trade-
+# offs: `localhost` inside the container means the host (so a port
+# collision with a host service is a real collision), and the
+# container has no network isolation from the host. True LAN-citizen
+# workloads belong on `forge lxc` / `forge vm`, which DO get their
+# own IPs. There is no toggle here on purpose — picking the model
+# once and pinning it in tests (`run_argv_uses_host_network`) is
+# simpler than carrying a config option no one flips.
 
 # Forward the host's `$SSH_AUTH_SOCK` into the container at create
 # time. The agent holds the keys; the container only gets a socket

@@ -276,6 +276,31 @@ the host, then `forge dev build` to rebuild the image, then
 re-seeds `/home/dev` from the rebuilt image (the named volume's
 first-run seed is what makes existing containers stale otherwise).
 
+**Networking: `--network=host`, unconditionally.** Every `forge
+dev up` invocation passes `--network=host` to `podman run` (see
+`crates/common/src/podman.rs::build_run_argv`), and there is no
+per-project port list or `-p` enumeration anywhere in the
+codebase. The container shares the host's network namespace, so
+anything it binds to `0.0.0.0:<port>` is automatically reachable
+on the host's LAN IP at the same port — `python -m http.server
+8000` inside is `http://<host-lan-ip>:8000` from any device on
+the network with no further config. This is the only practical
+"reach the container from elsewhere" story for rootless podman:
+macvlan / bridge networking would give the container its own LAN
+identity but requires `CAP_NET_ADMIN` on the host namespace,
+which rootless deliberately doesn't have. Trade-offs to know:
+`localhost` inside the container means the host (port collisions
+with host services are real collisions, not isolated), and the
+container has no network isolation from the host. True LAN-
+citizen workloads belong on `forge lxc` / `forge vm`, which DO
+get their own IPs via the incus bridge / libvirt default
+network. Pinned by `run_argv_uses_host_network` (asserts
+`--network host` is in the argv AND no `-p` flags are present);
+`run_argv_keeps_userns_keep_id` separately pins that the host-
+network switch didn't accidentally drop the user-namespace
+mapping (they're independent in podman — keep-id is what makes
+files in bind mounts come back owned by the host user).
+
 ## Coding standards (load-bearing — enforced in review)
 
 ### 1. Rustdoc on every public item
