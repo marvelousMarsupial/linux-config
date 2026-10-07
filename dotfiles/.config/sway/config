@@ -41,8 +41,8 @@ include ~/.config/sway/colors
 # The only output line we keep is the wildcard wallpaper assignment
 # below, which kanshi does not touch.
 
-# Wallpaper (falls back to theme color if file missing)
-output * bg ~/.config/sway/wallpaper fill $base00
+# Solid background follows the active theme.
+output * bg $base00 solid_color
 
 # ===========================================
 # APPEARANCE (minimal)
@@ -103,12 +103,11 @@ input type:touchpad {
 # BEHAVIOR
 # ===========================================
 
-# New windows open side-by-side
-default_orientation horizontal
-for_window [app_id=".*"] layout splith
+# Choose split orientation automatically from the container dimensions.
+default_orientation auto
 
 focus_follows_mouse no
-mouse_warping none
+mouse_warping container
 popup_during_fullscreen smart
 floating_modifier $mod normal
 

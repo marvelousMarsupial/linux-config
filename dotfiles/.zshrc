@@ -9,20 +9,7 @@ if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" = "1" ] && co
   exec sway
 fi
 
-# Auto-start tmux (create new session for each terminal)
-if command -v tmux >/dev/null && [ -z "$TMUX" ] && [ -n "$PS1" ] && [[ ! "$TERM" =~ screen ]] && [[ ! "$TERM" =~ tmux ]]; then
-  # Clean up idle unattached sessions (1 window, 1 pane, just shell)
-  tmux list-sessions -F '#{session_name} #{session_attached} #{session_windows}' 2>/dev/null | \
-    while read name attached windows; do
-      if [[ "$attached" == "0" && "$windows" == "1" ]]; then
-        panes=$(tmux list-panes -t "$name" -F '#{pane_current_command}' 2>/dev/null)
-        if [[ "$panes" == "zsh" || "$panes" == "bash" ]]; then
-          tmux kill-session -t "$name" 2>/dev/null
-        fi
-      fi
-    done
-  tmux new-session
-fi
+# Start tmux explicitly when needed; terminals open a regular shell.
 
 # Locale (required for Unicode/emoji in tmux)
 export LANG=en_US.UTF-8
@@ -92,3 +79,12 @@ function y() {
 # MOTD - show on interactive login
 [[ -o login ]] && command -v motd >/dev/null && motd
 alias pshell='TERM=xterm podman exec -it'
+
+# Foot shell integration: mark command output boundaries.
+if [[ -o interactive && "$TERM" == foot* ]]; then
+  autoload -Uz add-zsh-hook
+  _foot_out_end()   { builtin zle || print -n '\e]133;D\e\\' }
+  _foot_out_start() { print -n '\e]133;C\e\\' }
+  add-zsh-hook precmd _foot_out_end
+  add-zsh-hook preexec _foot_out_start
+fi
