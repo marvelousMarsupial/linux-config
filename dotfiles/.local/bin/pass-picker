@@ -3,7 +3,6 @@
 set -euo pipefail
 
 export PASSWORD_STORE_DIR="$HOME/.password-store"
-export PASSWORD_STORE_CLIP_CMD="wl-copy"
 
 [[ -d "$PASSWORD_STORE_DIR" ]] || exit 0
 entry=$(find "$PASSWORD_STORE_DIR" -name '*.gpg' -printf '%P\n' 2>/dev/null | \

@@ -7,10 +7,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-# Remote-desktop sessions started by `remote-start` write a dbus-env file
-# to the user's runtime dir so daemons launched outside the sway session
-# (notify-send, fuzzel) can find the bus. Without importing it here, this
-# script can't open a fuzzel popup when invoked from a remote session.
+# Import a saved session address when launched outside the desktop.
 dbus_env = Path(f"/run/user/{os.getuid()}/dbus-env")
 if dbus_env.exists() and "DBUS_SESSION_BUS_ADDRESS" not in os.environ:
     for line in dbus_env.read_text().splitlines():
@@ -65,55 +62,13 @@ def trunc(s: str, n: int) -> str:
 
 
 def center(line: str, width: int) -> str:
-    """Pad ``line`` with leading spaces so its content sits centered in ``width``.
-
-    fuzzel's ``--dmenu`` mode renders each input line left-justified
-    against the popup's inner padding; there is no built-in
-    justify-center option. To get centered text we compute the slack
-    space ourselves and prepend half of it. We do not pad the right
-    side — the trailing whitespace would only matter for selection
-    highlighting, and we already disable that for read-only lines.
-
-    Lines that are wider than ``width`` are returned unchanged
-    (``max(0, ...)`` clamps the pad), which is the right thing for
-    the clock: pagga can render slightly wider than ``PANEL_WIDTH``
-    on edge-case time strings, and we'd rather show all the digits
-    than chop them.
-    """
+    'Pad ``line`` with leading spaces so its content sits centered in ``width``.'
     pad = max(0, (width - len(line)) // 2)
     return " " * pad + line
 
 
 def get_clock() -> str:
-    """Compact bold ASCII clock for the current ``HH MM`` via ``toilet -f smblock``.
-
-    Picked after a four-font iteration:
-
-    * ``future`` (original) — too thin, looked weak.
-    * ``pagga`` — right weight but had a ░ shading "background"
-      around the digits the user disliked.
-    * ``bigascii12`` — clean and bold but at 12 rows × 50 cells
-      it dominated the popup; "way too big" was the verdict.
-    * ``smblock`` (current) — solid block-drawing glyphs (▖ ▌ ▞ ▘),
-      bold without being thick-for-its-own-sake, no decorative
-      shading, and only 4 rows × 14 cells so the popup stays a
-      popup rather than a full-window status display.
-
-    No colon: smblock's native colon sat too low against the digit
-    caps; lifting it one row sat too high; splitting the dots with
-    half-blocks centered them but still didn't read cleanly. After
-    three iterations on a single glyph the user called it — drop
-    the colon entirely and let a single-cell space between hours
-    and minutes do the visual separating. ``HH MM`` reads as a
-    time without ambiguity (no other 4-digit-with-gap format is
-    common in this context) and the script gets simpler in the
-    bargain.
-
-    No leading/trailing-blank-row trim is needed for smblock — its
-    output is fully populated, unlike bigascii12's tall fixed-cell
-    rendering. If you ever swap to a font with empty padding rows,
-    re-introduce the trim loops the bigascii12 attempt used.
-    """
+    'Compact bold ASCII clock for the current ``HH MM`` via ``toilet -f smblock``.'
     # `%H %M` over `%H:%M` so the rendered glyph contains a literal
     # space between hours and minutes; smblock renders that space
     # as a 1-cell-wide blank column, giving "12 34" as `HH (gap)
@@ -124,21 +79,7 @@ def get_clock() -> str:
 
 
 def get_network() -> str:
-    """Return ``wifi: <ssid>``, ``ethernet``, or ``offline``.
-
-    Wifi is detected via ``iwgetid -r`` (returns the associated SSID, or
-    empty if not associated). Ethernet detection uses ``ip -br link
-    show`` and matches any interface in state UP whose name starts with
-    a wired prefix:
-
-      * ``en*``  — systemd predictable names (enp0s3, eno1, enx<mac>)
-      * ``eth*`` — legacy kernel naming (eth0)
-      * ``em*``  — biosdevname (em0, em1)
-
-    The previous regex only covered ``enp/eth/eno`` and silently reported
-    "offline" on USB ethernet adapters (``enx*``), which was the visible
-    bug behind "the panel doesn't know I'm online".
-    """
+    'Return ``wifi: <ssid>``, ``ethernet``, or ``offline``.'
     wifi = run(["iwgetid", "-r"]).strip()
     if wifi:
         return f"wifi: {trunc(wifi, SSID_MAX)}"
@@ -156,47 +97,7 @@ def get_network() -> str:
 
 
 def get_power() -> str:
-    """Return a power status line.
-
-    Every line uses the ``power:`` prefix (the user prefers a single
-    consistent label; the previous mix of ``battery:`` and ``power:``
-    depending on whether a battery was present was inconsistent). The
-    body of the line then describes the current state.
-
-    Possible outputs:
-
-      * ``power: ac``                        — no battery present
-                                               (desktop / docked).
-      * ``power: NN% charging``              — on AC and charging up.
-      * ``power: NN% (ac)``                  — on AC, full enough that
-                                               the firmware stopped
-                                               charging the cell ("Not
-                                               charging" status, common
-                                               on ThinkPads with a
-                                               charge-stop threshold).
-      * ``power: full, connected``           — battery reports
-                                               ``Full`` while AC is
-                                               still plugged in. The
-                                               user picked this
-                                               compact wording after
-                                               iterating from "full
-                                               and connected to
-                                               power" → "full
-                                               connected to power" →
-                                               this; "full," conveys
-                                               charged, "connected"
-                                               conveys still-on-mains,
-                                               and the comma keeps
-                                               the two facts visually
-                                               distinct.
-      * ``power: NN%``                       — discharging, or any
-                                               other state we don't
-                                               have a special label
-                                               for.
-
-    Sourced from ``/sys/class/power_supply/BAT0`` rather than upower so
-    this works on minimal installs without the upower daemon.
-    """
+    'Return a power status line.'
     bat = Path("/sys/class/power_supply/BAT0")
     if not bat.exists():
         return "power: ac"

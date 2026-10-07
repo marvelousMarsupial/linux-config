@@ -1,116 +1,28 @@
 #!/usr/bin/env bash
-# sway-session — bring up the systemd user session that hosts sway-
-# integrated services (kanshi, etc.).
-#
-# WHAT THIS DOES
-# --------------
-# 1. Sets and exports the canonical XDG session env vars (DESKTOP /
-#    SESSION_DESKTOP / SESSION_TYPE) so xdg-desktop-portal,
-#    xdg-autostart, and any GUI app that branches on session type
-#    sees the same answer regardless of how sway was launched (TTY
-#    `sway`, getty `sway`, greetd, etc.).
-#
-# 2. Pushes a curated set of compositor variables (DISPLAY,
-#    WAYLAND_DISPLAY, SWAYSOCK, ...) into BOTH the dbus activation
-#    environment (`dbus-update-activation-environment --systemd ...`)
-#    and the systemd user manager environment
-#    (`systemctl --user import-environment ...`). Without that,
-#    services started by the user systemd manager can't find sway's
-#    IPC socket or its wayland display, and applications launched via
-#    dbus activation (xdg-desktop-portal screenshare/screencast,
-#    notification daemons spawned from a .desktop file) come up
-#    pointing at the wrong (or missing) display.
-#
-# 3. Resets failed user units. After a previous session crashed or
-#    was force-stopped, units can be in a failed state that blocks
-#    re-activation; `reset-failed` clears that and lets a fresh start
-#    proceed cleanly.
-#
-# 4. Starts `sway-session.target`. That target `BindsTo=graphical-
-#    session.target`, so it pulls in BOTH our sway-specific units
-#    (kanshi.service, ...) AND any portable wayland units that use
-#    `WantedBy=graphical-session.target` from upstream packages.
-#
-# WHY THIS REPLACES THE OLD `exec_always $bin/kanshi-restart` FLOW
-# ---------------------------------------------------------------
-# The old flow had kanshi started directly by sway via `exec_always`,
-# which fires WHILE sway is bringing up outputs and wiring its IPC.
-# That triggered the documented kanshi 1.7.0 subscribe-before-ready
-# wedge: kanshi connects to wlr-output-management before sway has
-# announced all outputs, the subscription ends up dead, and the
-# session boots into the "fuzzel popups render off-screen, layout
-# is wrong" failure mode the user kept reporting.
-#
-# Pushing kanshi behind a systemd unit + session target lets us make
-# the ordering explicit: kanshi.service has
-# `After=graphical-session.target`, sway-session.target
-# `BindsTo=graphical-session.target`, and this script doesn't start
-# the target until sway-IPC has been imported. systemd refuses to
-# start kanshi.service until its dependencies are up, so the race is
-# closed at the dependency-graph level rather than papered over with
-# bash retries.
-#
-# This script is modeled on alebastr/sway-systemd's session.sh
-# (https://github.com/alebastr/sway-systemd) but trimmed to just the
-# pieces this setup uses.
-
+# Import the compositor environment and start its systemd user target.
 set -euo pipefail
 
-# ---- 1. Canonical XDG session vars ------------------------------------
-# Always set these to known values — relying on the login session to
-# have them right is fragile because the value depends on how sway
-# was launched (login manager / TTY / nested sway / ...). Setting
-# them unconditionally here means downstream code can trust them.
 export XDG_CURRENT_DESKTOP=sway
 export XDG_SESSION_DESKTOP="${XDG_SESSION_DESKTOP:-sway}"
 export XDG_SESSION_TYPE=wayland
 
-# ---- 2. Variables to propagate to dbus + systemd ---------------------
-# Curated list rather than `--all` because:
-#   * `--all` is being phased out upstream (systemd/systemd#18137)
-#     for security reasons (unbounded environment leakage)
-#   * we know exactly which vars our services need; an explicit list
-#     documents that contract and keeps unrelated env churn out of
-#     the user manager.
-# DESKTOP_SESSION isn't always set by all login managers, but it's
-# harmless to import-environment a missing var (systemd just skips
-# it) and including it covers the case where a login manager DID
-# set it.
+# Explicit imports avoid leaking unrelated shell variables to user services.
 VARS="DESKTOP_SESSION XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE"
-VARS="$VARS DISPLAY WAYLAND_DISPLAY SWAYSOCK"
-VARS="$VARS XCURSOR_THEME XCURSOR_SIZE"
-
+VARS="$VARS DISPLAY WAYLAND_DISPLAY SWAYSOCK XCURSOR_THEME XCURSOR_SIZE"
 SESSION_TARGET="sway-session.target"
 
-# ---- 3. Bail if a session is already active --------------------------
-# Avoid clobbering a parallel sway session's variables. The systemctl
-# is-active check is `--quiet` (no stdout) but we still gate on
-# return code; it returns 0 only when the target is active.
+# Do not overwrite another active session's environment.
 if systemctl --user --quiet is-active "$SESSION_TARGET"; then
     echo "sway-session: $SESSION_TARGET already active — skipping" >&2
     exit 0
 fi
 
-# ---- 4. Push variables into dbus + systemd ---------------------------
-# dbus-update-activation-environment is shipped by dbus itself;
-# `command -v` lets us tolerate stripped-down environments (some
-# containers don't have the helper) without failing the whole
-# script — the systemctl import below is the load-bearing part.
 if command -v dbus-update-activation-environment >/dev/null 2>&1; then
-    # shellcheck disable=SC2086 # intentional word splitting for VARS
+    # shellcheck disable=SC2086 # intentional splitting of variable names
     dbus-update-activation-environment --systemd $VARS
 fi
-
-# Reset failed user units before importing/starting so a leftover
-# failed kanshi.service from a prior crash doesn't block a clean
-# start now.
 systemctl --user reset-failed
-
-# shellcheck disable=SC2086 # intentional word splitting for VARS
+# shellcheck disable=SC2086 # intentional splitting of variable names
 systemctl --user import-environment $VARS
-
-# ---- 5. Start the session target -------------------------------------
-# This pulls in every WantedBy=sway-session.target unit, in our case
-# kanshi.service. systemctl returns when the target's transitive
-# dependencies are active (or have failed); we don't wait further.
+# kanshi is started through the target after its session dependencies.
 systemctl --user start "$SESSION_TARGET"

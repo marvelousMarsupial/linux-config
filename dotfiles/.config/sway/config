@@ -48,40 +48,13 @@ output * bg $base00 solid_color
 # APPEARANCE (minimal)
 # ===========================================
 
-# Whitespace between tiled windows (inner) and between the outermost
-# windows and the screen edge (outer).
-#
-# Sway adds the outer value ON TOP of the inner value when computing
-# the edge-to-window distance (sway(5): "Outer gaps are added to the
-# inner gaps"). So `gaps inner 3` + `gaps outer 3` would render as
-# 3 px between adjacent tiled windows but 6 px from the screen edge
-# to the outermost window — the screen-edge stripe ends up visibly
-# twice as wide as the between-window stripe, which reads as the
-# layout floating in a frame rather than tiling cleanly to the edge.
-#
-# Setting outer to 0 makes the effective edge gap equal to the
-# inner gap (0 + 3 = 3 px), so every visible whitespace stripe in
-# the layout — between windows AND between the outermost window
-# and the screen edge — is the same 3 px.
-gaps inner 3
+# Equal 6px gutters at screen edges and between windows.
+# Sway adds outer gaps to inner gaps, so outer stays zero.
+font pango:CaskaydiaCove Nerd Font 11
+gaps inner 6
 gaps outer 0
-
-# Window border thickness (the focus-outline drawn by sway around
-# the focused container). A 1px outline is hard to spot at a glance
-# — easy to lose track of which window will receive a keystroke
-# when more than one is visible. 3px is wide enough to be
-# unambiguously visible without eating noticeable screen real
-# estate. The `for_window [app_id="keybinds"] ... border pixel 3`
-# rule lower in the file already used 3 — the default now matches
-# so floating popups and tiled windows look consistent.
-default_border pixel 3
-default_floating_border pixel 3
-
-# Hide borders when only one window (disabled - may not work on all sway versions)
-# smart_borders on
-
-# Hide gaps when only one window
-# smart_gaps on
+default_border pixel 2
+default_floating_border pixel 2
 
 # ===========================================
 # INPUT
@@ -232,18 +205,7 @@ bindsym $mod+Return exec $term
 # Launcher (Space is easy to hit)
 bindsym $mod+Space exec $menu
 
-# Browser. `$bin/zen` is the wrapper at ~/.local/bin/zen that execs the
-# tarball-installed launcher at ~/.local/zen/zen with MOZ_ENABLE_WAYLAND=1.
-# (Was previously `flatpak run app.zen_browser.zen --ozone-platform-hint=auto`
-# — see the desktop role's `zen-browser` Download for the migration.)
-#
-# We spell the path in full via `$bin/...` instead of bare `zen` for the
-# same reason every other dotfile-script bindsym in this file does:
-# sway's `exec` shells out via `/bin/sh -c` against whatever PATH the
-# sway process inherited at launch, which on a headless / non-login
-# session can omit `~/.local/bin` entirely. `$bin` is pinned absolute
-# (`/home/august/.local/bin`) so the keybind works regardless of how
-# sway got started.
+# Browser installed separately at ~/.local/zen/zen.
 bindsym --to-code $mod+b exec $bin/zen
 
 # Notes - new vim note (foot+nvim with timestamp filename)
@@ -365,7 +327,7 @@ for_window [title="File Operation Progress"] floating enable
 for_window [app_id="btop"] floating enable, resize set 900 600
 
 # Keybindings help popup
-for_window [app_id="keybinds"] floating enable, resize set 760 720, border pixel 3
+for_window [app_id="keybinds"] floating enable, resize set 760 720, border pixel 2
 
 
 # Notes scratchpad (floating, sticky, small window)

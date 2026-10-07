@@ -4,7 +4,7 @@
 # found" because Debian's default PATH for non-root users is bare bones.
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/sbin:/bin"
 
-# Auto-start Sway on tty1 (desktop role only)
+# Auto-start Sway on tty1
 if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" = "1" ] && command -v sway >/dev/null; then
   exec sway
 fi
@@ -22,7 +22,22 @@ export GPG_TTY=$(tty)
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 # D-Bus session (for headless sway)
-[[ -f "$XDG_RUNTIME_DIR/dbus-env" ]] && source "$XDG_RUNTIME_DIR/dbus-env"
+# Import only the address; runtime files are data, never shell code.
+if [[ -f "$XDG_RUNTIME_DIR/dbus-env" && -O "$XDG_RUNTIME_DIR/dbus-env" && ! -L "$XDG_RUNTIME_DIR/dbus-env" ]]; then
+  while IFS= read -r _dbus_line; do
+    if [[ "$_dbus_line" == 'export DBUS_SESSION_BUS_ADDRESS='* ]]; then
+      _dbus_address="${_dbus_line#export DBUS_SESSION_BUS_ADDRESS=}"
+      _dbus_address="${_dbus_address#\"}"
+      _dbus_address="${_dbus_address%\"}"
+      _dbus_address="${_dbus_address#\'}"
+      _dbus_address="${_dbus_address%\'}"
+      if [[ "$_dbus_address" == unix:* && "$_dbus_address" != *'$'* && "$_dbus_address" != *'`'* ]]; then
+        export DBUS_SESSION_BUS_ADDRESS="$_dbus_address"
+      fi
+    fi
+  done < "$XDG_RUNTIME_DIR/dbus-env"
+  unset _dbus_line _dbus_address
+fi
 
 # Plugins
 source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh

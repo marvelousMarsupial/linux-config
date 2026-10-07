@@ -38,10 +38,10 @@ _ar_hint() {
     local name="$1" exp="$2"
 
     # 1. Inline terminal hint (dim gray)
-    print -P "${_AR_DIM}  ↳ ${name}${_AR_RESET}" >&2
+    print -r -- "${_AR_DIM}  ↳ ${name}${_AR_RESET}" >&2
 
     # 2. Corner notification (async, never blocks)
-    (notify-send -u low -t 1500 -a "alias" "↳ $name" "$exp" &) 2>/dev/null
+    (notify-send -u low -t 1500 -a "alias" "↳ $name" "Shortcut available" &) 2>/dev/null
 }
 
 # Check command for alias match

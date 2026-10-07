@@ -6,7 +6,7 @@
 #
 # Use a dollar sign for the prompt character.
 #
-# Glyphs assume a Nerd Font (CaskaydiaCove ships with the desktop role).
+# Glyphs use the separately installed CaskaydiaCove Nerd Font.
 # Colors come from the active terminal palette — base16 theme drives foot's
 # ANSI colors and starship inherits them.
 
@@ -45,17 +45,11 @@ truncation_length = 3
 truncate_to_repo = true
 style = "bold cyan"
 format = "[$path]($style)[$read_only]($read_only_style) "
-read_only = " "
+read_only = " ro"
 read_only_style = "red"
 
-[directory.substitutions]
-"~/linux-config" = " linux-config"
-"~/vault" = " vault"
-"~/Documents" = " Documents"
-"~/Downloads" = " Downloads"
-
 [git_branch]
-symbol = " "
+symbol = "git:"
 style = "bold purple"
 format = "[$symbol$branch]($style) "
 
@@ -74,17 +68,17 @@ renamed = "»${count}"
 deleted = "✘${count}"
 
 [python]
-symbol = " "
+symbol = "py "
 style = "yellow"
 format = "[${symbol}${pyenv_prefix}(${version} )(\\($virtualenv\\) )]($style)"
 
 [nodejs]
-symbol = " "
+symbol = "js "
 style = "green"
 format = "[$symbol($version )]($style)"
 
 [rust]
-symbol = " "
+symbol = "rs "
 style = "red"
 format = "[$symbol($version )]($style)"
 
@@ -94,4 +88,4 @@ disabled = true  # noisy in any repo with a Cargo.toml/package.json
 [cmd_duration]
 min_time = 2_000
 style = "yellow"
-format = "[took $duration]($style) "
+format = "[· $duration]($style) "

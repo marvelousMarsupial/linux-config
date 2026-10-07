@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Copy user configs with backups. Does not install packages or change services."""
 import argparse
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 import shutil
@@ -10,6 +11,8 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--dry-run', action='store_true')
 parser.add_argument('--home', type=Path, default=Path.home(), help='Destination home directory')
 args = parser.parse_args()
+# New directories and backups must remain private even with a shared umask.
+os.umask(0o077)
 repo = Path(__file__).resolve().parent.parent
 home = args.home.expanduser().resolve()
 backup = home / '.local/state/linux-config/backups' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
@@ -19,6 +22,11 @@ protected = {'.config/kanshi/config', '.config/nvim/lazy-lock.json',
              '.config/foot/colors.ini', '.config/sway/colors', '.config/fuzzel/colors.ini',
              '.config/gtk-3.0/gtk.css', '.config/gtk-4.0/gtk.css'}
 count = 0
+if not backup.parent.resolve().is_relative_to(home):
+    raise SystemExit(f"Refusing backup path outside destination home: {backup.parent}")
+if not args.dry_run:
+    backup.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    backup.parent.chmod(0o700)
 for source in sorted((repo / 'dotfiles').rglob('*')):
     if '__pycache__' in source.parts or source.suffix == '.pyc' or not source.is_file():
         continue
@@ -53,7 +61,7 @@ for source in sorted((repo / 'dotfiles').rglob('*')):
         staged.unlink(missing_ok=True)
 # Remove only named files from retired repo integrations, with the same backups.
 for rel in ('.config/nvim/lua/plugins/obsidian.lua', '.config/theme/templates/obsidian.css.j2',
-            '.local/bin/vm-menu', '.local/bin/vpn', '.tmux.conf', '.local/bin/tmux-keys',
+            '.local/bin/vm-menu', '.local/bin/vpn', '.config/sway/wallpaper', '.tmux.conf', '.local/bin/tmux-keys',
             '.local/bin/dictate', '.local/bin/whisper-cli', '.local/bin/whisper-server',
             '.config/systemd/user/whisper-server.service',
             '.config/tmux/colors.conf', '.config/theme/templates/tmux-colors.conf.j2'):

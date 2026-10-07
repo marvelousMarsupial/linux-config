@@ -1,6 +1,7 @@
 #!/bin/bash
 # Install a lightweight editor; development tools require --dev-tools.
 set -euo pipefail
+umask 077
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 dev_tools=false
 skip_apt=false
@@ -33,9 +34,22 @@ if ! command -v nvim >/dev/null || ! nvim --headless -u NONE '+lua if vim.fn.has
     esac
     nvim_version=${NVIM_VERSION:-v0.12.2}
     [[ "$nvim_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid NVIM_VERSION" >&2; exit 1; }
+    # Digests pinned from the official release assets; never execute unchecked downloads.
+    nvim_sha256=${NVIM_SHA256:-}
+    if [[ -z "$nvim_sha256" && "$nvim_version" == v0.12.2 ]]; then
+        case "$nvim_arch" in
+            x86_64) nvim_sha256=31cf85945cb600d96cdf69f88bc68bec814acbff50863c5546adef3a1bcef260 ;;
+            arm64) nvim_sha256=f697d4e4582b6e4b5c3c26e76e06ce26efa08ba1768e03fd2733fcc422bb0490 ;;
+        esac
+    fi
+    [[ "$nvim_sha256" =~ ^[[:xdigit:]]{64}$ ]] || { echo "Set NVIM_SHA256 to a verified SHA-256 digest for this release." >&2; exit 1; }
     download_dir=$(mktemp -d)
     trap 'rm -rf -- "$download_dir"' EXIT
-    curl --fail --location --retry 3 "https://github.com/neovim/neovim/releases/download/$nvim_version/nvim-linux-$nvim_arch.tar.gz" -o "$download_dir/nvim.tar.gz"
+    curl --proto '=https' --tlsv1.2 --fail --location --retry 3 "https://github.com/neovim/neovim/releases/download/$nvim_version/nvim-linux-$nvim_arch.tar.gz" -o "$download_dir/nvim.tar.gz"
+    printf '%s  %s\n' "$nvim_sha256" "$download_dir/nvim.tar.gz" | sha256sum --check --status || {
+        echo 'Neovim download failed checksum verification; nothing installed.' >&2
+        exit 1
+    }
     mkdir -p "$download_dir/nvim"
     tar -xzf "$download_dir/nvim.tar.gz" -C "$download_dir/nvim" --strip-components=1
     "$download_dir/nvim/bin/nvim" --headless -u NONE '+lua assert(vim.fn.has("nvim-0.12") == 1)' +qa

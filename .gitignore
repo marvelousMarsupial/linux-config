@@ -1,6 +1,3 @@
-target/
 __pycache__/
 *.pyc
-/.config/
-/.local/
 dotfiles/.config/sway/local.conf

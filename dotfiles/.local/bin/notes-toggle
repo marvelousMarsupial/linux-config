@@ -3,6 +3,8 @@
 set -euo pipefail
 vault="$HOME/vault"
 tree=$(swaymsg -t get_tree) || exit 1
+# An IPC failure must not silently create a new note.
+jq -e 'type == "object"' <<< "$tree" >/dev/null || exit 1
 if jq -e '.. | objects | select(.app_id? == "notes")' <<< "$tree" >/dev/null; then
     exec swaymsg '[app_id="notes"] focus'
 fi

@@ -19,8 +19,8 @@ system can see (mounted *and* unmounted). Inside the picker:
 | `q` / `Esc`        | Close the picker                      |
 
 Backed by `udisksctl` (mount/unmount/eject), `lsblk` (enumerate devices),
-and `eject` — all already pulled in by the desktop role's
-`udiskie` / `udisks2` packages, so no extra install is needed.
+and `eject`. The package list includes udiskie and its storage dependencies.
+Verify these commands are available when testing removable media.
 
 ## Where it's bound
 
@@ -42,9 +42,8 @@ curl -fsSL https://raw.githubusercontent.com/yazi-rs/plugins/main/mount.yazi/mai
 ./scripts/install              # copy the updated plugin
 ```
 
-If the API ever changes incompatibly the embed-test
-`embedded_dotfiles_has_core_files` will keep catching missing files;
-runtime breakage would surface as a yazi error popup when pressing `M`.
+Review upstream changes before replacing the vendored file. Test the picker
+interactively after updating; syntax checks cannot certify Yazi API compatibility.
 
 ## License
 

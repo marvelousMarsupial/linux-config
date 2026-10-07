@@ -54,7 +54,7 @@ alias dud='du -d 1 -h'
 alias duf='du -sh *'
 
 # Network
-alias myip='curl -s ifconfig.me'
+alias myip='curl --fail --silent --show-error --max-time 10 https://ifconfig.me'
 alias ping='ping -c 5'
 alias listening='ss -tlnp'
 alias connections='ss -tnp'
@@ -73,8 +73,8 @@ alias jce='journalctl -xe'
 # Quick tools
 alias v='nvim'
 # y defined as function in .zshrc (cd's to dir on exit)
-alias weather='curl wttr.in'
-alias serve='python3 -m http.server'
+alias weather='curl --fail --max-time 10 https://wttr.in'
+alias serve='python3 -m http.server --bind 127.0.0.1'
 alias please='sudo $(fc -ln -1)'
 alias ag='alias | grep'
 alias fd='fdfind'
@@ -91,9 +91,8 @@ alias fd='fdfind'
 # images, prod boxes you don't provision) don't have it. SSHing
 # from foot then lands you in a session whose TERM the remote
 # ncurses library doesn't know, and TUI apps fall back to
-# broken-looking rendering. Configured servers already have
-# ncurses-term in the `server` role; this helper covers everything
-# else.
+# broken-looking rendering. Install ncurses-term on machines you manage; this helper covers
+# other remotes.
 #
 # Usage: fix me@vps.example.com
 #
@@ -103,11 +102,11 @@ alias fd='fdfind'
 # the remote to compile it into the user's per-account terminfo
 # directory. No sudo required on the remote.
 fix() {
-  if [[ -z "$1" ]]; then
+  if [[ "$#" != 1 || -z "$1" || "$1" == -* ]]; then
     echo "usage: fix <user@host>" >&2
     return 1
   fi
-  infocmp -x foot | ssh "$1" 'mkdir -p ~/.terminfo && tic -x -o ~/.terminfo /dev/stdin'
+  infocmp -x foot | ssh -- "$1" 'mkdir -p ~/.terminfo && tic -x -o ~/.terminfo /dev/stdin'
 }
 
 # History & Config
@@ -168,12 +167,5 @@ alias -s py='nvim'
 alias -s lua='nvim'
 alias -s sh='nvim'
 
-# BEGIN DEV ALIASES
-alias coder='coder-start'
-alias jupyter='jupyter-start'
+# Git terminal UI
 alias lg='lazygit'
-# END DEV ALIASES
-# BEGIN CLOUDBEAVER ALIASES
-alias cloudbeaver='cloudbeaver-start'
-alias dbeaver='cloudbeaver-start'
-# END CLOUDBEAVER ALIASES

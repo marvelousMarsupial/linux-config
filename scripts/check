@@ -13,6 +13,8 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--full", action="store_true", help="Run offline integration tests too")
 args = parser.parse_args()
 repo = Path(__file__).resolve().parent.parent
+for p in (repo / 'tests').rglob('*.py'):
+    ast.parse(p.read_text(), filename=str(p))
 for p in (repo / 'dotfiles').rglob('*.toml'):
     tomllib.loads(p.read_text())
 for p in [*(repo / 'dotfiles/.local/bin').iterdir(), *(repo / 'scripts').iterdir()]:
@@ -49,4 +51,4 @@ with tempfile.TemporaryDirectory() as temporary:
 print('Script syntax, TOML, and all six theme renders passed.')
 
 if args.full:
-    subprocess.run(['/usr/bin/python3', '-m', 'unittest', 'discover', '-s', str(repo / 'tests'), '-v'], check=True)
+    subprocess.run(['/usr/bin/python3', '-B', '-m', 'unittest', 'discover', '-s', str(repo / 'tests'), '-v'], check=True)

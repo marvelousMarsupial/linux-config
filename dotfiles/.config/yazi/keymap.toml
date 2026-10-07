@@ -22,11 +22,6 @@ prepend_keymap = [
     # yazi-rs/plugins, see that directory's README).
     { on = "M", run = "plugin mount", desc = "Mount picker (USB / drives)" },
 
-    # `gm` ("Goto Media") jumps yazi's cwd to /run/media/august, where
-    # udiskie auto-mounts removable drives. Path is hardcoded because
-    # the keymap.toml format doesn't expand $USER, and this whole repo
-    # is tied to user `august` anyway (see CLAUDE.md). If you ever fork
-    # this for another user, change this path or replace it with a
-    # plugin-based `cd` that resolves $USER at runtime.
+    # Personal mount location; change this path when using another account.
     { on = ["g", "m"], run = "cd /run/media/august", desc = "Go to mounted media" },
 ]

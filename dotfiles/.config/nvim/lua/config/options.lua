@@ -23,6 +23,11 @@ opt.signcolumn = "yes"
 opt.scrolloff = 8
 opt.sidescrolloff = 8
 opt.cursorline = false
+opt.winborder = "rounded"
+opt.pumheight = 10
+opt.pumblend = 0
+opt.winblend = 0
+opt.fillchars:append({ eob = " " })
 
 -- Behavior
 opt.splitright = true
@@ -31,6 +36,9 @@ opt.wrap = false
 opt.mouse = "a"
 
 -- Files
+-- Opening a file must not load project-local editor commands or modelines.
+opt.exrc = false
+opt.modeline = false
 opt.undofile = true
 opt.swapfile = false
 opt.backup = false
