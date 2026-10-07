@@ -1,0 +1,10 @@
+[Unit]
+Description=Keep floating windows visible during fullscreen use
+PartOf=sway-session.target
+After=sway-session-monitor.service
+
+[Service]
+Type=exec
+ExecStart=%h/.local/bin/sway-popup-guard
+Restart=on-failure
+RestartSec=2

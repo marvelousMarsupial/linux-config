@@ -9,6 +9,7 @@ import re
 import struct
 import subprocess
 import zlib
+import shutil
 
 parser = argparse.ArgumentParser(description=__doc__)
 styles = ('woven', 'linen', 'frost', 'paper', 'brushed', 'grid', 'dots')
@@ -112,6 +113,11 @@ temporary.replace(path)
 if args.output:
     print(f'{style}: {path}')
     raise SystemExit(0)
+# Sway hides the desktop background during fullscreen. Zen can paint the
+# same local image behind its chrome in that state, leaving web pages opaque.
+for chrome in (home / '.zen').glob('*/chrome'):
+    if chrome.parent.name != '*' and chrome.is_dir():
+        shutil.copyfile(path, chrome / 'glass-wallpaper.png')
 selection.parent.mkdir(parents=True, exist_ok=True)
 selection.write_text(style + '\n')
 env = dict(os.environ)

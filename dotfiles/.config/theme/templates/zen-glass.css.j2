@@ -1,6 +1,7 @@
 /* {{ scheme }} - generated desktop palette for Zen's glass chrome. */
 @-moz-document url("chrome://browser/content/browser.xhtml") {
   :root {
+    --glass-wallpaper-size: {{ "auto" if wallpaper_tiled else "cover" }};
     --glass-background-rgb: {{ base00[0:2]|int(base=16) }}, {{ base00[2:4]|int(base=16) }}, {{ base00[4:6]|int(base=16) }};
     --glass-foreground-rgb: {{ base05[0:2]|int(base=16) }}, {{ base05[2:4]|int(base=16) }}, {{ base05[4:6]|int(base=16) }};
     --glass-text: #{{ base05 }};

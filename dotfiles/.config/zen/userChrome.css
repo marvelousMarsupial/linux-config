@@ -39,6 +39,15 @@
     background: transparent !important;
   }
 
+  /* Sway omits its wallpaper in native fullscreen. Paint a local replica
+     only there so the chrome retains its glass appearance. */
+  #main-window[sizemode="fullscreen"] {
+    background-color: rgb(var(--glass-background-rgb, 30, 32, 48)) !important;
+    background-image: url("glass-wallpaper.png") !important;
+    background-repeat: repeat !important;
+    background-size: var(--glass-wallpaper-size, auto) !important;
+  }
+
   #navigator-toolbox {
     color: var(--glass-text, #c8d3f5) !important;
     border: none !important;

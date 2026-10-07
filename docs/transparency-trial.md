@@ -82,3 +82,9 @@ Sources reviewed: [Zen preferences](https://docs.zen-browser.app/guides/about-co
 [Transparent Zen](https://github.com/sameerasw/zen-themes/tree/main/TransparentZen),
 [Natsumi sidebar CSS](https://github.com/Psychosoc1al/natsumi/blob/main/natsumi/modules/sidebars.css),
 and the installed `sway-output(5)` manual for tiling behavior.
+
+## Fullscreen behavior
+
+Zen uses a local wallpaper replica behind fullscreen chrome because Sway hides
+the desktop wallpaper in that state. Restart Zen after updating the CSS. See
+[floating windows and fullscreen](window-behavior.md) for stock popup behavior, limitations, and tests.

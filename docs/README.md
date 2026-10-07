@@ -7,6 +7,7 @@
 | [Installation](installation.md) | Packages, user config copies, optional system settings and libvirt setup. |
 | [Editor](editor.md) | Minimal Neovim setup, optional development tools and daily use. |
 | [Appearance](appearance.md) | Visual choices, shared palettes and applying colors. |
+| [Desktop status](desktop-status.md) | Accepted glass/fullscreen behavior, validation, and unfinished work. |
 | [Transparency trial](transparency-trial.md) | Shared glass switch and transparency experiment. |
 | [Scripts](scripts.md) | Current command inventory and responsibilities. |
 | [Testing](testing.md) | Automated coverage, commands and manual verification boundaries. |

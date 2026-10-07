@@ -41,7 +41,6 @@ ncurses-term
 network-manager
 nftables
 ovmf
-pass
 passt
 pipewire-pulse
 playerctl

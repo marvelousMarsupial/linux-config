@@ -28,5 +28,5 @@ BindsTo=graphical-session.target
 # environment imports, agent setup. We pull it in via Wants= rather
 # than Requires= so a missing pre-target unit doesn't fail the whole
 # session bring-up; After= guarantees ordering when it's present.
-Wants=graphical-session-pre.target
+Wants=graphical-session-pre.target sway-popup-guard.service
 After=graphical-session-pre.target
