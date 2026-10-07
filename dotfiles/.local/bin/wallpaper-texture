@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Render a subtle, static woven wallpaper using the current desktop palette."""
 import math
+import json
 import os
 from pathlib import Path
 import re
@@ -23,7 +24,19 @@ if not mode.exists() or mode.read_text().strip() != 'on':
         subprocess.run(['swaymsg', '-s', str(sockets[0]), f'output * bg #{match[1]} solid_color'], check=True, capture_output=True)
     print('Solid wallpaper')
     sys.exit(0)
+# Match the active display so fine threads stay sharp rather than being
+# softened by scaling a fixed-size image.
 width, height = 1600, 1000
+runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
+sockets = list(runtime.glob('sway-ipc.*.sock'))
+if sockets:
+    result = subprocess.run(['swaymsg', '-s', str(sockets[0]), '-t', 'get_outputs', '-r'],
+                            capture_output=True, text=True, timeout=3)
+    if result.returncode == 0:
+        outputs = [o for o in json.loads(result.stdout) if o.get('active') and o.get('current_mode')]
+        if outputs:
+            mode = max(outputs, key=lambda o: o['current_mode']['width'] * o['current_mode']['height'])['current_mode']
+            width, height = mode['width'], mode['height']
 rows = bytearray()
 for y in range(height):
     rows.append(0)  # PNG scanline filter: none.
@@ -31,8 +44,8 @@ for y in range(height):
         # Broad tonal variation and a fine woven pattern; no animation or
         # random per-frame noise, so remote desktops can cache the image.
         drift = 5 * math.sin(x / 170 + y / 260) + 3 * math.cos(y / 130)
-        weave = (3 if x % 12 < 2 else 0) + (2 if y % 12 < 2 else 0)
-        thread = 2 if (x + y) % 96 < 2 else 0
+        weave = (5 if x % 12 == 0 else 0) + (4 if y % 12 == 0 else 0)
+        thread = 3 if (x + y) % 96 == 0 else 0
         shade = round(drift + weave + thread)
         rows.extend(max(0, min(255, channel + shade)) for channel in base)
 
