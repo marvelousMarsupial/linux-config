@@ -1,100 +1,84 @@
-## Shared glass switch
+# Glass mode and wallpaper
 
-Use `glass-mode on`, `glass-mode off`, `glass-mode toggle`, or `glass-mode status`.
-**Super+Ctrl+G** toggles the same setting. Glass is currently enabled.
-Restart Zen and reopen terminals after switching; GTK applications may need reopening.
-The command leaves running applications open and preserves the current color palette.
+[Documentation index](README.md)
 
-State lives in `~/.config/theme/glass-mode`. Theme templates render solid or glass
-backgrounds from that state, so subsequent palette changes preserve the mode.
-Zen uses a managed import in userChrome.css and startup preferences in user.js;
-other custom CSS and preferences are retained. Real web pages remain opaque.
-Browser tint is 8%, floating sidebar tint 38%, and search overlay tint 24%.
-Desktop transparency has no compositor blur on standard Sway.
+## One switch
 
-The older `transparency-trial` command is a snapshot rollback utility, not the mode
-switch. Its original backups remain in `~/.local/state/linux-config/transparency-trial`.
-Do not use that rollback for routine toggling; later edits can conflict with it.
+`glass-mode on`, `glass-mode off`, `glass-mode toggle`, and `glass-mode status`
+control desktop and Zen glass together. **Super+Ctrl+G** toggles the same state.
+Restart Zen and reopen terminals after changing modes; reopen launchers and GTK
+applications as needed. Running applications stay open and the palette is retained.
+State is stored in `~/.config/theme/glass-mode`; no state file means glass is off.
 
-# Transparency experiment
+## Accepted appearance
 
-The optional `transparency-trial on` command enables a reversible desktop trial.
-It updates both repository sources and installed configs, saving exact originals
-under `~/.local/state/linux-config/transparency-trial/` before making changes.
-Run `transparency-trial status` to check whether it is enabled.
+- Zen chrome uses an 8% base00 tint. Floating sidebar tint is 38%; expanded
+  search tint is 24%, with browser-local blur. The resting search field has a
+  faint edge. Its outer container is clear to avoid a ghost pill when opened.
+- Foot uses an 8% base00 background in glass mode, matching Zen. Text remains
+  opaque. Glass off restores a solid base01 background.
+- Fuzzel launchers and the centered info panel use base00 with alpha `14`
+  (about 8%). Glass off restores solid base01. Text remains opaque.
+- Mako notification backgrounds and GTK backgrounds remain about 72% opaque.
+- Real web pages remain opaque. Only Zen's explicit empty-tab placeholder is
+  cleared. Full-window opacity stays at 1; the lock screen remains solid.
 
-- Zen's sidebar and toolbars use translucent tinted backgrounds with subtle
-  borders. Text, icons and website content remain fully opaque.
-- Sidebar backing outlines and the extra divider are removed. The collapsed
-  search field is clear; its expanded panel uses a translucent blurred fill.
-- Zen's explicit empty-tab placeholder is transparent. Only while
-  `zen-has-empty-tab=true`, its content-browser surface is hidden and its backing
-  cleared. Opening a real webpage restores the normal opaque content surface.
-- GTK window backgrounds, headers, menus and dialogs use translucent fills.
-  Application-specific themes may override some surfaces.
-- Foot backgrounds use 72% opacity for newly opened terminals.
-- Fuzzel launchers and pickers use 72% background opacity.
-- Mako notifications and status popups use 72% background opacity.
-- Theme templates are updated too, so switching palettes retains the experiment.
-- A static woven wallpaper adds subtle texture and tonal variation behind the
-  translucent surfaces. `wallpaper-texture` regenerates it from the current
-  palette; the Sway theme target runs this hook after palette changes.
+Standard Sway has no compositor backdrop blur. Zen can blur browser content
+behind its own overlays using the conditional Natsumi clip workaround. This
+is not desktop blur. Attribution is in `licenses/natsumi-MIT.txt`.
 
-Standard Sway provides transparency without background blur. The woven wallpaper
-makes the effect visible without animation. The desktop background and lock
-screen remain opaque. Undo restores the original solid wallpaper configuration;
-the generated PNG can remain on disk without affecting the desktop.
-The compositor keeps all application windows at full opacity. Zen uses
-`zen.widget.linux.transparency=true` and custom `userChrome.css`, while
-`browser.tabs.allow_transparent_browser=false` preserves normal web pages.
-The CSS source lives in `dotfiles/.config/zen/userChrome.css`; the trial copies
-it into the default installation profile identified by `profiles.ini`.
-Modern Zen paints workspace colors on `.zen-browser-generic-background`
-pseudo-elements. The trial overrides those layers directly, including the
-additional solid backing on `.zen-toolbar-background` in compact mode. Its
-18% tint is controlled by `--glass-tint`. Compact overlays request browser-local
-backdrop blur; this can blur website content behind a floating toolbar, but it
-cannot blur desktop content outside the browser on standard Sway.
-The compact overlay also adapts Natsumi's conditional webpage `clip-path`
-workaround so Firefox can sample page pixels for backdrop blur. It applies only
-while the floating sidebar or toolbar is visible. A local test on Zen 1.22.3b
-confirmed that stripes behind the floating sidebar blur while the rest of the
-page remains sharp and opaque. Natsumi's MIT notice is retained in
-`docs/licenses/natsumi-MIT.txt`.
-Close Zen before toggling the trial, then reopen it to load the configuration.
-Only the three managed browser preferences are restored on undo; unrelated
-browser preferences are preserved even after browsing during the trial.
+## Wallpaper styles
 
-Undo with:
+The accepted live selection is **dots**, on the Summer Dusk palette.
 
 ```sh
-transparency-trial off
+wallpaper-texture list
+wallpaper-texture dots
+wallpaper-texture grid
+wallpaper-texture next
+wallpaper-texture frost --output /tmp/frost-preview.png
 ```
 
-This restores original files and resets application window opacity to 1.
-Reopen terminals after enabling or disabling for their native background setting
-to change. The command refuses to overwrite files edited since the trial began;
-if a palette switch or another edit causes this, review the listed files and
-saved originals before restoring manually. Backups remain available after undo.
+Styles: `woven`, `linen`, `frost`, `paper`, `brushed`, `grid`, and `dots`.
+Selection is stored in `~/.config/theme/wallpaper-style`. With no selection,
+`woven` is used. Running the command without a style regenerates the current
+selection. A preview output does not change the selection or desktop.
+Theme application regenerates the wallpaper from base00 and preserves the style.
 
-References: [Sway opacity](https://man.archlinux.org/man/sway.5),
-[Foot colors](https://man.archlinux.org/man/foot.ini.5.en), and
-[Fuzzel RGBA colors](https://man.archlinux.org/man/fuzzel.ini.5).
-Zen's [advanced preferences](https://docs.zen-browser.app/guides/about-config-flags)
-document the separate browser UI and website transparency settings.
-See also [modern Zen selector changes](https://github.com/catppuccin/zen-browser/pull/61)
-and [SwayFX's compositor blur support](https://github.com/wlrfx/swayfx).
+Grid and dots use a seamless **120×120-pixel repeating tile**: cell spacing is
+24 pixels, with a stronger mark every five cells. Sway uses `tile`, so larger
+outputs show more cells rather than stretching them. Other textures use `fill`
+and render to the largest active output resolution.
 
-## Mod source review
+## Validation and pending hardware test
 
-[Transparent Zen](https://github.com/sameerasw/zen-themes/tree/main/TransparentZen)
-provides CSS plus preference controls for UI and website transparency, tint,
-animations and other changes. Its website transparency switches are unnecessary
-for this trial. Installing it would overlap the custom CSS rather than unlock
-compositor blur.
+Verified the generated tile size, repeated dot pixels, and generated Sway `tile`
+configuration on the current 1280×800 virtual display. Browser, terminal, and
+info popup were compared in screenshots. Source syntax and whitespace checks pass.
 
-[Natsumi's sidebar module](https://github.com/Psychosoc1al/natsumi/blob/main/natsumi/modules/sidebars.css)
-combines translucent fills, backdrop blur, borders and shadows with a conditional
-clip on webpage surfaces. The inspected fork is archived and targets Zen 1.8.1;
-the trial adapts only the small compositing workaround to current selectors,
-instead of installing the complete historical layout and animations.
+**Physical multi-monitor validation remains pending.** Keep the existing monitor
+configuration. On hardware, check the saved monitor layout, connect/disconnect,
+Sway reload, and palette/glass changes. Compare a smaller and larger monitor:
+both should show the same pattern spacing with more cells on the larger screen.
+Also check mixed output scaling and rotation; physical size on different-DPI
+panels has not been calibrated or verified.
+
+## Implementation and rollback
+
+Theme sources live in `dotfiles/.config/theme/`; Zen CSS lives in
+`dotfiles/.config/zen/userChrome.css`. The switch installs a managed local import
+and updates only the three appearance preferences in the default Zen profile.
+Web-page transparency stays disabled. Other CSS and preferences are retained.
+
+`transparency-trial` is an older exact-file snapshot rollback utility, not the
+routine mode switch. Its original backups remain in
+`~/.local/state/linux-config/transparency-trial`. Later config edits or palette
+changes can conflict with those snapshots. Use `glass-mode off` for normal use.
+
+See [the focused security review](glass-security-review.md) for privacy tradeoffs
+and existing clipboard/idle-lock findings.
+
+Sources reviewed: [Zen preferences](https://docs.zen-browser.app/guides/about-config-flags),
+[Transparent Zen](https://github.com/sameerasw/zen-themes/tree/main/TransparentZen),
+[Natsumi sidebar CSS](https://github.com/Psychosoc1al/natsumi/blob/main/natsumi/modules/sidebars.css),
+and the installed `sway-output(5)` manual for tiling behavior.

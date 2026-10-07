@@ -5,9 +5,9 @@
 The desktop uses the selected Base16 palette throughout. Summer Dusk remains the live selection; the other five palettes still render through the same templates.
 
 - Desktop: base00 background, equal 6px gutters, 2px borders. Accent color identifies the focused window; inactive outlines use a quiet surface color.
-- Foot: existing 11pt CaskaydiaCove font, centered 12x10px padding, opaque base01 surface and steady beam cursor.
+- Foot: existing 11pt CaskaydiaCove font, centered 12x10px padding, 8% base00 background in glass mode (solid base01 when off) and steady beam cursor.
 - Fuzzel: the same font family at 12pt, ten rows, 26px row height, 1px outline and 8px corners. Selection and search accents come from the palette.
-- Mako: matching typography, 14px padding, 1px outlines and opaque surfaces.
+- Mako: matching typography, 14px padding, 1px outlines and 72% background opacity in glass mode.
 - Neovim: rounded native popup borders, bounded completion menu, no filler tildes or accidental dashboard tabline. Prose wrapping is retained.
 - Yazi: pane proportions 1:3:4 give the preview more room.
 - Starship: two lines and a dollar prompt, readable git/language labels, normal path display.
@@ -40,3 +40,14 @@ Theme application renders every template before writing and runs configured
 application reload hooks. Existing Foot processes are never signaled; open a new terminal
 for terminal colors. Reload Sway and restart open editors to finish applying colors.
 An absent application may report that its reload is unavailable.
+
+## Glass and drafting-grid wallpaper
+
+The current glass setup uses a pin-dot wallpaper with matching 8% backgrounds
+for Zen chrome, Foot, and Fuzzel (including the info panel). Use **Super+Ctrl+G**
+or `glass-mode toggle`; restart Zen and reopen terminals afterward.
+`wallpaper-texture dots` and `wallpaper-texture grid` select fixed-spacing
+repeating patterns. Larger displays show more cells. Physical multi-monitor,
+mixed-scale, and rotation checks remain pending; existing monitor profiles are
+retained. See [glass mode and wallpaper](transparency-trial.md) for commands,
+settings, validation, and rollback details.
