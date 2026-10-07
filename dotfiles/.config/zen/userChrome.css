@@ -1,0 +1,171 @@
+/* Glass chrome only. Website rendering is controlled by the website.
+ * Compact overlay compositing workaround adapted from Natsumi Browser:
+ * https://github.com/Psychosoc1al/natsumi/blob/main/natsumi/modules/sidebars.css
+ * Copyright (c) 2024 Green (@greeeen-dev), MIT; see docs/licenses/natsumi-MIT.txt.
+ */
+@import "glass-palette.css";
+
+@-moz-document url("chrome://browser/content/browser.xhtml") {
+  :root {
+    --glass-tint: rgba(var(--glass-background-rgb, 30, 32, 48), 0.08);
+    --glass-edge: rgba(var(--glass-foreground-rgb, 200, 211, 245), 0.16);
+    --glass-overlay-tint: rgba(var(--glass-background-rgb, 30, 32, 48), 0.38);
+    --glass-search-tint: rgba(var(--glass-background-rgb, 30, 32, 48), 0.24);
+    --glass-blur: 14px;
+    --zen-themed-toolbar-bg-transparent: transparent !important;
+    --zen-navigator-toolbox-background: transparent !important;
+    --zen-main-browser-background: var(--glass-tint) !important;
+    --zen-main-browser-background-toolbar: var(--glass-tint) !important;
+    --zen-main-browser-background-old: var(--glass-tint) !important;
+    --zen-main-browser-background-toolbar-old: var(--glass-tint) !important;
+    --zen-background-opacity: 1 !important;
+    --toolbox-textcolor: var(--glass-text, #c8d3f5) !important;
+    --toolbar-color-scheme: dark !important;
+    --lwt-textcolor: var(--glass-text, #c8d3f5) !important;
+    --toolbar-color: var(--glass-text, #c8d3f5) !important;
+    --toolbarbutton-icon-fill: var(--glass-text, #c8d3f5) !important;
+    --tab-selected-textcolor: var(--glass-text, #c8d3f5) !important;
+    --urlbarView-highlight-background: rgba(var(--glass-foreground-rgb, 200, 211, 245), 0.12) !important;
+    --urlbarView-highlight-color: var(--glass-text, #c8d3f5) !important;
+    color-scheme: dark !important;
+  }
+
+  #main-window,
+  #zen-main-app-wrapper,
+  #navigator-toolbox,
+  #nav-bar,
+  #TabsToolbar,
+  #PersonalToolbar {
+    background: transparent !important;
+  }
+
+  #navigator-toolbox {
+    color: var(--glass-text, #c8d3f5) !important;
+    border: none !important;
+    outline: none !important;
+  }
+
+  /* Modern Zen writes workspace colors onto these elements, rather than
+     inheriting them from :root. Override the painted layers themselves. */
+  .zen-browser-generic-background {
+    --zen-main-browser-background: var(--glass-tint) !important;
+    --zen-main-browser-background-toolbar: var(--glass-tint) !important;
+    --zen-background-opacity: 1 !important;
+    background: transparent !important;
+  }
+
+  .zen-browser-generic-background::before {
+    background: none !important;
+  }
+
+  .zen-browser-generic-background::after {
+    background: var(--glass-tint) !important;
+    opacity: 1 !important;
+  }
+
+  /* Compact mode has an additional opaque backing. Its blur operates on
+     content inside Zen, e.g. a webpage behind the floating sidebar. */
+  .zen-toolbar-background {
+    background: transparent !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    outline: none !important;
+  }
+
+  .zen-toolbar-background::before,
+  .zen-toolbar-background::after {
+    border: none !important;
+    outline: none !important;
+  }
+
+  :root[zen-compact-mode="true"] #navigator-toolbox,
+  :root[zen-compact-mode="true"] #nav-bar {
+    background: var(--glass-overlay-tint) !important;
+    backdrop-filter: blur(var(--glass-blur)) saturate(110%) brightness(0.85) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18) !important;
+  }
+
+  :root[zen-compact-mode="true"] .zen-toolbar-background::after {
+    background: none !important;
+  }
+
+  /* Natsumi's blur workaround: clip only while an overlay is visible. This
+     changes composition, not the webpage background or its opacity. */
+  :root[zen-compact-mode="true"] #browser:has(
+    #navigator-toolbox:is([zen-has-hover], [zen-user-show], [has-popup-menu]),
+    #nav-bar:is([zen-has-hover], [zen-user-show], :focus-within)
+  ) #tabbrowser-tabpanels browser[type="content"] {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  }
+
+  /* Keep background transparency when the window loses focus. */
+  #zen-main-app-wrapper:-moz-window-inactive {
+    background: transparent !important;
+  }
+
+  .tab-background[selected],
+  .tabbrowser-tab:hover .tab-background {
+    background: rgba(var(--glass-foreground-rgb, 200, 211, 245), 0.10) !important;
+    box-shadow: inset 0 0 0 1px var(--glass-edge) !important;
+  }
+
+  #urlbar .urlbar-background,
+  #urlbar-background {
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  #urlbar[breakout-extend] .urlbar-background {
+    background: var(--glass-search-tint) !important;
+    backdrop-filter: blur(var(--glass-blur)) saturate(110%) brightness(0.85) !important;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15) !important;
+  }
+
+  :root:has(#urlbar[open], #urlbar[breakout-extend]) #tabbrowser-tabpanels browser[type="content"] {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  }
+
+  /* Zen's light-theme workspace styles otherwise leave dark labels on glass. */
+  #navigator-toolbox .zen-current-workspace-indicator-name,
+  #navigator-toolbox #tabs-newtab-button {
+    color: var(--glass-muted, #a8b1cf) !important;
+  }
+
+  #urlbar-input,
+  #urlbar .urlbarView,
+  #urlbar .urlbarView-title,
+  #urlbar .urlbarView-action {
+    color: var(--glass-text, #c8d3f5) !important;
+  }
+
+  #urlbar .urlbarView-url {
+    color: var(--glass-muted, #a8b1cf) !important;
+  }
+
+  #urlbar-input::placeholder {
+    color: var(--glass-muted, #a8b1cf) !important;
+    opacity: 1 !important;
+  }
+
+  /* Solid backing for every content surface, including split views. */
+  #tabbrowser-tabpanels .browserSidebarContainer,
+  browser[type="content"] {
+    background-color: Canvas !important;
+    opacity: 1 !important;
+  }
+
+  /* Zen's empty placeholder is chrome, not a webpage. Hide its opaque
+     browser surface only while Zen explicitly reports the empty state. */
+  :root[zen-has-empty-tab="true"] #tabbrowser-tabpanels .browserSidebarContainer,
+  :root[zen-has-empty-tab="true"] #tabbrowser-tabpanels .browserStack {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  :root[zen-has-empty-tab="true"] #tabbrowser-tabpanels browser[type="content"] {
+    visibility: hidden !important;
+  }
+}

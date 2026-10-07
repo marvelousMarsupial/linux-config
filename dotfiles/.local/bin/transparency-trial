@@ -1,0 +1,185 @@
+#!/usr/bin/python3
+"""Enable or undo the desktop transparency experiment, preserving existing edits."""
+import argparse
+import configparser
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('action', choices=('on', 'off', 'status'))
+parser.add_argument('--home', type=Path, default=Path.home())
+parser.add_argument('--repo', type=Path, default=Path.home() / 'linux-config')
+parser.add_argument('--no-refresh', action='store_true')
+args = parser.parse_args()
+home, repo = args.home.resolve(), args.repo.resolve()
+state = home / '.local/state/linux-config/transparency-trial'
+manifest = state / 'manifest.json'
+os.umask(0o077)
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+def zen_closed():
+    for proc in Path('/proc').glob('[0-9]*/comm'):
+        try:
+            if proc.read_text().strip() == 'zen':
+                raise SystemExit('Close Zen before toggling the trial so its saved preferences can be updated safely.')
+        except (OSError, PermissionError):
+            pass
+
+def replace_prefs(text, replacements):
+    for key, lines in replacements.items():
+        text = re.sub(r'(?m)^user_pref\("' + re.escape(key) + r'",.*\);\n?', '', text)
+        if lines:
+            text = text.rstrip('\n') + '\n' + lines + '\n'
+    return text
+
+def refresh(opacity):
+    env = dict(os.environ)
+    runtime = Path(env.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
+    sockets = list(runtime.glob('sway-ipc.*.sock'))
+    if not env.get('SWAYSOCK') and len(sockets) == 1:
+        env['SWAYSOCK'] = str(sockets[0])
+    texture = home / '.local/bin/wallpaper-texture'
+    if manifest.exists() and texture.exists():
+        result = subprocess.run([str(texture)], env=env, capture_output=True, text=True)
+        if result.returncode:
+            print(f'Wallpaper rendering failed: {result.stderr}')
+    if env.get('SWAYSOCK'):
+        for command in ('reload', f'[all] opacity {opacity}'):
+            result = subprocess.run(['swaymsg', command], env=env, capture_output=True, text=True)
+            if result.returncode or '"success": false' in result.stdout:
+                print(f'Sway refresh failed: {result.stdout} {result.stderr}')
+    else:
+        print('No Sway socket found; reload Sway in your desktop session.')
+    if shutil.which('makoctl'):
+        env.setdefault('DBUS_SESSION_BUS_ADDRESS', f'unix:path={runtime}/bus')
+        result = subprocess.run(['makoctl', 'reload'], env=env, capture_output=True, text=True)
+        if result.returncode:
+            print(f'Notification reload: {result.stderr.strip()}')
+
+if args.action == 'status':
+    print('Transparency trial is ' + ('on' if manifest.exists() else 'off'))
+elif args.action == 'off':
+    if not manifest.exists():
+        raise SystemExit('Transparency trial is already off.')
+    records = json.loads(manifest.read_text())
+    zen_closed()
+    # Refuse to overwrite changes made after enabling the trial.
+    conflicts = [r['path'] for r in records if r.get('kind') != 'prefs' and
+                 (not Path(r['path']).exists()
+                  or digest(Path(r['path']).read_bytes()) != r['trial_hash'])]
+    if conflicts:
+        raise SystemExit('Files changed since enabling; backups remain at ' + str(state)
+                         + '\nReview before restoring:\n' + '\n'.join(conflicts))
+    for record in records:
+        path = Path(record['path'])
+        if record.get('kind') == 'prefs':
+            path.write_text(replace_prefs(path.read_text(), record['original_prefs']))
+        elif record.get('existed', True):
+            path.write_bytes((state / record['backup']).read_bytes())
+            path.chmod(record['mode'])
+        else:
+            path.unlink()
+    manifest.unlink()
+    if not args.no_refresh:
+        refresh('1')
+    print('Previous configs restored. Reopen terminals for their previous background.')
+else:
+    if manifest.exists():
+        raise SystemExit('Transparency trial is already on.')
+    zen_closed()
+    changes = []
+    def add(path, transform, optional=False, kind=None, original_prefs=None):
+        if path.is_symlink():
+            raise SystemExit(f'Refusing to replace symlink: {path}')
+        if not path.is_file() and not optional:
+            raise SystemExit(f'Missing config: {path}')
+        existed = path.exists()
+        old = path.read_bytes() if existed else b''
+        new = transform(old.decode()).encode()
+        if old != new:
+            changes.append((path, old, new, path.stat().st_mode & 0o777 if existed else 0o600,
+                            existed, kind, original_prefs))
+
+    for root in (repo / 'dotfiles', home):
+        add(root / '.config/sway/config', lambda s: s.replace(
+            '# Solid background follows the active theme.\noutput * bg $base00 solid_color',
+            '# Static texture follows the active theme.\noutput * bg ~/.local/share/wallpapers/glass-texture.png fill $base00'))
+        add(root / '.config/theme/config.toml', lambda s: s.replace(
+            'output = "~/.config/sway/colors"\n',
+            'output = "~/.config/sway/colors"\nhook = "wallpaper-texture"\n').replace(
+            '# hook removed - swaymsg reload can close windows; colors apply on next sway reload',
+            '# Update the wallpaper directly without reloading Sway.'))
+
+    for root, templates in ((repo / 'dotfiles/.config/theme/templates', True),
+                            (home / '.config/theme/templates', True),
+                            (home / '.config', False)):
+        add(root / ('foot.ini.j2' if templates else 'foot/colors.ini'),
+            lambda s: s.replace('[colors]\n', '[colors]\nalpha=0.72\n', 1))
+        add(root / ('fuzzel.ini.j2' if templates else 'fuzzel/colors.ini'),
+            lambda s: re.sub(r'(?m)^(background=.+)ff$', r'\g<1>b8', s))
+        add(root / ('mako.j2' if templates else 'mako/config'),
+            lambda s: re.sub(r'(?m)^(background-color=#[0-9a-fA-F]{6}|background-color=#\{\{ base01 \}\})$',
+                             r'\g<1>b8', s))
+        # GTK windows and menus use translucent fills, never widget opacity.
+        for version in (3, 4):
+            target = root / (f'gtk{version}.css.j2' if templates else f'gtk-{version}.0/gtk.css')
+            def gtk(s):
+                if templates:
+                    color = 'rgba({{ base00[0:2]|int(base=16) }}, {{ base00[2:4]|int(base=16) }}, {{ base00[4:6]|int(base=16) }}, 0.72)'
+                else:
+                    match = re.search(r'background-color: #([0-9a-fA-F]{6})', s)
+                    if not match:
+                        raise SystemExit(f'Cannot identify GTK background in {target}')
+                    c = match.group(1)
+                    color = f'rgba({int(c[:2],16)}, {int(c[2:4],16)}, {int(c[4:],16)}, 0.72)'
+                return s + '\n/* Glass trial: backgrounds only, text stays opaque. */\n' + \
+                    'window, window.background, dialog, headerbar, .titlebar, menu, popover, popover > contents {\n' + \
+                    f'  background-image: none;\n  background-color: {color};\n' + \
+                    '  border-color: rgba(200, 211, 245, 0.20);\n}\n'
+            add(target, gtk)
+
+    profiles = configparser.ConfigParser()
+    profiles.read(home / '.zen/profiles.ini')
+    selected = next((profiles[s]['Default'] for s in profiles.sections()
+                     if s.startswith('Install') and profiles[s].get('Default')), None)
+    if not selected:
+        selected = next((profiles[s]['Path'] for s in profiles.sections()
+                         if s.startswith('Profile') and profiles[s].get('Default') == '1'), None)
+    if not selected:
+        raise SystemExit('No default Zen profile found in ~/.zen/profiles.ini')
+    profile = (home / '.zen' / selected).resolve()
+    if not profile.is_relative_to((home / '.zen').resolve()) or not profile.is_dir():
+        raise SystemExit(f'Invalid Zen profile: {profile}')
+    css = (repo / 'dotfiles/.config/zen/userChrome.css').read_text()
+    preferences = (repo / 'dotfiles/.config/zen/glass-user.js').read_text()
+    add(profile / 'chrome/userChrome.css', lambda s: s + '\n' + css, optional=True)
+    add(profile / 'user.js', lambda s: s + '\n' + preferences, optional=True)
+    prefs_path = profile / 'prefs.js'
+    prefs_text = prefs_path.read_text()
+    keys = re.findall(r'user_pref\("([^"]+)"', preferences)
+    original = {k: '\n'.join(re.findall(r'(?m)^user_pref\("' + re.escape(k) + r'",.*\);$', prefs_text)) for k in keys}
+    replacements = {k: re.search(r'(?m)^user_pref\("' + re.escape(k) + r'",.*\);$', preferences).group() for k in keys}
+    add(prefs_path, lambda s: replace_prefs(s, replacements), kind='prefs', original_prefs=original)
+    state.mkdir(parents=True, exist_ok=True)
+    records = []
+    for i, (path, old, new, mode, existed, kind, original_prefs) in enumerate(changes):
+        backup = f'{i}.original'
+        (state / backup).write_bytes(old)
+        records.append(dict(path=str(path), backup=backup, mode=mode, trial_hash=digest(new),
+                            existed=existed, kind=kind, original_prefs=original_prefs))
+    manifest.write_text(json.dumps(records, indent=2) + '\n')
+    for path, old, new, mode, existed, kind, original_prefs in changes:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(new)
+        path.chmod(mode)
+    if not args.no_refresh:
+        refresh('1')
+    print(f'Transparency enabled. Backups: {state}')
+    print('Reopen terminals for transparent backgrounds. Undo: transparency-trial off')

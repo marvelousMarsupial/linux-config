@@ -23,3 +23,9 @@ client.unfocused        $base02  $base00  $base04  $base02   $base02
 client.urgent           $base08  $base08  $base00  $base08   $base08
 client.placeholder      $base00  $base00  $base05  $base00   $base00
 client.background       $base00
+
+{% if glass_mode %}
+output * bg ~/.local/share/wallpapers/glass-texture.png fill $base00
+{% else %}
+output * bg $base00 solid_color
+{% endif %}

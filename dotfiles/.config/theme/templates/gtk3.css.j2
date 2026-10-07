@@ -58,3 +58,12 @@ scrollbar slider {
 scrollbar slider:hover {
   background-color: #{{ base04 }};
 }
+
+{% if glass_mode %}
+/* Glass mode: backgrounds only, text stays opaque. */
+window, window.background, dialog, headerbar, .titlebar, menu, popover, popover > contents {
+  background-image: none;
+  background-color: rgba({{ base00[0:2]|int(base=16) }}, {{ base00[2:4]|int(base=16) }}, {{ base00[4:6]|int(base=16) }}, 0.72);
+  border-color: rgba(200, 211, 245, 0.20);
+}
+{% endif %}

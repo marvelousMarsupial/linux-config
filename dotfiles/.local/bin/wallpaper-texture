@@ -1,0 +1,61 @@
+#!/usr/bin/python3
+"""Render a subtle, static woven wallpaper using the current desktop palette."""
+import math
+import os
+from pathlib import Path
+import re
+import struct
+import subprocess
+import zlib
+
+home = Path.home()
+colors = (home / '.config/sway/colors').read_text()
+match = re.search(r'(?m)^set \$base00 #([0-9a-fA-F]{6})$', colors)
+if not match:
+    raise SystemExit('Cannot find base00 in ~/.config/sway/colors')
+base = tuple(int(match[1][i:i+2], 16) for i in (0, 2, 4))
+mode = home / '.config/theme/glass-mode'
+if not mode.exists() or mode.read_text().strip() != 'on':
+    import sys
+    runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
+    sockets = list(runtime.glob('sway-ipc.*.sock'))
+    if sockets:
+        subprocess.run(['swaymsg', '-s', str(sockets[0]), f'output * bg #{match[1]} solid_color'], check=True, capture_output=True)
+    print('Solid wallpaper')
+    sys.exit(0)
+width, height = 1600, 1000
+rows = bytearray()
+for y in range(height):
+    rows.append(0)  # PNG scanline filter: none.
+    for x in range(width):
+        # Broad tonal variation and a fine woven pattern; no animation or
+        # random per-frame noise, so remote desktops can cache the image.
+        drift = 5 * math.sin(x / 170 + y / 260) + 3 * math.cos(y / 130)
+        weave = (3 if x % 12 < 2 else 0) + (2 if y % 12 < 2 else 0)
+        thread = 2 if (x + y) % 96 < 2 else 0
+        shade = round(drift + weave + thread)
+        rows.extend(max(0, min(255, channel + shade)) for channel in base)
+
+def chunk(kind, data):
+    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+
+png = b'\x89PNG\r\n\x1a\n'
+png += chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+png += chunk(b'IDAT', zlib.compress(rows, 6)) + chunk(b'IEND', b'')
+path = home / '.local/share/wallpapers/glass-texture.png'
+path.parent.mkdir(parents=True, exist_ok=True)
+temporary = path.with_suffix('.tmp')
+temporary.write_bytes(png)
+temporary.replace(path)
+env = dict(os.environ)
+if not env.get('SWAYSOCK'):
+    runtime = Path(env.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
+    sockets = list(runtime.glob('sway-ipc.*.sock'))
+    if len(sockets) == 1:
+        env['SWAYSOCK'] = str(sockets[0])
+if env.get('SWAYSOCK'):
+    result = subprocess.run(['swaymsg', f'output * bg "{path}" fill'], env=env,
+                            capture_output=True, text=True)
+    if result.returncode or '"success": false' in result.stdout:
+        raise SystemExit(f'Wallpaper activation failed: {result.stdout} {result.stderr}')
+print(f'Textured wallpaper: {path}')

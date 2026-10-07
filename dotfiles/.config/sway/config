@@ -41,8 +41,7 @@ include ~/.config/sway/colors
 # The only output line we keep is the wildcard wallpaper assignment
 # below, which kanshi does not touch.
 
-# Solid background follows the active theme.
-output * bg $base00 solid_color
+# Wallpaper is managed by the generated colors file.
 
 # ===========================================
 # APPEARANCE (minimal)
@@ -389,3 +388,6 @@ exec $bin/battery-monitor
 
 # Optional machine-specific outputs and bindings.
 include ~/.config/sway/local.conf
+
+# Toggle desktop and Zen glass together (restart Zen afterward).
+bindsym $mod+Ctrl+g exec $bin/glass-mode toggle

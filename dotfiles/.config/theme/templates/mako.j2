@@ -22,17 +22,17 @@ max-visible=3
 anchor=top-right
 
 # Default colors
-background-color=#{{ base01 }}
+background-color=#{{ base01 }}{{ "b8" if glass_mode else "ff" }}
 text-color=#{{ base05 }}
 border-color=#{{ base03 }}
 progress-color=#{{ base0D }}
 
 [urgency=low]
-background-color=#{{ base01 }}
+background-color=#{{ base01 }}{{ "b8" if glass_mode else "ff" }}
 border-color=#{{ base03 }}
 
 [urgency=high]
-background-color=#{{ base01 }}
+background-color=#{{ base01 }}{{ "b8" if glass_mode else "ff" }}
 border-color=#{{ base08 }}
 
 # OSD-style status popup (centered, larger, shorter timeout)
@@ -44,7 +44,7 @@ font=CaskaydiaCove Nerd Font 16
 border-size=1
 border-radius=8
 default-timeout=2500
-background-color=#{{ base01 }}
+background-color=#{{ base01 }}{{ "b8" if glass_mode else "ff" }}
 border-color=#{{ base0D }}
 
 # Alias reminder (small, corner, subtle)
@@ -57,6 +57,6 @@ padding=8
 border-size=1
 border-radius=6
 default-timeout=1500
-background-color=#{{ base01 }}
+background-color=#{{ base01 }}{{ "b8" if glass_mode else "ff" }}
 border-color=#{{ base03 }}
 text-color=#{{ base04 }}

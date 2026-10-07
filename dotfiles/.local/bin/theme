@@ -46,6 +46,8 @@ def main():
     context = dict(palette, scheme_slug=name, yazi_flavor=None,
                    nvim_plugin=None, nvim_colorscheme=None)
     context.update(config.get('scheme_meta', {}).get(name, {}))
+    mode_file = root / 'glass-mode'
+    context['glass_mode'] = mode_file.exists() and mode_file.read_text().strip() == 'on'
     env = Environment(loader=FileSystemLoader(root / 'templates'),
                       undefined=StrictUndefined, keep_trailing_newline=True)
     # Render everything before writing anything, so template errors leave files intact.
@@ -53,7 +55,9 @@ def main():
                 for target in config['targets']]
     for target, content in rendered:
         pattern = os.path.expanduser(target['output'])
-        paths = glob.glob(pattern) if glob.has_magic(pattern) else [pattern]
+        paths = ([str(Path(parent) / Path(pattern).name)
+                  for parent in glob.glob(str(Path(pattern).parent))]
+                 if glob.has_magic(pattern) else [pattern])
         if args.command == 'preview':
             print(f"\n[{target['name']}] {pattern}\n{content}")
             continue
