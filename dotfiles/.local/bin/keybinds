@@ -2,7 +2,7 @@
 """Display sway keybindings cheatsheet."""
 
 CONTENT = """
-                          SWAY + TMUX KEYBINDINGS
+                          SWAY KEYBINDINGS
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -23,18 +23,16 @@ CONTENT = """
    Super + t           Toggle layout       Print               Region → file & clip
    Super + `           Scratchpad          Shift + Print       Full → file & clip
 
-   APPS                                    TMUX (in terminal)
-   Super + Enter       Terminal            Alt + hjkl          Navigate panes
-   Super + Space       Launcher            Alt + Shift hjkl    Resize panes
-   Super + b           Browser (Zen)       Alt + v / e / Enter Vertical split
-   Super + n           New vim note        Alt + V / E / s     Horizontal split
-   Super + m           Search notes        Alt + q             Close pane
-   Super + Shift + n   Obsidian            Alt + z             Zoom pane
-   Super + e           Files               Alt + t             Toggle terminal
-   Super + p           Passwords           Alt + n             New session
-   Super + v           Editor              Alt + ( / )         Prev/next session
-   Super + s           Dictate toggle      Alt + d             Detach
-   Super + Ctrl + s    Dictate cancel      Alt + [ / ]         Copy / Paste
+   APPS
+   Super + Enter       Terminal
+   Super + Space       Launcher
+   Super + b           Browser (Zen)
+   Super + n           New vim note
+   Super + m           Search notes
+
+   Super + e           Files
+   Super + p           Passwords
+   Super + v           Editor
    Super + Shift + /   This help
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

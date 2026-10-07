@@ -1,7 +1,0 @@
-[Desktop Entry]
-Name=Power
-Comment=Lock, suspend, logout, reboot, shutdown
-Exec=power-menu
-Icon=system-shutdown
-Type=Application
-Categories=System;

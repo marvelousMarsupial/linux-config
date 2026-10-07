@@ -1,0 +1,85 @@
+#!/usr/bin/python3
+"""Render the shared Base16 palette across desktop applications."""
+import argparse
+import glob
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import tempfile
+import tomllib
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('command', choices=['list', 'current', 'apply', 'preview'])
+    parser.add_argument('scheme', nargs='?')
+    args = parser.parse_args()
+    root = Path.home() / '.config/theme'
+    config = tomllib.loads((root / 'config.toml').read_text())
+    schemes = sorted(p.stem for p in (root / 'schemes').glob('*.yaml'))
+    current = Path.home() / '.cache/theme/current'
+    if args.command == 'list':
+        print('\n'.join(f'{i}. {name}' for i, name in enumerate(schemes, 1)))
+        return
+    if args.command == 'current':
+        print(current.read_text().strip() if current.exists() else 'No theme selected')
+        return
+    name = args.scheme
+    if name and name.isdigit() and 1 <= int(name) <= len(schemes):
+        name = schemes[int(name) - 1]
+    if name not in schemes:
+        parser.error('Choose a scheme from theme list')
+    try:
+        import yaml
+        from jinja2 import Environment, FileSystemLoader, StrictUndefined
+    except ImportError:
+        parser.exit(1, 'Install python3-jinja2 and python3-yaml with apt first.\n')
+    palette = yaml.safe_load((root / 'schemes' / f'{name}.yaml').read_text())
+    if not isinstance(palette, dict):
+        parser.error(f"{name}: palette must be a mapping")
+    for i in range(16):
+        key = f'base{i:02X}'
+        if not re.fullmatch(r'[0-9a-fA-F]{6}', str(palette.get(key, ''))):
+            parser.error(f'{name}: invalid {key}')
+    context = dict(palette, scheme_slug=name, yazi_flavor=None,
+                   nvim_plugin=None, nvim_colorscheme=None)
+    context.update(config.get('scheme_meta', {}).get(name, {}))
+    env = Environment(loader=FileSystemLoader(root / 'templates'),
+                      undefined=StrictUndefined, keep_trailing_newline=True)
+    # Render everything before writing anything, so template errors leave files intact.
+    rendered = [(target, env.get_template(target['template']).render(**context))
+                for target in config['targets']]
+    for target, content in rendered:
+        pattern = os.path.expanduser(target['output'])
+        paths = glob.glob(pattern) if glob.has_magic(pattern) else [pattern]
+        if args.command == 'preview':
+            print(f"\n[{target['name']}] {pattern}\n{content}")
+            continue
+        for path in map(Path, paths):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as tmp:
+                tmp.write(content)
+                temporary = Path(tmp.name)
+            try:
+                temporary.chmod(0o644)
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
+            print(f"{target['name']}: {path}")
+        if paths and target.get('hook'):
+            try:
+                result = subprocess.run(shlex.split(target['hook']), capture_output=True, timeout=5)
+                if result.returncode:
+                    print(f"{target['name']}: reload unavailable; restart the application")
+            except (OSError, subprocess.TimeoutExpired):
+                print(f"{target['name']}: reload timed out; restart the application")
+    if args.command == 'apply':
+        current.parent.mkdir(parents=True, exist_ok=True)
+        current.write_text(name + '\n')
+        print(f'Applied {name}. Reload Sway and restart open editors to finish.')
+
+
+if __name__ == '__main__':
+    main()

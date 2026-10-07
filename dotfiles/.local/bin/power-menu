@@ -1,7 +1,8 @@
 #!/bin/bash
 # Power menu using fuzzel
+set -euo pipefail
 
-choice=$(printf "Lock\nSuspend\nLogout\nReboot\nShutdown" | fuzzel --dmenu --prompt="Power  " --lines=5 --width=20)
+choice=$(printf "Lock\nSuspend\nLogout\nReboot\nShutdown" | fuzzel --dmenu --prompt="Power  " --lines=5 --width=20) || exit 0
 
 case "$choice" in
     Lock)     swaylock -f ;;

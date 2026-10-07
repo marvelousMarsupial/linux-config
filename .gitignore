@@ -1,29 +1,6 @@
-# Rust build output
 target/
-
-# Theme-generated files (written by `theme apply`)
-dotfiles/.config/nvim/lua/plugins/colorscheme.lua
-dotfiles/.config/yazi/theme.toml
-dotfiles/.config/foot/colors.ini
-dotfiles/.config/sway/colors
-dotfiles/.config/fuzzel/colors.ini
-dotfiles/.config/gtk-3.0/gtk.css
-dotfiles/.config/gtk-4.0/gtk.css
-
 __pycache__/
-
-# npm
-node_modules/
-package-lock.json
-package.json
-
-# Local binary symlinks
-bin/nvim
-
-# Lazy.nvim lockfile
-dotfiles/.config/nvim/lazy-lock.json
-
-# Ignore test symlinks in repo root (not in dotfiles/)
-/.config
+*.pyc
+/.config/
 /.local/
-/.tmux.conf
+dotfiles/.config/sway/local.conf

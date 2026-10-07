@@ -1,14 +1,3 @@
 #!/bin/sh
-# Wrapper for the tarball-installed Zen Browser. The actual launcher
-# lives at ~/.local/zen/zen — the desktop role's `zen-browser` Download
-# in config/roles.toml extracts the upstream `zen.linux-x86_64.tar.xz`
-# into ~/.local/zen with strip-components=1.
-#
-# `MOZ_ENABLE_WAYLAND=1` is the Gecko/Firefox-line equivalent of the
-# Chromium `--ozone-platform-hint=auto` flag the previous flatpak
-# bindsym used. Without it Zen falls back to Xwayland, which costs
-# HiDPI/fractional-scale sharpness, native Wayland clipboard, and a
-# bit of input-latency budget. Pinned here in the wrapper rather than
-# in the sway bindsym so a `zen` typed in a shell behaves the same as
-# one launched via $mod+b.
+# Install Zen separately into ~/.local/zen.
 exec env MOZ_ENABLE_WAYLAND=1 "$HOME/.local/zen/zen" "$@"

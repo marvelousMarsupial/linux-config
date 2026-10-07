@@ -2,7 +2,6 @@
 """motd - message of the day with system info"""
 
 import argparse
-import re
 import socket
 import subprocess
 from pathlib import Path
@@ -16,9 +15,9 @@ RESET = "\033[0m"
 def run_output(cmd: list[str]) -> str:
     """Run a command and return stdout."""
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         return result.stdout.strip() if result.returncode == 0 else ""
-    except FileNotFoundError:
+    except (OSError, subprocess.TimeoutExpired):
         return ""
 
 def get_hostname() -> str:
@@ -29,12 +28,6 @@ def get_local_ip() -> str:
     """Get local IP address."""
     output = run_output(["hostname", "-I"])
     return output.split()[0] if output else ""
-
-def get_wg_ip() -> str:
-    """Get WireGuard IP."""
-    output = run_output(["ip", "-4", "addr", "show", "wg0"])
-    match = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)", output)
-    return match.group(1) if match else ""
 
 def get_uptime() -> str:
     """Get uptime."""
@@ -67,11 +60,6 @@ def get_disk() -> str:
         return f"{parts[2]}/{parts[1]}"
     return ""
 
-def is_wg_server() -> bool:
-    """Check if listening on WireGuard port (server)."""
-    output = run_output(["ss", "-uln"])
-    return ":51820 " in output
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="motd",
@@ -79,8 +67,8 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Displays:
-  - Hostname and VPN role (server/client)
-  - Local IP and VPN IP
+  - Hostname
+  - Local IP
   - Uptime
   - Load average, memory, and disk usage
 
@@ -101,33 +89,15 @@ Typically added to shell profile for login display.
 
     host = get_hostname()
     local_ip = get_local_ip()
-    wg_ip = get_wg_ip()
     uptime = get_uptime()
     load = get_load()
     mem = get_memory()
     disk = get_disk()
 
-    # VPN status
-    if wg_ip:
-        vpn_status = f"{GREEN}{wg_ip}{RESET}"
-    else:
-        vpn_status = f"{DIM}down{RESET}"
-
-    # Role indicator
-    if is_wg_server():
-        role = "server"
-    elif wg_ip:
-        role = "client"
-    else:
-        role = ""
-
     print()
-    if role:
-        print(f"{CYAN}{host}{RESET} {DIM}({role}){RESET}")
-    else:
-        print(f"{CYAN}{host}{RESET}")
+    print(f"{CYAN}{host}{RESET}")
     print(f"{DIM}─────────────────────────{RESET}")
-    print(f"  {DIM}ip{RESET}    {local_ip}  {DIM}vpn{RESET} {vpn_status}")
+    print(f"  {DIM}ip{RESET}    {local_ip}")
     print(f"  {DIM}up{RESET}    {uptime}")
     print(f"  {DIM}load{RESET}  {load}  {DIM}mem{RESET} {mem}  {DIM}disk{RESET} {disk}")
     print()

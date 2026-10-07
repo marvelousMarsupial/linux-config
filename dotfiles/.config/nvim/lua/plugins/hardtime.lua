@@ -14,7 +14,7 @@
 -- where repeated low-level motion is *appropriate* (typing prose,
 -- scrolling through a file picker, editing a markdown note line by
 -- line). The `disabled_filetypes` list below extends the upstream
--- defaults to cover the user's specific noisy buffers (Obsidian /
+-- defaults to cover the user's specific noisy buffers (Markdown /
 -- markdown notes, telescope pickers, fterm shells, yazi popups, …)
 -- so the coaching only fires while editing actual code.
 --
@@ -60,7 +60,7 @@ return {
     -- `oil`, `noice`, `notify`, etc. We extend it with this user's
     -- specific noisy contexts:
     --
-    --   * markdown — Obsidian notes are prose; jjjj through a
+    --   * markdown — Markdown notes are prose; jjjj through a
     --     paragraph is the right motion, not a sin.
     --   * TelescopePrompt — picker navigation is k/j by design.
     --   * fterm — the floating terminal (plugins/fterm.lua); shell
@@ -84,6 +84,7 @@ return {
       "TelescopePrompt",
       "TelescopeResults",
       "markdown",
+      "text",
       "fterm",
       "yazi",
       "gitcommit",

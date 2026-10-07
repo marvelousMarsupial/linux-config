@@ -3,10 +3,6 @@ return {
     "nvim-telescope/telescope.nvim",
     dependencies = {
       "nvim-lua/plenary.nvim",
-      {
-        "nvim-telescope/telescope-fzf-native.nvim",
-        build = "make",
-      },
     },
     cmd = "Telescope",
     keys = {
@@ -64,8 +60,6 @@ return {
         },
       })
 
-      -- Load fzf extension for better sorting
-      telescope.load_extension("fzf")
     end,
   },
 }

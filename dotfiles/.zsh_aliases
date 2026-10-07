@@ -25,7 +25,18 @@ alias ll='eza -l'
 alias lt='eza -lahT'
 alias ls='eza'
 alias tree='eza --tree'
-alias cat='bat'
+if command -v fdfind >/dev/null && ! command -v fd >/dev/null; then
+  alias fd='fdfind'
+fi
+# The local bat wrapper rounds the gutter; Debian's batcat is the fallback.
+if [[ -x "$HOME/.local/bin/bat" ]]; then
+  alias cat='bat'
+elif command -v batcat >/dev/null; then
+  alias bat='batcat'
+  alias cat='batcat'
+else
+  alias cat='bat'
+fi
 
 # System
 alias ip='ip -br -c'
@@ -48,11 +59,6 @@ alias ping='ping -c 5'
 alias listening='ss -tlnp'
 alias connections='ss -tnp'
 
-# VPN (WireGuard)
-alias vpnup='vpn up'
-alias vpndown='vpn down'
-alias vpnstat='vpn status'
-
 # Systemd
 alias sc='sudo systemctl'
 alias scs='sudo systemctl status'
@@ -67,39 +73,6 @@ alias jce='journalctl -xe'
 # Quick tools
 alias v='nvim'
 # y defined as function in .zshrc (cd's to dir on exit)
-# Tmux helper with custom bindings help
-t() {
-  if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    command cat << 'EOF'
-tmux bindings (prefix: Ctrl+Space)
-
-Navigation (Alt + hjkl):
-  Alt-h/j/k/l     Move between panes (smart-splits aware)
-  Alt-H/J/K/L     Resize panes
-
-Pane Management:
-  Alt-v           Split + nvim
-  Alt-e           Split + yazi
-  Alt-Enter       Split + shell
-  Alt-q           Close pane
-  Alt-z           Toggle zoom
-  Alt-d           Detach
-
-Copy Mode:
-  Alt-[           Enter copy mode
-  Alt-]           Paste
-  v               Begin selection (in copy mode)
-  y               Copy to clipboard (in copy mode)
-
-Misc:
-  prefix r        Reload config
-  prefix S        Sync panes
-  F12             Toggle nested session
-EOF
-    return
-  fi
-  tmux new-session
-}
 alias weather='curl wttr.in'
 alias serve='python3 -m http.server'
 alias please='sudo $(fc -ln -1)'
@@ -107,7 +80,7 @@ alias ag='alias | grep'
 alias fd='fdfind'
 
 # fix — install the local foot terminfo entry into the remote's
-# ~/.terminfo so vim / yazi / tmux / less / htop on that remote
+# ~/.terminfo so vim / yazi / less / htop on that remote
 # render correctly when you SSH in from foot. Named `fix` because
 # that's how it gets used in practice: SSH somewhere, see TUI apps
 # look broken, exit, run `fix me@host`, SSH back in — it now looks
@@ -118,7 +91,7 @@ alias fd='fdfind'
 # images, prod boxes you don't provision) don't have it. SSHing
 # from foot then lands you in a session whose TERM the remote
 # ncurses library doesn't know, and TUI apps fall back to
-# broken-looking rendering. Forge-provisioned servers already have
+# broken-looking rendering. Configured servers already have
 # ncurses-term in the `server` role; this helper covers everything
 # else.
 #

@@ -3,7 +3,6 @@ return {
   {
     "L3MON4D3/LuaSnip",
     version = "v2.*",
-    build = "make install_jsregexp",
     dependencies = {
       "rafamadriz/friendly-snippets",
     },
@@ -54,7 +53,7 @@ return {
           ["<C-e>"] = cmp.mapping.abort(),
 
           -- Confirm selection
-          ["<CR>"] = cmp.mapping.confirm({ select = true }),
+          ["<CR>"] = cmp.mapping.confirm({ select = false }),
 
           -- Tab: confirm or jump in snippet
           ["<Tab>"] = cmp.mapping(function(fallback)

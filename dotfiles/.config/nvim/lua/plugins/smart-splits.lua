@@ -10,12 +10,10 @@ return {
       ignored_buftypes = { "NvimTree" },
       -- Resize amount
       default_amount = 3,
-      -- Wrap to opposite side when at edge (disable for tmux passthrough)
+      -- Stop at the outermost editor split
       at_edge = "stop",
       -- Multiplexer integration
-      multiplexer_integration = "tmux",
-      -- Disable default keymaps (we set our own)
-      disable_multiplexer_nav_when_zoomed = true,
+      multiplexer_integration = false,
     })
 
     -- Navigation: Alt + hjkl

@@ -22,7 +22,8 @@ def find_battery() -> Path | None:
 def get_battery_level(bat_path: Path) -> int | None:
     """Get battery percentage."""
     try:
-        return int((bat_path / "capacity").read_text().strip())
+        level = int((bat_path / "capacity").read_text().strip())
+        return level if 0 <= level <= 100 else None
     except (IOError, ValueError):
         return None
 
@@ -41,7 +42,10 @@ def notify(title: str, msg: str, critical: bool = False) -> None:
     else:
         cmd.extend(["-u", "normal"])
     cmd.extend([title, msg])
-    subprocess.run(cmd, capture_output=True)
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -86,6 +90,8 @@ Usage:
     )
 
     args = parser.parse_args()
+    if not 0 <= args.critical <= args.warn <= 100 or args.interval <= 0:
+        parser.error("Require 0 <= critical <= warn <= 100 and interval > 0")
 
     bat_path = find_battery()
 
@@ -113,6 +119,7 @@ Usage:
             if level <= args.critical and not warned_critical:
                 notify("Battery Critical", f"{level}% - Plug in now!", critical=True)
                 warned_critical = True
+                warned_low = True
             # Low warning
             elif level <= args.warn and not warned_low:
                 notify("Battery Low", f"{level}% remaining")

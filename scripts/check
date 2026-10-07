@@ -1,0 +1,52 @@
+#!/usr/bin/python3
+"""Check script syntax, TOML, and render every theme in an isolated home."""
+import ast
+import argparse
+import importlib.util
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+import tomllib
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--full", action="store_true", help="Run offline integration tests too")
+args = parser.parse_args()
+repo = Path(__file__).resolve().parent.parent
+for p in (repo / 'dotfiles').rglob('*.toml'):
+    tomllib.loads(p.read_text())
+for p in [*(repo / 'dotfiles/.local/bin').iterdir(), *(repo / 'scripts').iterdir()]:
+    if not p.is_file():
+        continue
+    data = p.read_bytes()
+    if data.startswith(b'\x7fELF'):
+        continue
+    text = data.decode()
+    first = text.splitlines()[0] if text else ''
+    if 'python3' in first:
+        ast.parse(text, filename=str(p))
+    elif first.startswith('#!') and ('bash' in first or first.endswith('/sh')):
+        subprocess.run(['bash', '-n', str(p)], check=True)
+for name in ('.zshrc', '.zsh_aliases', '.zsh_alias_reminder'):
+    subprocess.run(['zsh', '-n', str(repo / 'dotfiles' / name)], check=True)
+if shutil.which('nvim'):
+    lua_files = [*(repo / 'dotfiles/.config/nvim').rglob('*.lua'), *(repo / 'scripts').glob('*.lua'), *(repo / 'tests').glob('*.lua')]
+    import json
+    lua = 'for _, path in ipairs(' + '{' + ','.join(json.dumps(str(p)) for p in lua_files) + '}' + ') do assert(loadfile(path)) end'
+    result = subprocess.run(['nvim', '--headless', '-u', 'NONE', '-c', 'lua ' + lua, '+qa'], capture_output=True, text=True, check=True)
+    if 'Error' in result.stderr:
+        raise SystemExit(result.stderr)
+missing = [name for name in ('jinja2', 'yaml') if importlib.util.find_spec(name) is None]
+if missing:
+    raise SystemExit('Syntax and TOML passed. Install python3-jinja2 and python3-yaml to check themes.')
+with tempfile.TemporaryDirectory() as temporary:
+    home = Path(temporary)
+    shutil.copytree(repo / 'dotfiles/.config/theme', home / '.config/theme')
+    env = dict(os.environ, HOME=str(home))
+    for scheme in (home / '.config/theme/schemes').glob('*.yaml'):
+        subprocess.run([str(repo / 'dotfiles/.local/bin/theme'), 'preview', scheme.stem],
+                       env=env, stdout=subprocess.DEVNULL, check=True)
+print('Script syntax, TOML, and all six theme renders passed.')
+
+if args.full:
+    subprocess.run(['/usr/bin/python3', '-m', 'unittest', 'discover', '-s', str(repo / 'tests'), '-v'], check=True)

@@ -1,50 +1,5 @@
 #!/usr/bin/env python3
-"""status-panel - system status popup with ASCII clock.
-
-Bound to ``$mod+i`` in sway. Renders a small fuzzel popup with:
-
-  1. An ASCII-block clock for the current time (via ``toilet -f pagga``).
-  2. The date.
-  3. A blank spacer line so the status block is visually separated.
-  4. Network status (``wifi: <ssid>``, ``ethernet``, or ``offline``).
-  5. VPN status (``vpn: on`` / ``vpn: off``).
-  6. Power status with explicit charging / full / on-ac labels.
-  7. STT (whisper-server) state — ``stt: on`` / ``stt: off``.
-
-Every line is space-padded to be visually centered within
-``PANEL_WIDTH`` before it is handed to fuzzel; fuzzel itself does
-not have a built-in justify-center option for ``--dmenu`` lines, so
-we do the alignment ourselves at render time. The padding is
-purely cosmetic — the click-dispatch on the ``stt:`` line strips
-the leading whitespace before matching the prefix so centering
-does not break the toggle.
-
-Selectable lines:
-
-* The ``stt:`` line is **interactive**: selecting it (Enter / left
-  click in fuzzel) invokes ``dictate toggle-server`` to flip the
-  whisper-server systemd unit on or off. Every other line is a
-  read-only status display — the panel ignores selections that
-  don't match the ``stt:`` prefix, so a stray Enter on the clock
-  or wifi line is a harmless no-op. This keeps the bulk of the
-  panel "just info" while still giving the user one click-to-act
-  control where they actually need one.
-
-Layout choices worth flagging:
-
-* ``PANEL_WIDTH`` is sized for the longest possible status line
-  ("power: full, connected" at 22 chars) plus a few cells of
-  breathing margin — back to the original 26 after a brief
-  detour through wider settings while we iterated on the
-  full-on-AC wording. Anything wider (long SSIDs) is truncated
-  with an ellipsis so nothing overflows the popup edge.
-* Emoji prefixes are deliberately *not* used. They render as
-  double-width cells in fuzzel's monospace font, which made earlier
-  versions of this panel clip text off the right edge.
-* The popup is ephemeral: fuzzel returns whatever the user picks (we
-  ignore it) and exits, so this is a status-display tool, not an
-  interactive menu.
-"""
+"""Display a centered clock, date, network and power status popup."""
 
 import os
 import re
@@ -98,9 +53,9 @@ def run(cmd: list[str]) -> str:
     instead of crashing the whole popup over one missing helper.
     """
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         return r.stdout if r.returncode == 0 else ""
-    except FileNotFoundError:
+    except (OSError, subprocess.TimeoutExpired):
         return ""
 
 
@@ -200,17 +155,6 @@ def get_network() -> str:
     return "offline"
 
 
-def get_vpn() -> str:
-    """Return ``vpn: on`` if a wireguard ``wg0`` interface has an IPv4 lease.
-
-    The ``vpn`` helper script in ``bin/`` brings up exactly one wireguard
-    interface named ``wg0``, so checking that interface is sufficient.
-    Other VPN types (openvpn, tailscale) would need separate detection.
-    """
-    wg = run(["ip", "-4", "addr", "show", "wg0"])
-    return "vpn: on" if re.search(r"inet\s+\d+", wg) else "vpn: off"
-
-
 def get_power() -> str:
     """Return a power status line.
 
@@ -281,79 +225,20 @@ def get_power() -> str:
     return f"power: {pct}%"
 
 
-def get_stt() -> str:
-    """Return ``stt: on`` if the whisper-server unit is active, else ``stt: off``.
-
-    The whisper-server systemd unit holds the small.en-q5_1 model
-    resident in RAM (~330 MiB on this host) and is **lazy-started**
-    by the ``dictate`` script on the first dictation press — it has
-    no ``[Install]`` section, so it is never enabled at boot. That
-    gives this status line a clean binary meaning:
-
-      * ``stt: on``  — the unit is running, RAM is occupied, the
-                       next dictation press will be near-instant
-                       (no model load to pay).
-      * ``stt: off`` — the unit is stopped, RAM is free, the next
-                       dictation press will lazy-start it (and pay
-                       the 3–6 s model load once).
-
-    Sourced via ``systemctl --user is-active`` rather than
-    probing the loopback port: ``is-active`` is faster (no
-    network round-trip), doesn't briefly print ``stt: off`` while
-    the unit is ``activating`` (model still loading) — actually
-    it does (activating returns non-zero exit and our ``run()``
-    helper treats that as failure), but that transient state is
-    fine to display as "off" because functionally the user can't
-    use it yet anyway.
-
-    The line is the one **interactive** entry in the panel — see
-    ``main`` for the selection-dispatch that flips the unit when
-    the user picks this line.
-    """
-    return (
-        "stt: on"
-        if run(["systemctl", "--user", "is-active", "whisper-server.service"]).strip()
-        else "stt: off"
-    )
-
-
-# Selection prefix the panel treats as an interactive control. Any
-# fuzzel selection whose text begins with this prefix is dispatched
-# to ``dictate toggle-server``; any other selection (or a cancelled
-# popup) is a no-op. Defined as a module constant so the embed-side
-# regression test in ``crates/forge/src/embed.rs`` can substring-
-# check that the dispatch wiring still references the right prefix.
-STT_LINE_PREFIX = "stt:"
-
-
 def main() -> None:
-    """Render the status panel, hand it to fuzzel, and dispatch the selection.
-
-    Almost all lines are display-only — the panel is meant to be
-    glance-and-go. The one exception is the ``stt:`` line, which
-    flips the whisper-server unit when selected (see the module
-    docstring for why). The selection dispatch lives here rather
-    than in ``get_stt()`` so the rendering and click-handling
-    halves of the panel stay co-located.
-    """
+    """Render the read-only status panel with fuzzel."""
     date_str = datetime.now().strftime("%a %b %d")
 
     # Build the line list in display order. Clock first (3 lines), then
     # the date, a blank spacer for visual grouping, then one status line
-    # each for network / vpn / power / stt.
+    # each for network / power.
     clock_lines = get_clock().split("\n")
     lines: list[str] = []
     lines.extend(clock_lines)
     lines.append(date_str)
     lines.append("")
     lines.append(get_network())
-    lines.append(get_vpn())
     lines.append(get_power())
-    # STT is appended last so it's the bottom line; that's also where
-    # the "interactive" line lives, which keeps the read-only top of
-    # the panel visually grouped and the actionable line at the edge.
-    lines.append(get_stt())
-
     # Center every line within PANEL_WIDTH. Done after the lines list
     # is fully built (rather than per get_*() call) so future lines
     # automatically inherit centering without each helper having to
@@ -368,12 +253,7 @@ def main() -> None:
     # line happens to be focused). `--inner-pad` and `--line-height`
     # give the popup a bit more breathing room than fuzzel's defaults.
     #
-    # Selection dispatch: fuzzel `--dmenu` prints the picked line on
-    # stdout (exit 0). On Escape it exits non-zero and prints nothing
-    # — so we only act on a returncode-0 result. Reading the picked
-    # line lets us treat the `stt:` row as a click-target while every
-    # other line stays a no-op.
-    result = subprocess.run(
+    subprocess.run(
         [
             "fuzzel",
             "--dmenu",
@@ -390,24 +270,6 @@ def main() -> None:
         text=True,
         capture_output=True,
     )
-
-    # Only the STT line is interactive. We match by prefix, not exact
-    # string, so the dispatch keeps working when the line text
-    # changes from `stt: on` to `stt: off` (or vice versa) between
-    # renders. The `.strip()` is load-bearing now that every line is
-    # space-padded for centering — fuzzel echoes the picked line
-    # back verbatim including the leading spaces, so a raw
-    # `startswith("stt:")` would never match. Any non-stt selection
-    # — or a cancelled popup (returncode != 0) — falls through
-    # silently.
-    if result.returncode == 0 and result.stdout.strip().startswith(STT_LINE_PREFIX):
-        # Fire-and-forget: dictate's toggle-server returns quickly
-        # (systemd start is async, no readiness wait), but we still
-        # don't want to block this script's exit on it. Popen avoids
-        # the wait, and the user's notification ("stopped" /
-        # "starting…") is emitted by dictate via notify-send.
-        subprocess.Popen(["dictate", "toggle-server"])
-
 
 if __name__ == "__main__":
     main()

@@ -2,15 +2,9 @@
 #
 # Two-line layout:
 #   path  branch[git status] [lang versions] [duration]
-#   #
+#   $
 #
-# Prompt character is `#` rather than the usual `❯` chevron — chosen so the
-# prompt itself is a comment marker. Anything copy-pasted from the terminal
-# (prompt + command on the same line) parses as a shell comment up to the
-# next newline, which makes pasting back into a `.sh` or a chat without
-# stripping the prompt non-destructive. Note the trailing space inside the
-# `[# ]` glyph: shells don't tokenise `#cmd` as a comment, only `# cmd`,
-# so the space is what actually keeps the comment behavior intact.
+# Use a dollar sign for the prompt character.
 #
 # Glyphs assume a Nerd Font (CaskaydiaCove ships with the desktop role).
 # Colors come from the active terminal palette — base16 theme drives foot's
@@ -32,9 +26,9 @@ $character"""
 add_newline = true
 
 [character]
-success_symbol = "[# ](bold green)"
-error_symbol = "[# ](bold red)"
-vimcmd_symbol = "[# ](bold green)"
+success_symbol = '[\$ ](bold green)'
+error_symbol = '[\$ ](bold red)'
+vimcmd_symbol = '[\$ ](bold green)'
 
 [username]
 style_user = "yellow bold"

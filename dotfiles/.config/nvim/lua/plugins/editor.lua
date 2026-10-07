@@ -39,7 +39,6 @@ return {
         { "<leader>c", group = "code" },
         { "<leader>b", group = "buffer" },
         { "<leader>d", group = "diagnostics" },
-        { "<leader>o", group = "obsidian" },
       },
     },
   },

@@ -1,29 +1,19 @@
 return {
   {
     "nvim-treesitter/nvim-treesitter",
-    build = ":TSUpdate",
-    event = { "BufReadPost", "BufNewFile" },
+    lazy = false,
     config = function()
-      -- Nvim 0.11+ uses vim.treesitter directly
-      -- nvim-treesitter just provides :TSInstall and parser management
-
-      local ok, ts = pcall(require, "nvim-treesitter")
-      if not ok then return end
-
-      -- Install parsers
-      ts.setup({
-        ensure_installed = {
-          "c", "python", "typescript", "javascript", "java", "lua",
-          "markdown", "markdown_inline", "json", "yaml", "bash",
-          "vim", "vimdoc", "query", "vue", "css", "scss", "html", "tsx",
-        },
-        auto_install = true,
-      })
-
-      -- Enable treesitter highlighting (built-in to nvim 0.11)
+      require("nvim-treesitter").setup({})
+      -- Parsers are installed explicitly by scripts/setup-editor.
       vim.api.nvim_create_autocmd("FileType", {
-        callback = function(args)
-          pcall(vim.treesitter.start, args.buf)
+        group = vim.api.nvim_create_augroup("EditorHighlight", { clear = true }),
+        callback = function(ev)
+          local language = vim.treesitter.language.get_lang(vim.bo[ev.buf].filetype)
+          if not language then return end
+          local ok, loaded = pcall(vim.treesitter.language.add, language)
+          if ok and loaded then
+            vim.treesitter.start(ev.buf, language)
+          end
         end,
       })
     end,

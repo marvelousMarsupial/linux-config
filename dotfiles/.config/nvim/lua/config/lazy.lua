@@ -9,6 +9,9 @@ if not vim.uv.fs_stat(lazypath) then
     "--branch=stable",
     lazypath,
   })
+  if vim.v.shell_error ~= 0 then
+    error("Could not download lazy.nvim; check network access and rerun setup-editor")
+  end
 end
 vim.opt.rtp:prepend(lazypath)
 
@@ -21,12 +24,10 @@ require("lazy").setup({
     lazy = false,
   },
   install = {
-    colorscheme = { "gruvbox" },
+    colorscheme = { "habamax" },
   },
   checker = {
-    enabled = true,
-    notify = true,
-    frequency = 3600, -- check every hour
+    enabled = false, -- Update explicitly with :Lazy update
   },
   change_detection = {
     enabled = true,

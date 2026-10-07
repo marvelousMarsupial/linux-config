@@ -1,7 +1,7 @@
 # mount.yazi (vendored)
 
 This is the upstream [mount.yazi][upstream] plugin, copied verbatim into
-the dotfiles tree so it ships embedded inside the `forge` binary and
+the dotfiles tree so it can be copied by the installer and
 "just works" on a fresh machine — no `ya pkg add ...` step required.
 
 ## What it does
@@ -39,7 +39,7 @@ The upstream is at [`yazi-rs/plugins`][upstream]. To refresh:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yazi-rs/plugins/main/mount.yazi/main.lua \
     > dotfiles/.config/yazi/plugins/mount.yazi/main.lua
-cargo build --release -p forge   # re-embed
+./scripts/install              # copy the updated plugin
 ```
 
 If the API ever changes incompatibly the embed-test

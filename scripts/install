@@ -1,0 +1,77 @@
+#!/usr/bin/python3
+"""Copy user configs with backups. Does not install packages or change services."""
+import argparse
+from datetime import datetime, timezone
+from pathlib import Path
+import shutil
+import tempfile
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--dry-run', action='store_true')
+parser.add_argument('--home', type=Path, default=Path.home(), help='Destination home directory')
+args = parser.parse_args()
+repo = Path(__file__).resolve().parent.parent
+home = args.home.expanduser().resolve()
+backup = home / '.local/state/linux-config/backups' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+# Theme outputs are rendered separately, and machine-specific monitor profiles stay local.
+protected = {'.config/kanshi/config', '.config/nvim/lazy-lock.json',
+             '.config/nvim/lua/plugins/colorscheme.lua', '.config/yazi/theme.toml',
+             '.config/foot/colors.ini', '.config/sway/colors', '.config/fuzzel/colors.ini',
+             '.config/gtk-3.0/gtk.css', '.config/gtk-4.0/gtk.css'}
+count = 0
+for source in sorted((repo / 'dotfiles').rglob('*')):
+    if '__pycache__' in source.parts or source.suffix == '.pyc' or not source.is_file():
+        continue
+    rel = source.relative_to(repo / 'dotfiles')
+    dest = home / rel
+    if not dest.parent.resolve().is_relative_to(home):
+        raise SystemExit(f"Refusing path outside destination home: {dest}")
+    content = source.read_bytes()
+    mode = 0o755 if content.startswith((b'#!', b'\x7fELF')) else 0o644
+    if str(rel) in protected and dest.exists():
+        continue
+    if dest.is_file() and not dest.is_symlink() and content == dest.read_bytes() and mode == (dest.stat().st_mode & 0o777):
+        continue
+    print(f'copy {rel}')
+    count += 1
+    if args.dry_run:
+        continue
+    if dest.exists() or dest.is_symlink():
+        if dest.is_dir():
+            raise SystemExit(f'Refusing to replace directory: {dest}')
+        saved = backup / rel
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(dest, saved, follow_symlinks=False)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=dest.parent, delete=False) as temporary:
+        staged = Path(temporary.name)
+    try:
+        shutil.copy2(source, staged)
+        staged.chmod(mode)
+        staged.replace(dest)
+    finally:
+        staged.unlink(missing_ok=True)
+# Remove only named files from retired repo integrations, with the same backups.
+for rel in ('.config/nvim/lua/plugins/obsidian.lua', '.config/theme/templates/obsidian.css.j2',
+            '.local/bin/vm-menu', '.local/bin/vpn', '.tmux.conf', '.local/bin/tmux-keys',
+            '.local/bin/dictate', '.local/bin/whisper-cli', '.local/bin/whisper-server',
+            '.config/systemd/user/whisper-server.service',
+            '.config/tmux/colors.conf', '.config/theme/templates/tmux-colors.conf.j2'):
+    dest = home / rel
+    if not dest.parent.resolve().is_relative_to(home):
+        raise SystemExit(f"Refusing path outside destination home: {dest}")
+    if not (dest.exists() or dest.is_symlink()):
+        continue
+    if dest.is_dir():
+        raise SystemExit(f'Refusing to remove directory: {dest}')
+    print(f'retire {rel}')
+    count += 1
+    if not args.dry_run:
+        saved = backup / rel
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(dest, saved, follow_symlinks=False)
+        dest.unlink()
+print(f'{count} file(s) {"would change" if args.dry_run else "changed"}.')
+if not args.dry_run:
+    print(f'Backups: {backup}')
+    print('Run theme apply <scheme> to render colors, then reload Sway.')

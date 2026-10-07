@@ -35,12 +35,6 @@ scheme_slug = "summer-dusk"
 # ============ Server targets ============
 
 [[targets]]
-name = "tmux"
-template = "tmux-colors.conf.j2"
-output = "~/.config/tmux/colors.conf"
-hook = "tmux source-file ~/.tmux.conf"
-
-[[targets]]
 name = "neovim"
 template = "colorscheme.lua.j2"
 output = "~/.config/nvim/lua/plugins/colorscheme.lua"
@@ -56,7 +50,7 @@ output = "~/.config/yazi/theme.toml"
 name = "foot"
 template = "foot.ini.j2"
 output = "~/.config/foot/colors.ini"
-hook = "pkill -SIGUSR1 foot"
+# Foot reads colors when a new terminal opens; do not signal existing terminals.
 
 [[targets]]
 name = "sway"
@@ -91,10 +85,3 @@ output = "~/.config/gtk-3.0/gtk.css"
 name = "gtk4"
 template = "gtk4.css.j2"
 output = "~/.config/gtk-4.0/gtk.css"
-
-# ============ App targets ============
-
-[[targets]]
-name = "obsidian"
-template = "obsidian.css.j2"
-output = "~/Documents/Obsidian/*/.obsidian/snippets/base16-theme.css"

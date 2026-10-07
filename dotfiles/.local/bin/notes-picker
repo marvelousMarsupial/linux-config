@@ -1,15 +1,10 @@
 #!/bin/bash
-# Pick and open a note from vault using fuzzel
-
-VAULT="$HOME/vault"
-
-# Find all markdown files, strip vault path, show in fuzzel
-NOTE=$(find "$VAULT" -name "*.md" -type f | \
-    sed "s|$VAULT/||" | \
-    sort | \
-    fuzzel --dmenu --prompt="Note: ")
-
-# Open selected note if not cancelled
-if [ -n "$NOTE" ]; then
-    foot --app-id=notes -e ~/.local/bin/nvim "$VAULT/$NOTE"
-fi
+# Pick an existing Markdown note; arbitrary menu input is not a file path.
+set -euo pipefail
+vault="$HOME/vault"
+[[ -d "$vault" ]] || exit 0
+note=$(find "$vault" -type f -name '*.md' -printf '%P\n' | sort | fuzzel --dmenu --prompt="Note: ") || exit 0
+[[ -n "$note" ]] || exit 0
+path=$(realpath -e -- "$vault/$note") || exit 1
+[[ "$path" == "$vault/"* && -f "$path" && "$path" == *.md ]] || exit 1
+exec foot --app-id=notes -e nvim -- "$path"

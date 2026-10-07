@@ -1,9 +1,0 @@
----
-# Yazi flavors are now included in stow/yazi package
-# Just ensure the config directory exists for stow
-- name: Create yazi config directory
-  ansible.builtin.file:
-    path: "{{ target_home }}/.config/yazi"
-    state: directory
-    owner: "{{ target_user }}"
-    group: "{{ target_user }}"

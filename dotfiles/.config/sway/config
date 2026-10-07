@@ -1,5 +1,5 @@
 # Sway config
-# Philosophy: tmux is your window manager. Sway just holds terminals.
+# Sway manages desktop windows and terminal layouts.
 # hjkl is ALWAYS movement. Modifier determines scope.
 
 # ===========================================
@@ -202,7 +202,7 @@ bindsym --to-code $mod+Shift+o move workspace to output right
 # LAYOUT
 # ===========================================
 
-# Splits (match tmux: \ and -)
+# Window splits
 bindsym $mod+backslash splith
 bindsym $mod+minus splitv
 
@@ -226,8 +226,8 @@ bindsym $mod+Shift+grave move scratchpad
 # APPS
 # ===========================================
 
-# Terminal (unset TMUX so new terminals start fresh tmux sessions)
-bindsym $mod+Return exec env -u TMUX $term
+# Terminal
+bindsym $mod+Return exec $term
 
 # Launcher (Space is easy to hit)
 bindsym $mod+Space exec $menu
@@ -252,9 +252,6 @@ bindsym $mod+n exec $bin/notes-toggle
 # Notes - search existing (fuzzel picker over ~/vault)
 bindsym --to-code $mod+m exec $bin/notes-picker
 
-# Obsidian. Same Electron Wayland flag as the browser.
-bindsym --to-code $mod+Shift+n exec flatpak run md.obsidian.Obsidian --ozone-platform-hint=auto
-
 # File manager
 bindsym --to-code $mod+e exec $term -e yazi
 
@@ -263,22 +260,6 @@ bindsym --to-code $mod+p exec $bin/pass-picker
 
 # Editor (vim)
 bindsym $mod+v exec $term -e ~/.local/bin/nvim
-
-# Dictation - local Whisper push-to-toggle (offline, no cloud).
-#
-# First press starts a pw-record capture; second press stops the
-# recorder, POSTs the WAV to a loopback whisper-server (lazy-started
-# user systemd unit holding the small.en-q5_1 model in memory), and
-# types the transcription directly into the focused window via wtype.
-# The clipboard is intentionally left untouched.
-#
-# Mod+Ctrl+s aborts an in-flight recording. To free the ~330 MiB the
-# model holds in RAM when you're done dictating for a while, run
-# `dictate stop-server` from a terminal — the next Mod+s press
-# lazy-restarts it.
-bindsym --to-code $mod+s exec $bin/dictate
-bindsym --to-code $mod+Ctrl+s exec $bin/dictate cancel
-
 
 # Power menu (lock, suspend, logout, reboot, shutdown)
 bindsym --to-code $mod+x exec $bin/power-menu
@@ -324,13 +305,8 @@ bindsym --to-code $mod+Shift+b exec blueman-manager
 # WiFi menu
 bindsym --to-code $mod+w exec $bin/wifi-menu
 
-# Containers / VMs picker — unified fuzzel menu over podman
-# containers, incus LXCs, and libvirt-managed KVM VMs. Selecting
-# an entry opens an action submenu (start / stop / resume /
-# shell). The shell action auto-starts a stopped instance first
-# and drops into bash/sh/serial console in a new foot window.
-# See dotfiles/.local/bin/vm-menu for the picker itself.
-bindsym --to-code $mod+c exec $bin/vm-menu
+# Virtual machines — managed directly with libvirt.
+bindsym --to-code $mod+c exec virt-manager --connect qemu:///system
 
 # USB eject all
 bindsym --to-code $mod+u exec udiskie-umount -a && notify-send "USB" "All devices ejected"
@@ -430,7 +406,7 @@ for_window [app_id=".*"] inhibit_idle fullscreen
 # avoids reload-time DBus traffic.
 exec $bin/sway-session
 
-# Force dark mode for Flatpak apps (Obsidian, etc)
+# Prefer dark mode for desktop applications
 exec gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
 
 exec mako
@@ -448,3 +424,6 @@ exec udiskie --no-tray --automount --notify
 exec wl-paste --watch cliphist store -max-items 10
 exec swayidle -w before-sleep 'swaylock -f'
 exec $bin/battery-monitor
+
+# Optional machine-specific outputs and bindings.
+include ~/.config/sway/local.conf

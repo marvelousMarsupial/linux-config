@@ -5,6 +5,6 @@
 # /etc/profile.d/flatpak.sh never runs and the default XDG_DATA_DIRS
 # (/usr/local/share:/usr/share) misses the flatpak app entries.
 
-export XDG_DATA_DIRS="/var/lib/flatpak/exports/share:/usr/local/share:/usr/share:$HOME/.local/share/flatpak/exports/share:$HOME/.local/share"
+export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}:/var/lib/flatpak/exports/share:$HOME/.local/share/flatpak/exports/share:$HOME/.local/share"
 
 exec fuzzel "$@"

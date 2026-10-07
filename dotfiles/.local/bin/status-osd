@@ -18,9 +18,9 @@ if dbus_env.exists() and "DBUS_SESSION_BUS_ADDRESS" not in os.environ:
 def run_output(cmd: list[str]) -> str:
     """Run a command and return stdout."""
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         return result.stdout.strip() if result.returncode == 0 else ""
-    except FileNotFoundError:
+    except (OSError, subprocess.TimeoutExpired):
         return ""
 
 def get_time() -> str:
@@ -70,22 +70,17 @@ def get_network() -> str:
 
     wifi = ""
     ethernet = ""
-    vpn = ""
 
     for line in output.splitlines():
-        parts = line.split(":")
+        parts = line.rsplit(":", 1)
         if len(parts) >= 2:
-            name, conn_type = parts[0], parts[1]
+            name, conn_type = parts[0].replace(r"\:", ":").replace(r"\\", "\\"), parts[1]
             if "wifi" in conn_type and not wifi:
                 wifi = name
             elif "ethernet" in conn_type and not ethernet:
                 ethernet = name
-            elif conn_type in ("vpn", "wireguard") and not vpn:
-                vpn = name
 
-    if vpn:
-        return f"{vpn} (VPN)"
-    elif wifi:
+    if wifi:
         return wifi
     elif ethernet:
         return "Wired"

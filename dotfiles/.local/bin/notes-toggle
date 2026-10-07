@@ -1,19 +1,13 @@
 #!/bin/bash
-# Toggle notes window - focus existing or create new blank note
-
-VAULT="$HOME/vault"
-
-# If notes window exists, focus it
-if swaymsg -t get_tree | grep -q '"app_id": "notes"'; then
-    swaymsg '[app_id="notes"] focus'
-    exit 0
+# Focus an existing notes window or create a private, unique note.
+set -euo pipefail
+vault="$HOME/vault"
+tree=$(swaymsg -t get_tree) || exit 1
+if jq -e '.. | objects | select(.app_id? == "notes")' <<< "$tree" >/dev/null; then
+    exec swaymsg '[app_id="notes"] focus'
 fi
-
-# Create new note
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-NOTE="$VAULT/$TIMESTAMP.md"
-mkdir -p "$VAULT"
-echo "# " > "$NOTE"
-
-# Open with cursor ready to type title
-foot --app-id=notes -e ~/.local/bin/nvim "+normal! A" "$NOTE"
+umask 077
+mkdir -p -- "$vault"
+note=$(mktemp "$vault/$(date +%Y%m%d-%H%M%S)-XXXXXX.md")
+printf '# \n' > "$note"
+exec foot --app-id=notes -e nvim '+normal! A' -- "$note"

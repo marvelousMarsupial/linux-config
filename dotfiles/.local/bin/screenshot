@@ -3,7 +3,7 @@
 # ~/Pictures/ and pushes the same bytes to the wl-clipboard, so the
 # user gets both a permanent file (for sharing later, scrolling back
 # through, attaching to a bug report) and an immediately-pasteable
-# clipboard payload (for dragging into Slack / Obsidian / a chat
+# clipboard payload (for dragging into documents / a chat
 # textbox right now).
 #
 # Usage:
@@ -41,7 +41,10 @@ set -euo pipefail
 
 mode="${1:-select}"
 out_dir="$HOME/Pictures"
-out="$out_dir/screenshot_$(date +%Y%m%d_%H%M%S).png"
+umask 077
+out=""
+captured=false
+trap 'if [[ -n "$out" && "$captured" == false ]]; then rm -f -- "$out"; fi' EXIT
 
 # mkdir -p is idempotent and silent if the directory exists, so this
 # fixes the first-run-on-fresh-install case where ~/Pictures has not
@@ -60,6 +63,8 @@ case "$mode" in
         # leave a non-zero exit code that systemd would log if the
         # bind were ever invoked from a unit).
         region=$(slurp) || exit 0
+        [[ -n "$region" ]] || exit 0
+        out=$(mktemp "$out_dir/screenshot_$(date +%Y%m%d_%H%M%S)_XXXXXX.png")
         grim -g "$region" "$out"
         ;;
     full)
@@ -67,6 +72,7 @@ case "$mode" in
         # composes them side-by-side at their actual resolutions, so
         # the resulting PNG matches what the user saw across all
         # monitors at the moment of capture.
+        out=$(mktemp "$out_dir/screenshot_$(date +%Y%m%d_%H%M%S)_XXXXXX.png")
         grim "$out"
         ;;
     *)
@@ -79,6 +85,8 @@ case "$mode" in
         exit 1
         ;;
 esac
+
+captured=true
 
 # wl-copy reads from stdin and announces the MIME type to the
 # compositor; `--type image/png` keeps Wayland clients from having

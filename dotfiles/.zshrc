@@ -9,9 +9,7 @@ if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" = "1" ] && co
   exec sway
 fi
 
-# Start tmux explicitly when needed; terminals open a regular shell.
-
-# Locale (required for Unicode/emoji in tmux)
+# Locale for Unicode and emoji
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 
@@ -20,7 +18,7 @@ export PASSWORD_STORE_DIR="$HOME/.password-store"
 export PASSWORD_STORE_CLIP_CMD="wl-copy"
 export GPG_TTY=$(tty)
 
-# XDG runtime dir (required for rootless podman, pipewire, etc)
+# XDG runtime dir for desktop services
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 # D-Bus session (for headless sway)
@@ -34,9 +32,8 @@ source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 eval "$(starship init zsh)"
 
 # fnm (Fast Node Manager) shell integration. Loaded conditionally so
-# the same .zshrc is portable across hosts and containers — fnm ships
-# in the dev container image but isn't installed on the host or on
-# remote servers, and `command -v fnm` keeps the file innocuous when
+# the same .zshrc works with or without fnm installed.
+# `command -v fnm` keeps initialization harmless when
 # absent. `--use-on-cd` makes fnm auto-switch the active Node version
 # when you `cd` into a directory containing a `.nvmrc` /
 # `.node-version` file, which is the whole point of using fnm over a
@@ -45,6 +42,7 @@ eval "$(starship init zsh)"
 # at the top of the file, which is intentional — fnm's PATH manipulation
 # needs to win for the active Node version to take precedence over
 # any system Node).
+[[ -d "$HOME/.local/share/fnm" ]] && export PATH="$HOME/.local/share/fnm:$PATH"
 if command -v fnm >/dev/null; then
   eval "$(fnm env --use-on-cd --shell zsh)"
 fi
@@ -78,7 +76,6 @@ function y() {
 
 # MOTD - show on interactive login
 [[ -o login ]] && command -v motd >/dev/null && motd
-alias pshell='TERM=xterm podman exec -it'
 
 # Foot shell integration: mark command output boundaries.
 if [[ -o interactive && "$TERM" == foot* ]]; then
