@@ -24,7 +24,8 @@ The tool environment has an isolated process/network view and no privileged syst
 | High maintenance priority | Cached APT metadata lists 183 upgradable packages, including 63 whose candidate listings include a security repository. Examples include Flatpak, bubblewrap, jq, media libraries, and Incus. These counts are candidates, not counts of CVEs, and metadata was not refreshed. | Needs privileged package update review. Unattended upgrade settings and enabled timers exist but do not establish that updates succeeded. |
 | Medium | The desktop locks before suspend but has no inactivity timeout. A logged-in desktop can remain accessible indefinitely. Fullscreen applications also inhibit idle. | Configured 2026-10-08: 30-minute idle timeout, retained synchronous pre-suspend locking and removed blanket fullscreen inhibition in repo and installed VM config. Application-requested inhibitors remain respected. Logout/login and live idle/unlock/suspend checks are pending; sandbox restrictions prevent live activation/verification. |
 | Medium, exposure unknown | `/etc/nftables.conf` is an old Forge placeholder with no filtering rules. Other tools may have loaded rules; the effective ruleset could not be read. NAT is not a substitute for a host exposure review. | Verify loaded rules and required remote/libvirt traffic before designing a firewall. No network changes made. |
-| Medium, active state unknown | Enabled service/socket links remain for Incus, LXCFS, and Netavark despite their removal from future repository installs. An enabled link is not proof of a running or remotely exposed service. | Review and retire unused host components later. Preserve the Incus guest agent and the current remote-access path. |
+| Medium, active state unknown | Enabled service/socket links remain for Incus, LXCFS, and Netavark despite their removal from future repository installs. An enabled link is not proof of a running or remotely exposed service. | Static review completed 2026-10-08; see the container-service review below. Workload inventory, live state and retirement remain pending due to sandbox restrictions. Guest agent and access path preserved. |
+| Medium supply-chain risk | Markdown browser preview’s build hook downloads an external helper without a digest check and probes an existing helper by executing it. | Mitigated 2026-10-08: browser plugin disabled and automatic install hook removed from repo and installed config. In-buffer rendering retained. Existing helper files preserved and unverified; restart Neovim to apply. |
 | Medium supply-chain risk | setup-editor downloaded and executed Neovim without checking a fixed digest. HTTPS alone did not compare the asset to an independently reviewed expected value. | Fixed: pinned official v0.12.2 x86_64/arm64 SHA-256 digests; checksum failure aborts before extraction or execution. Version overrides require an explicit digest. |
 | Medium supply-chain risk | lazy.nvim bootstrap selected a moving branch rather than the repository's lock entry. | Fixed for new bootstraps: clone without checkout, then detach at the validated 40-character lock commit. The installed manager differs from the repo lock; the other 26 installed plugins match. Existing plugin code was not replaced during the audit. |
 | Residual supply-chain risk | Markdown preview's build hook downloads a prebuilt helper without a separately pinned digest. Optional Mason installs also fetch tools, and plugin code executes as the user. Pinning the manager does not audit every plugin or transitive download. | Documented; no claim of a complete dependency/CVE audit. Consider replacing that build path when preview is rebuilt. |
@@ -95,3 +96,93 @@ incoming/outgoing tests passed, DNS/HTTPS worked, and Incus agent/libvirt stayed
 active. This resolves the firewall uncertainty above; the other original audit
 findings retain their stated scope. See [firewall](firewall.md) for verification
 limits, installed files and recovery commands.
+
+## Container service review — 2026-10-08
+
+Read the installed units, `/etc/systemd/system` startup links and dpkg dependency
+metadata. The repo no longer includes Incus, LXCFS, Podman or Netavark integration.
+No system settings, packages, services, networking or container data were changed.
+
+| Component | Installed evidence and implication |
+| --- | --- |
+| Incus host | `incus` and `incus-base` 6.0.4-2+deb13u11 are installed. `incus.socket`, `incus-user.socket` and `incus-startup.service` have startup links. Either socket can activate a host daemon; stopping only `incus.service` would not retire activation. The host daemon requires LXCFS. |
+| Incus guest support | `incus-agent` is a separate installed package. Its service uses a guest virtio-port condition and does not require the Incus host daemon. Preserve it. Also preserve the separately enabled `incus-growpart.service`, which grows the VM root partition. |
+| LXCFS | 6.0.4-1+deb13u1 is installed with a multi-user startup link. Check Incus/LXC workloads before retiring it. |
+| Netavark | 1.14.0-2 is installed. DHCP proxy service/socket and firewalld reload helper have startup links. Podman 5.4.2+ds1-2+b2 depends on Netavark; these helpers are not proof that Podman networking is unused. |
+| Stored data | Incus and system/user container storage directories remain. Incus instance/storage directories are unreadable here. No instance count or unused-data claim is supported. |
+| Access and libvirt | Libvirt service/socket links remain and must be preserved. `openssh-server` is not installed; do not assume SSH is the current access or recovery path. The host access path could not be established from this sandbox. |
+
+The system manager rejects this session's D-Bus connection. Its isolated process
+and device views cannot establish running services, guests, listeners or the
+presence of the VM's agent channel. Startup links establish configuration only.
+No running workload inventory was obtained.
+
+User instruction after this review: leave Incus unharmed. Keep Incus and its
+LXCFS dependency untouched. The following is a read-only inventory for a future
+host review, not authorization to retire Incus.
+
+From an unrestricted terminal on the VM, inspect:
+
+```sh
+systemctl list-units --all 'incus*' 'lxc*' 'netavark*' 'podman*'
+systemctl list-unit-files 'incus*' 'lxc*' 'netavark*' 'podman*'
+sudo incus list
+sudo incus storage list
+sudo podman ps --all
+podman ps --all
+systemctl --user list-units --all 'podman*' 'container*'
+```
+
+Incus and Podman queries can activate their daemons; perform these only during
+the intentional host review. Check other users' workloads and Quadlet definitions
+as applicable. Confirm the current connection and a working recovery route before
+stopping anything. Keep Incus, its guest support and LXCFS unchanged under the current user
+instruction. Any later Netavark/Podman cleanup needs its own workload check.
+Review package removal separately, including its simulated dependency changes,
+and avoid blanket purge/autoremove.
+
+## Privilege and update review — 2026-10-08
+
+No permissions, services, package settings or Incus components were changed.
+The requested privileged verification remains incomplete.
+
+- `/etc/sudoers` and `/etc/sudoers.d/august` exist with mode 0440 but cannot be
+  read here. No claim about passwordless sudo or allowed commands is supported.
+  Ownership appears remapped in this sandbox and cannot certify host ownership.
+- Account metadata lists `august` in `libvirt` and `kvm`. The packaged
+  `/usr/share/polkit-1/rules.d/60-libvirt.rules` grants
+  `org.libvirt.unix.manage` to the libvirt group without a password prompt.
+  Treat this group as administrative access, as already intended by the repo.
+- Installed libvirtd socket units and visible sockets use mode 0666. Readable
+  `libvirtd.conf` has no active overrides; its comments document Polkit as the
+  read/write default for this build. Open socket permissions alone do not grant
+  unauthenticated management under [Polkit authentication](https://libvirt.org/auth.html#unix-socket-policykit-auth).
+  Local `/etc/polkit-1/rules.d` and protected `qemu.conf` are unreadable, and even
+  a read-only virsh connection is sandbox-denied. Effective authorization remains
+  unverified; do not change socket modes based only on this restricted view.
+- Both packaged APT services have `ConditionACPower=true`; a battery-related
+  skipped run is not itself a failed upgrade. The system manager is inaccessible,
+  unattended-upgrade logs are unreadable and the system journal is hidden.
+  `journalctl` returning no entries here is not evidence of healthy services.
+
+From an unrestricted VM terminal, complete the read-only checks:
+
+```sh
+sudo visudo -c
+sudo -l
+sudo cat /etc/sudoers /etc/sudoers.d/august
+id august
+sudo ls -l /run/libvirt/libvirt-sock* /dev/kvm
+sudo grep -vE '^[[:space:]]*(#|$)' /etc/libvirt/libvirtd.conf /etc/libvirt/qemu.conf
+sudo find /etc/polkit-1/rules.d -maxdepth 1 -type f -exec cat {} +
+virsh --connect qemu:///system list --all
+sudo systemctl --failed --no-pager
+sudo systemctl show apt-daily.service apt-daily-upgrade.service unattended-upgrades.service -p ActiveState -p SubState -p Result -p ExecMainStatus -p ConditionResult
+sudo journalctl -b -u apt-daily.service -u apt-daily-upgrade.service -u unattended-upgrades.service --no-pager
+sudo tail -n 50 /var/log/unattended-upgrades/unattended-upgrades.log
+```
+
+Run the virsh query as `august`, without sudo, to check the intended management
+access. Review all sudoers includes, including any referenced by the main file,
+and local Polkit rules before drawing a conclusion. Preserve failed-unit evidence;
+do not reset failures or restart services merely to make the status look clean.

@@ -69,3 +69,4 @@ class SecurityAuditTests(unittest.TestCase):
         preview = (REPO / 'dotfiles/.config/nvim/lua/plugins/markdown.lua').read_text()
         self.assertIn('mkdp_open_to_the_world = 0', preview)
         self.assertIn('mkdp_auto_close = 1', preview)
+        self.assertNotIn('mkdp#util#install', preview)

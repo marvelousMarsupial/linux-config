@@ -38,10 +38,12 @@ Forge placeholder; pre-existing tables belonged to libvirt.
 
 ## Machine-local outbound trial
 
-OpenSnitch is installed separately on this VM for interactive outbound testing.
-Its packages, settings, allow rules and user interface service are not part of
-the repository. It can block outgoing traffic that this host firewall permits.
-The checks above were performed before enabling that separate trial.
+OpenSnitch packages, UI theme defaults, launcher and user service are now included
+in the repository. Setup provisions the daemon/UI socket through a systemd
+override; other daemon preferences and allow rules remain local. It can block
+outgoing traffic that this host firewall permits. The checks above predate that
+trial. See [system health](sysreport.md#opensnitch) for database and socket setup;
+the user confirmed connection collection on 2026-10-08.
 
 ## Inspect and change
 

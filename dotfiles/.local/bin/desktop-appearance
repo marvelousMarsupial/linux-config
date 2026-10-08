@@ -1,0 +1,5 @@
+#!/bin/sh
+# Publish the dark preference for GTK/libadwaita and portal-aware applications.
+set -eu
+gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+gsettings set org.gnome.desktop.interface gtk-theme Adwaita-dark

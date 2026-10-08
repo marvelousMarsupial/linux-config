@@ -17,37 +17,26 @@ installation scripts may still restart affected services. Reboot at a convenient
 time after kernel updates; running applications may also need restarting to use
 updated libraries. Review unused packages manually with `sudo apt autoremove`.
 
-## Current machine — 2026-10-07
+## Setup and verification
 
-Debian's APT timers are active. The manual update run finished and no package
-upgrades remain at this check. The package audit is clean.
+`./scripts/setup` installs both repo APT policy files, backs up replaced versions
+and enables Debian's update timers. No separate manual policy edits are required
+on a fresh installation. Both policy files matched the development VM in the
+2026-10-08 read-only check after the user ran setup.
 
-The repo's `90linux-config-unattended-upgrades` file is still absent from `/etc`.
-Existing local settings allow Debian maintenance updates and disable automatic
-reboot. Follow the steps below to install the exact repo policy.
+A prior isolated native `apt-config` check confirmed the intended origin and
+periodic/reboot/removal settings. A real privileged upgrade dry run, current timer
+health and delivery after a future update still require live verification. Old
+observations about missing policy files and a pending kernel reboot are superseded;
+the VM was observed running `6.12.111+deb13-amd64` after reboot.
 
-Checked again 2026-10-08: the native `apt-config` parser successfully loaded a
-temporary copy of the installed configuration with both repo files overlaid.
-The merged result contains exactly the four intended Debian origin patterns,
-daily list refresh/upgrades, weekly cache cleanup and disabled automatic
-reboots/kernel/dependency removal. This does not verify an actual upgrade run.
-The exact policy is still absent from `/etc`; this session cannot install it
-because sudo is blocked by the sandbox’s no-new-privileges restriction.
-Installation and the privileged dry run below remain required.
+OpenSnitch is now included in setup and may prompt for outgoing update traffic.
 
-The notification timer is active and recent checks succeeded. Confirm delivery
-when the next update installs packages.
+## Optional manual maintenance
 
-Kernel `6.12.111+deb13-amd64` is installed. The VM still runs
-`6.12.74+deb13+1-amd64`. Reboot when convenient to use the new kernel.
-The old kernel remains available as a fallback.
-
-OpenSnitch is a machine-local trial and may prompt for outgoing update traffic.
-
-## Apply on the actual machine
-
-Run from the repository root in an unrestricted terminal. The user-config
-installer deliberately does not change `/etc` or system services.
+Normal fresh installation uses `./scripts/setup`. The commands below are for
+manual policy maintenance or troubleshooting from the repository root in an
+unrestricted terminal. The config-only installer does not change `/etc` or services.
 
 ```sh
 sudo apt-get update

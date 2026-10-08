@@ -1,0 +1,3 @@
+#!/bin/sh
+# Apply the repo dark preference before every app launch.
+exec "$HOME/.local/bin/app-dark-mode" keepassxc "$@"

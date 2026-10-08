@@ -1,9 +1,12 @@
 #!/usr/bin/python3
 """Reveal new floating windows during fullscreen and restore fullscreen on close."""
 import json
+import configparser
 import os
+from pathlib import Path
 import re
 import socket
+import stat
 import struct
 import sys
 
@@ -45,6 +48,66 @@ def walk(node, workspace=None, floating=False):
 
 def fullscreen(node):
     return node['type'] in ('con', 'floating_con') and node.get('fullscreen_mode', 0)
+
+
+def write_foot_background(pid, sequence):
+    """Send Foot's OSC 11 background/alpha command through its child's PTY."""
+    try:
+        executable = (Path('/proc') / str(pid) / 'exe').readlink().name
+        if executable.removesuffix(' (deleted)') != 'foot':
+            return False
+        children = (Path('/proc') / str(pid) / 'task' / str(pid) / 'children').read_text().split()
+        for child in children:
+            for stream in ('0', '1', '2'):
+                try:
+                    tty = (Path('/proc') / child / 'fd' / stream).readlink()
+                    if not re.fullmatch(r'/dev/pts/\d+', str(tty)):
+                        continue
+                    fd = os.open(tty, os.O_WRONLY | os.O_NOCTTY | os.O_NONBLOCK)
+                    try:
+                        info = os.fstat(fd)
+                        if info.st_uid == os.getuid() and stat.S_ISCHR(info.st_mode):
+                            return os.write(fd, sequence) == len(sequence)
+                    finally:
+                        os.close(fd)
+                except OSError:
+                    continue
+    except OSError:
+        pass  # The process can exit between the Sway event and this write.
+    return False
+
+
+class FootOpacity:
+    """Apply background alpha on window events, including floating toggles."""
+    def __init__(self, home, write=write_foot_background):
+        self.home = home
+        self.write = write
+        self.applied = {}
+
+    def sync(self, tree):
+        colors = configparser.ConfigParser(interpolation=None)
+        try:
+            colors.read(self.home / '.config/foot/colors.ini')
+            background = colors.get('colors', 'background', fallback='')
+            alpha = colors.getfloat('colors', 'alpha', fallback=1.0)
+        except (OSError, ValueError, configparser.Error):
+            return
+        if not re.fullmatch(r'[0-9a-fA-F]{6}', background) or not 0 <= alpha <= 1:
+            return
+        active = set()
+        for node, _, floating in walk(tree):
+            pid = node.get('pid')
+            if not isinstance(pid, int) or pid <= 0:
+                continue
+            active.add(node['id'])
+            opacity = round(100 * (max(0.60, alpha) if floating else alpha))
+            value = (pid, background, opacity)
+            if self.applied.get(node['id']) == value:
+                continue
+            sequence = f'\x1b]11;[{opacity}]#{background}\x1b\\'.encode()
+            if self.write(pid, sequence):
+                self.applied[node['id']] = value
+        self.applied = {key: value for key, value in self.applied.items() if key in active}
 
 
 class PopupGuard:
@@ -128,10 +191,6 @@ class PopupGuard:
         if fullscreen(node) or (saved and saved['parent'] == target):
             self.pending.discard(target)
             return
-        if floating and node.get('visible', False) and not saved:
-            # Native parented dialogs may already be above fullscreen. Preserve
-            # that stacking instead of needlessly disabling fullscreen.
-            return
         if not saved:
             saved = dict(parent=fs['id'], mode=fs['fullscreen_mode'], popups=set())
             self.suspended[ws_id] = saved
@@ -172,7 +231,10 @@ def main():
             print(f'Sway popup command failed: {result}', file=sys.stderr)
 
     guard = PopupGuard(command)
-    guard.recover(commands.request(4), startup=True)
+    opacity = FootOpacity(Path.home())
+    tree = commands.request(4)
+    guard.recover(tree, startup=True)
+    opacity.sync(tree)
     while True:
         kind, event = events.read()
         if kind == 0x80000006:
@@ -183,6 +245,7 @@ def main():
         tree = commands.request(4)
         guard.handle(event, tree)
         guard.recover(tree)
+        opacity.sync(tree)
 
 
 if __name__ == '__main__':

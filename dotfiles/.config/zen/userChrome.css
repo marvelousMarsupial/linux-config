@@ -12,6 +12,7 @@
     --glass-overlay-tint: rgba(var(--glass-background-rgb, 30, 32, 48), 0.38);
     --glass-search-tint: rgba(var(--glass-background-rgb, 30, 32, 48), 0.24);
     --glass-blur: 14px;
+    --glass-sidebar-blur: 8px;
     --zen-themed-toolbar-bg-transparent: transparent !important;
     --zen-navigator-toolbox-background: transparent !important;
     --zen-main-browser-background: var(--glass-tint) !important;
@@ -91,7 +92,7 @@
   :root[zen-compact-mode="true"] #navigator-toolbox,
   :root[zen-compact-mode="true"] #nav-bar {
     background: var(--glass-overlay-tint) !important;
-    backdrop-filter: blur(var(--glass-blur)) saturate(110%) brightness(0.85) !important;
+    backdrop-filter: blur(var(--glass-sidebar-blur)) saturate(110%) brightness(0.85) !important;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18) !important;
   }
 

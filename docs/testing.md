@@ -12,25 +12,35 @@ Run from the repository root:
 
 The basic check validates shell/Python/Lua syntax, TOML, and all six palette renders.
 The full check also runs the offline integration suite. Latest full run on
-2026-10-07 with unrestricted access: **97 tests run, 96 passed, 1 failed,
-none skipped**. The editor smoke test expects unchanged HTML on save, but an
-available formatter rewrites that fixture. The assertion needs to distinguish
-code formatting from prose preservation; the product deliberately formats code
-on save. Syntax, TOML, Lua and six palette renders passed. Tests requiring Neovim and installed plugins can
-be skipped on a machine without them; inspect the output before claiming coverage.
+2026-10-08 in the restricted session: **174 tests run, 172 passed, two skipped**
+(GTK display routing and local IPC unavailable). Syntax, TOML, Lua and six
+palette renders passed. The editor smoke test now preserves entire prose files
+exactly while allowing code formatting. Deterministic external HTML/JSON fixtures
+verify formatting on save and the resulting disk contents, even without optional
+formatters installed. This resolves the prior unchanged-HTML assertion failure.
+Tests requiring Neovim and installed plugins can be skipped on a machine without
+them; inspect the output before claiming coverage.
+
+Remote bootstrap checks exercise piped execution, argument forwarding, setup/clone
+failure exit codes and temporary checkout cleanup without network or sudo. A
+focused follow-up also verified fresh monitor installation and preservation of
+subsequent local edits. The published URL and real sudo prompts remain untested.
 
 ## Automated coverage
 
 | Area | What is exercised |
 | --- | --- |
-| Installation | Dry runs, repeated copies, permissions, private backups, destination and backup-path symlinks, collisions, mode repairs, preserved local settings and named retirement. |
+| Installation | Dry runs, repeated copies, permissions, private backups, destination and backup-path symlinks, collisions, mode repairs, preserved local settings, selective dark-theme merges and named retirement. |
+| KeePassXC / app themes | First launch, focus and scratchpad show/hide; invalid IPC; launch-time dark settings preserve other app preferences and remain repeatable. |
 | Themes | Six palettes; generated Lua/TOML and native Foot/Fuzzel validation; previews and rejected templates/palettes. |
-| Neovim | Eight filetypes, Markdown/text wrapping, saves, plugins, language/formatter configuration, actual LSP fixture attachment/diagnostics/hover/definition, external formatter execution, modeline rejection and removed note automation. |
+| Neovim | Eight filetypes, Markdown/text wrapping, saves, plugins, language/formatter configuration, actual LSP fixture attachment/diagnostics/hover/definition, external formatter execution, modeline rejection, disabled unverified browser preview, retained in-buffer Markdown shortcut and removed note automation. |
 | Bat | Rounded fitted borders, ANSI colors, Unicode, width limits, multiple/empty/large files, pipelines and PTY pager selection/quoting. |
 | Desktop helpers | Menu and background commands: recorded menu actions, display layouts/escaping, status parsing, battery warning/reset loop, session startup ordering, launcher/Zen argument forwarding, screenshots, notes, screen-only brightness controls and visible brightness failures. |
 | Systemd / updates | Real swaymsg subscription and disconnect against a disposable IPC socket; session startup failure paths; completed APT upgrade detection, notification baseline, deduplication and delivery retry. |
+| Portals | Offline Foot/Yazi wrapper checks for literal filenames, single/multiple selection, cancellation and directory fallback cleanup; Zen launcher environment. The user confirmed a live single-file upload and fullscreen picker reveal; other dialog/backend paths still require live checks in [portals](portals.md). |
 | Wi-Fi | Escaped SSIDs and saved profiles, strongest 15 networks, cached credentials, authentication retry, cancellation, timeouts and exact picker selections. |
 | Shell/Yazi | Remote terminfo option validation, alias reminder privacy and prefix matching, and Yazi editor argument forwarding. |
+| Desktop setup | Side-effect-free dry run, verified release download/rejection, archive traversal/link rejection, reuse of installed apps, replacement rollback and destination-user paths. Real APT/source builds and fresh-machine behavior need host testing. |
 | Setup | Default/optional branches, local verified release installation, existing-install backup, rejected version/digest/architecture, failed binary/plugin validation and temporary-file cleanup. |
 | Security | Runtime environment injection and symlinks, private backups under a shared umask, editor safeguards and download rejection. |
 
@@ -80,35 +90,55 @@ recorded in [current state](state.md) and [firewall](firewall.md). Restricted
 sessions may skip the IPC test when local sockets are prohibited. Track
 outstanding checks in [TODO](TODO.md).
 
-## Clipboard-history removal — 2026-10-08
+## Current live verification boundaries — 2026-10-08
 
-Removed automatic capture, its shortcut/help entry and the cliphist package
-requirement. Repo and installed Sway/keybind help files match. Normal clipboard
-tools remain configured. `./scripts/check --full`: 152 tests, 150 passed, two
-skipped (GTK display and local IPC unavailable). Syntax, TOML and six theme
-renders passed. Sway validation could not start because the sandbox prohibits
-Wayland sockets, including with a headless backend. Live watcher shutdown and
-clipboard behavior could not be checked; log out/in to apply the startup change.
-Existing clipboard history was not inspected or erased.
+The user ran full setup on the development VM and rebooted. Installed package,
+config and policy checks and a working Yazi upload do not verify a fresh target
+installation of the latest revision. Automated setup tests use local release
+fixtures and mocked privilege/network actions. Sandbox sudo, D-Bus, Sway and
+local socket restrictions still limit live checks.
 
-## Idle and suspend locking — 2026-10-08
+Confirmed by the user: a Zen upload opens Yazi, and opening the picker while
+fullscreen exits fullscreen so the floating picker is visible. This behavior is
+intentional and must be preserved. Picker tests also cover exit-before-launch and
+restoration sequencing offline. Live save/overwrite, multiple/directory selection,
+fullscreen restoration after selection/cancel and screen sharing remain pending.
 
-Repo and installed Sway configs match. Checked that exactly one startup watcher
-uses a 1800-second idle timeout and `-w`, with both idle and before-sleep commands
-invoking `swaylock -f`; executed both shell commands against an isolated lock
-stub to verify argument forwarding. Removed the blanket fullscreen inhibitor.
-`./scripts/check --full`: 152 tests, 150 passed, two skipped (GTK display and
-local IPC unavailable). Syntax, TOML and six theme renders passed.
-Live activation and idle/password-unlock/suspend behavior remain unverified
-because this sandbox cannot access Sway or the user service manager. Log out/in
-and follow the checks in [systemd](systemd.md) before relying on automatic locks.
+The repo configures GTK/Zen dark preferences and KeePassXC/OpenSnitch launch-time
+dark settings, including OpenSnitch's theme dependency. App appearance, database
+pairing/autofill, idle/suspend locks, notifications and hardware behavior require
+live checks. Old dated audit results remain in [security audit](security-audit.md);
+they are not current assertions about running services.
 
-## APT policy pre-install check — 2026-10-08
+## Polkit session integration
 
-Copied installed `apt.conf.d` into a temporary directory and overlaid both repo
-APT files. Used `APT_CONFIG` to select that directory before native `apt-config`
-loading. Confirmed exactly four intended origin patterns and every explicit
-periodic/reboot/removal setting. No system files changed. Installation and the
-privileged unattended-upgrade dry run remain blocked by sandbox restrictions.
-The idle timeout was changed to 1800 seconds in repo and installed Sway config;
-files match. Basic syntax, TOML and six theme checks passed.
+Setup includes mate-polkit. Sway launches the agent directly so its process
+belongs to the desktop login session, rather than the user manager's session.
+The old user unit is retired with a backup by config installation. On 2026-10-08 the user confirmed the graphical authentication test works after
+applying the direct Sway startup fix. See
+[systemd](systemd.md#graphical-authentication). The former user service ran on the
+VM but the user's pkexec test reported no authentication agent.
+
+Desktop service migration (2026-10-08): full offline suite passed, 175 tests,
+2 skips. Battery monitor, swayidle and udiskie now use session-scoped user units.
+Unit verification reported a sandbox SO_PASSCRED restriction; live activation
+requires logout/relogin to replace the previous directly started processes.
+
+Optional Restic integration (2026-10-08): full offline suite passed, 181 tests,
+2 skips. Backup tests use an isolated home and stubbed Restic, covering missing
+configuration, private credential permissions, source/exclusion arguments, local
+repository recursion (including symlinks), explicit init/restore and error status.
+Setup dry-run with --backups includes Restic without enabling its timer. No real
+repository backup/restore was run: this VM has no Restic binary or configured target.
+# Journal fixes — 2026-10-08
+
+The session launcher now queries failed session services before resetting them;
+unloaded services are left alone. The Yazi picker leaves an empty result on normal
+file cancellation. Terminal failures still propagate, and fullscreen restoration
+is unchanged. The 19 command tests and six portal tests passed after these changes.
+
+UPower was added to the setup package list. Installing it on the current VM and
+checking live service state require host privileges unavailable in the sandbox.
+Bluetooth availability and GTK/GNOME/Wayland compatibility messages remain visible;
+no journal filters or log deletion were added. Live file selection/cancellation
+still needs verification in the desktop session.

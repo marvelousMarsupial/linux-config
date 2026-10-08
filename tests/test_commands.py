@@ -78,10 +78,20 @@ class CommandTests(CommandSandbox):
         self.assertEqual([e['name'] for e in events], ['systemctl', 'swaymsg', 'dbus-update-activation-environment',
                                                      'systemctl', 'systemctl', 'systemctl'])
         self.assertEqual(events[-1]['args'], ['--user', 'start', 'sway-session.target'])
-        self.assertEqual(events[3]['args'], ['--user', 'reset-failed', 'kanshi.service', 'sway-session-monitor.service'])
+        self.assertEqual(events[3]['args'], ['--user', 'list-units', '--failed', '--type=service', '--plain', '--no-legend', '--no-pager', 'kanshi.service', 'sway-session-monitor.service',
+                                          'battery-monitor.service', 'swayidle.service', 'udiskie.service'])
         self.assertIn('WAYLAND_DISPLAY', events[4]['args'])
         self.assertNotIn('TOP_SECRET', events[4]['args'])
         self.assertTrue(all(e['desktop'] == 'sway' and e['session'] == 'wayland' for e in events))
+
+    def test_session_resets_only_failed_session_units(self):
+        result = self.execute('sway-session', responses={
+            'systemctl --user --quiet is-active sway-session.target': {'code': 3},
+            'systemctl --user list-units --failed --type=service --plain --no-legend --no-pager kanshi.service sway-session-monitor.service battery-monitor.service swayidle.service udiskie.service':
+                {'out': 'kanshi.service loaded failed failed Monitor manager\n'}})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        resets = [e for e in self.events() if 'reset-failed' in e['args']]
+        self.assertEqual([e['args'] for e in resets], [['--user', 'reset-failed', 'kanshi.service']])
 
     def test_active_session_is_untouched(self):
         result = self.execute('sway-session')
@@ -128,6 +138,7 @@ class CommandTests(CommandSandbox):
         event = self.events()[0]
         self.assertEqual(event['args'], ['https://example.invalid/a?x=1&y=2', 'two words'])
         self.assertEqual(event['wayland'], '1')
+        self.assertEqual(event['portal'], '1')
 
     def test_keybind_help_closes_on_eof(self):
         result = run(str(REPO / 'dotfiles/.local/bin/keybinds'), input='', env=self.env)

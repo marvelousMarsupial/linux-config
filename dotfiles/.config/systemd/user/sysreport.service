@@ -1,0 +1,9 @@
+[Unit]
+Description=Local daily system health HTML report
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/sysreport
+UMask=0077
+Nice=10
+NoNewPrivileges=true

@@ -22,6 +22,48 @@ References reviewed for visual direction:
 
 The implementation uses this repository's existing palette and installed software. Reload Sway with Super+Shift+c; open a new terminal and restart Neovim/Yazi to inspect their changes. GTK applications may need reopening too.
 
+## Dark mode is the default
+
+Fresh installs should use dark mode throughout, including KeePassXC. Preserve
+this requirement when changing desktop themes or adding applications. Sway does
+not require a full desktop environment, but toolkit preferences must be configured.
+
+- GTK 3/4 settings and generated CSS use dark colors. `desktop-appearance` sets
+  GNOME's `prefer-dark` preference and `Adwaita-dark` theme at Sway startup and reload,
+  covering libadwaita and portal-aware apps.
+- `environment.d/appearance.conf` sets `GTK_THEME=Adwaita:dark` using GTK's
+  built-in Adwaita theme. The login shell exports it before starting Sway, and
+  `sway-session` imports it into D-Bus and systemd. Keep this lightweight: no
+  additional Qt theme plugins, theme managers or desktop environment are required.
+  Set independent Qt application themes directly, as with KeePassXC below.
+- KeePassXC's fresh config explicitly sets `GUI/ApplicationTheme=dark`. Existing
+  app settings are preserved while the installer merges only the Dark theme.
+- OpenSnitch uses its supported `global/theme=dark_amber.xml` setting. The repo
+  includes `python3-qt-material` (about 455 KiB plus its font dependency), required
+  by its own theme selector. No global Qt theme plugin or new service is added.
+  Existing firewall preferences are preserved; only the UI theme is merged.
+- Zen's theme sync explicitly requests dark system/content colors, including
+  `prefers-color-scheme: dark`, while preserving unrelated profile preferences.
+  The launcher repeats sync before launch once a default profile and generated
+  colors exist. Fresh first launch relies on the desktop preference; later launches
+  also have the explicit profile preferences.
+
+The repo app launchers reapply the dark setting before each launch, including
+Super+P, the application launcher and terminal commands using the installed PATH.
+Running windows update on their next fresh launch; setup does not force-close
+password databases or interrupt firewall prompts.
+
+After changing toolkit environment defaults, log out/in and reopen apps so both Sway-launched
+and activated applications inherit the settings. Reloading Sway alone cannot
+change its inherited environment or the theme of already-running apps.
+Apps with independent themes may need an app-specific setting. Websites must
+support the dark preference or offer their own dark mode; this does not recolor
+websites that only implement a light design.
+
+Sources: [Debian Qt 6 GTK theme plugin](https://packages.debian.org/trixie/libs/qt6-gtk-platformtheme),
+[KeePassXC theme setting](https://github.com/keepassxreboot/keepassxc/blob/2.7.10/src/core/Config.cpp),
+[Mozilla color preferences](https://github.com/mozilla-firefox/firefox/blob/main/modules/libpref/init/StaticPrefList.yaml).
+
 ## Themes
 
 Press **Super+G** (or open **Appearance** from the launcher) for a compact

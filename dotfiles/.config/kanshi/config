@@ -1,2 +1,143 @@
-# Add profiles for your displays here.
-# See examples/kanshi-laptop.conf in the repo for a physical laptop setup.
+# kanshi — monitor hotplug profiles for sway.
+#
+# How this works: kanshi watches sway's output events. Whenever the set
+# of connected outputs changes (cable plugged / unplugged, dock
+# attached, etc.) it walks the profiles below in order and activates
+# the first one whose `output` lines exactly match the currently
+# connected displays.
+#
+# We match outputs by their **description** (`Make Model Serial`)
+# rather than by connector name (`DP-1`, `HDMI-A-1`, etc.) because
+# connector names can shift across cable swaps, dock reboots, and
+# whichever port you happened to plug into — but the description is
+# baked into the monitor's EDID and stays stable.
+#
+# To find an output's description, plug it in and run:
+#
+#     monitor-info        # custom helper, see ~/.local/bin/monitor-info
+#
+# It prints a ready-to-paste `output "..." enable position ... mode ...`
+# line for every connected display.
+#
+# ─────────────────────────────────────────────────────────────────────
+# Profile selection rules:
+#   * profiles are tried top-down; the first match wins
+#   * a profile only matches if it lists exactly the same set of
+#     connected outputs (no more, no fewer)
+#   * `output ... enable` turns a display on; `output ... disable`
+#     forces it off — used to blank the laptop panel when docked
+#
+# Wlroots transform values (sway-output(5)):
+#   * normal — no rotation
+#   * 90  — output rotated 90°  clockwise from natural orientation
+#   * 180 — upside down
+#   * 270 — output rotated 270° clockwise (= 90° counter-clockwise)
+#
+# Both 90 and 270 are valid portrait orientations; which one looks
+# right-side-up depends on which way the panel is physically tipped.
+# For this user's ULTRAWIDE the correct value here is `transform 90`.
+#
+# Heads-up — kanshi and `swaymsg output ... transform N` use OPPOSITE
+# sign conventions for portrait rotations on this version of kanshi
+# (kanshi 1.7.0 / sway 1.10 on this box). Empirically:
+#
+#     `swaymsg ... transform 270`  ⇔  kanshi `transform 90`
+#     `swaymsg ... transform 90`   ⇔  kanshi `transform 270`
+#
+# We confirmed the *visual* right-side-up orientation interactively
+# with `swaymsg ... transform 270`. The matching kanshi value is
+# therefore `transform 90`, which is what we use below. If the panel
+# is ever remounted the other way around, flip to `transform 270`
+# here (which will show up as `swaymsg transform 90` in IPC).
+# ─────────────────────────────────────────────────────────────────────
+
+
+# ─── Docked: laptop + curved (left) + ultrawide rotated (right) ─────
+#
+# Layout when both externals are plugged in:
+#
+#                                 ┌──────────┐
+#                                 │          │
+#                                 │ ULTRA    │
+#                                 │ WIDE     │
+#     ┌─────────────────────────┐ │ (portrait│
+#     │        CURVED           │ │  right)  │
+#     │     (landscape)         │ │          │
+#     └─────────────────────────┘ │          │
+#                                 │          │
+#                                 └──────────┘
+#
+# * eDP-1 (laptop panel) is disabled — when both externals are in,
+#   the laptop screen goes dark so closing the lid is fine. systemd-
+#   logind's `HandleLidSwitchDocked=ignore` (locked in by a drop-in
+#   from the desktop role's post-commands) makes lid close a no-op
+#   when an external display is connected.
+#
+# * The curved (LG HDR WQHD) sits on the left at native landscape
+#   orientation. It is shifted **down** to y=740 so its 1080-pixel
+#   height is vertically centered against the 2560-pixel-tall portrait
+#   ultrawide on the right. Without this offset the two panels only
+#   share a thin band at the top and the cursor can only hop between
+#   them along that edge — which felt cramped in practice. Centering
+#   exposes the full 1080-pixel band as a comfortable, eye-level
+#   crossing zone.
+#
+#   Math: ultrawide vertical center = 2560/2 = 1280; curved is 1080
+#   tall, so its top sits at 1280 - 540 = 740.
+#
+# * The flat ultrawide (LG ULTRAWIDE) is rotated to portrait via
+#   `transform 90` (kanshi convention — see the transform note above
+#   about the kanshi/swaymsg sign flip). After the transform the
+#   geometry becomes 1080x2560 portrait at 60Hz, sitting to the right
+#   of the curved at position 2560,0. If the panel is ever remounted
+#   the other way around, flip to `transform 270`.
+#
+# Position math:
+#   * curved:               x=0..2560,    y=740..1820  (1080 tall)
+#   * rotated ultrawide:    x=2560..3640, y=0..2560    (after transform)
+profile docked {
+    output eDP-1 disable
+    output "LG Electronics LG HDR WQHD 201NTQDMQ572" enable position 0,740  mode 2560x1080@60Hz transform normal scale 1
+    output "LG Electronics LG ULTRAWIDE 0x00052121"  enable position 2560,0 mode 2560x1080@60Hz transform 90     scale 1
+}
+
+
+# ─── Docked: laptop + only the curved ───────────────────────────────
+#
+# Curved alone, laptop panel off. No vertical offset here — there's
+# no taller neighbor to center against, so the curved sits flush at
+# the origin.
+profile only_curved {
+    output eDP-1 disable
+    output "LG Electronics LG HDR WQHD 201NTQDMQ572" enable position 0,0 mode 2560x1080@60Hz transform normal scale 1
+}
+
+
+# ─── Docked: laptop + only the ultrawide (rotated) ──────────────────
+#
+# Ultrawide alone, rotated portrait, laptop panel off. Same rotation
+# direction as the docked profile — keep them in sync if the panel is
+# ever remounted (kanshi convention, see transform note at the top).
+profile only_ultrawide {
+    output eDP-1 disable
+    output "LG Electronics LG ULTRAWIDE 0x00052121" enable position 0,0 mode 2560x1080@60Hz transform 90 scale 1
+}
+
+
+# ─── Laptop only (undocked) ─────────────────────────────────────────
+#
+# When no externals are plugged in, just the built-in panel runs.
+#
+# We deliberately do NOT pin a `mode` here. The Sharp panel reports its
+# native rate as 59.951 Hz, not a clean 60.000 Hz — and kanshi compares
+# refresh rates strictly enough that `mode 1920x1200@60Hz` fails to
+# match, the profile aborts, and eDP-1 stays in whatever (possibly
+# disabled) state the previous profile left it in. The visible symptom
+# was "unplug both externals → laptop screen stays black."
+#
+# Omitting `mode` lets kanshi/wlroots fall back to the panel's
+# preferred mode, which is what we want anyway. The laptop only has
+# 1920x1200 modes available, so there's nothing wrong to pick.
+profile laptop {
+    output eDP-1 enable position 0,0 scale 1
+}

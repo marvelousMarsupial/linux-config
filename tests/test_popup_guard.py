@@ -34,13 +34,15 @@ class PopupGuardTests(unittest.TestCase):
         self.assertIn('[con_id=10] fullscreen disable;', self.commands[0])
         self.assertIn('[con_id=20] floating enable, resize set 800 520, move position center, focus', self.commands[0])
 
-    def test_native_visible_dialog_preserves_true_fullscreen(self):
+    def test_new_visible_floating_dialog_also_leaves_fullscreen(self):
         self.guard.handle(event('new', 20), tree([window(20, visible=True)]))
-        self.assertEqual(self.commands, [])
+        self.assertEqual(len(self.commands), 1)
+        self.assertIn('[con_id=10] fullscreen disable;', self.commands[0])
+        self.assertIn('[con_id=20] floating enable', self.commands[0])
 
     def test_delayed_visibility_on_focus_is_rechecked(self):
         self.guard.handle(event('new', 20), tree([window(20, visible=True)]))
-        self.assertEqual(self.commands, [])
+        self.assertEqual(len(self.commands), 1)
         self.guard.handle(event('focus', 20), tree([window(20)], floating=False))
         self.assertEqual(len(self.commands), 1)
         self.assertIn('[con_id=20] floating enable', self.commands[0])
@@ -118,7 +120,7 @@ class PopupGuardTests(unittest.TestCase):
         self.assertEqual(self.commands, [])
 
     def test_parent_focus_rechecks_pending_new_window(self):
-        self.guard.handle(event('new', 20), tree([window(20, visible=True)]))
+        self.guard.pending.add(20)
         snapshot = tree([window(20)], floating=False)
         self.guard.handle(event('focus', 10), snapshot)
         self.guard.recover(snapshot)
@@ -137,7 +139,7 @@ class PopupGuardTests(unittest.TestCase):
         self.assertEqual(self.guard.suspended, {})
 
     def test_pending_old_dialog_does_not_cancel_explicit_fullscreen(self):
-        self.guard.handle(event('new', 20), tree([window(20, visible=True)]))
+        self.guard.pending.add(20)
         snapshot = tree([window(20)])
         self.guard.handle(event('fullscreen_mode', 10), snapshot)
         for change in ('focus', 'title'):
@@ -214,9 +216,108 @@ class PopupGuardTests(unittest.TestCase):
         self.assertEqual(self.commands, ['[con_id=10] fullscreen enable global'])
 
 
+class FootOpacityTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.module = load_script('sway-popup-guard')
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.home = Path(temporary.name)
+        self.colors = self.home / '.config/foot/colors.ini'
+        self.colors.parent.mkdir(parents=True)
+        self.colors.write_text('[colors]\nbackground=1e1e2e\nalpha=0.08\n')
+        self.writes = []
+        self.opacity = self.module.FootOpacity(
+            self.home, lambda pid, data: self.writes.append((pid, data)) or True)
+        self.terminal = window(20, visible=True)
+        self.terminal.update(pid=123, app_id='yazi-portal')
+
+    def test_floating_toggle_and_return_to_tiling(self):
+        self.opacity.sync(tree([self.terminal], floating=False))
+        self.opacity.sync(tree([self.terminal], floating=True))
+        self.opacity.sync(tree([self.terminal], floating=False))
+        self.assertEqual(self.writes, [
+            (123, b'\x1b]11;[8]#1e1e2e\x1b\\'),
+            (123, b'\x1b]11;[60]#1e1e2e\x1b\\'),
+            (123, b'\x1b]11;[8]#1e1e2e\x1b\\'),
+        ])
+
+    def test_solid_mode_and_theme_changes(self):
+        self.opacity.sync(tree([self.terminal]))
+        self.colors.write_text('[colors]\nbackground=282a36\nalpha=1.0\n')
+        self.opacity.sync(tree([self.terminal]))
+        self.assertEqual(self.writes[-1], (123, b'\x1b]11;[100]#282a36\x1b\\'))
+
+    def test_unchanged_windows_are_not_written_repeatedly(self):
+        snapshot = tree([self.terminal])
+        self.opacity.sync(snapshot)
+        self.opacity.sync(snapshot)
+        self.assertEqual(len(self.writes), 1)
+        self.opacity.sync(tree())
+        self.opacity.sync(snapshot)
+        self.assertEqual(len(self.writes), 2)
+
+    def test_failed_writes_are_retried_on_next_event(self):
+        self.opacity.write = lambda pid, data: False
+        self.opacity.sync(tree([self.terminal]))
+        self.assertEqual(self.opacity.applied, {})
+        self.opacity.write = lambda pid, data: self.writes.append(data) or True
+        self.opacity.sync(tree([self.terminal]))
+        self.assertEqual(len(self.writes), 1)
+
+    def test_invalid_config_does_not_emit_terminal_control_codes(self):
+        for config in ('background=bad\nalpha=0.08',
+                       'background=1e1e2e\nalpha=nan',
+                       'background=1e1e2e\nalpha=2'):
+            self.colors.write_text('[colors]\n' + config + '\n')
+            self.opacity.sync(tree([self.terminal]))
+        self.assertEqual(self.writes, [])
+
+    def test_control_sequence_reaches_foot_through_pty(self):
+        import os
+        from pathlib import Path
+        from unittest.mock import patch
+        try:
+            master, slave = os.openpty()
+        except OSError as error:
+            self.skipTest(str(error))
+        self.addCleanup(os.close, master)
+        self.addCleanup(os.close, slave)
+        tty = Path(os.ttyname(slave))
+        def readlink(path):
+            return Path('/usr/bin/foot') if path.name == 'exe' else tty
+        sequence = b'\x1b]11;[60]#1e1e2e\x1b\\'
+        with patch.object(Path, 'readlink', readlink), \
+                patch.object(Path, 'read_text', return_value='456'):
+            self.assertTrue(self.module.write_foot_background(123, sequence))
+        os.set_blocking(master, False)
+        self.assertEqual(os.read(master, 1024), sequence)
+
+    def test_other_applications_are_not_written(self):
+        from pathlib import Path
+        from unittest.mock import patch
+        with patch.object(Path, 'readlink', return_value=Path('/usr/bin/zen')), \
+                patch.object(self.module.os, 'open') as opening:
+            self.assertFalse(self.module.write_foot_background(123, b'example'))
+        opening.assert_not_called()
+
+
 class TerminalShortcutTests(unittest.TestCase):
     def setUp(self):
         self.module = load_script('terminal')
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.home = Path(temporary.name)
+        self.colors = self.home / '.config/foot/colors.ini'
+        self.colors.parent.mkdir(parents=True)
+        self.colors.write_text('[colors]\nalpha=0.08\n')
+        home = patch.object(self.module.Path, 'home', return_value=self.home)
+        home.start()
+        self.addCleanup(home.stop)
 
     def snapshot(self, mode):
         snapshot = tree([])
@@ -234,7 +335,20 @@ class TerminalShortcutTests(unittest.TestCase):
             self.module.main()
         self.assertEqual(run.call_args_list[1].args[0],
                          ['swaymsg', '-r', '[con_id=10] fullscreen disable'])
-        launch.assert_called_once_with('foot', ['foot', '--app-id=fullscreen-terminal-10-1'])
+        launch.assert_called_once_with('foot', ['foot', '--app-id=fullscreen-terminal-10-1',
+                                              '--override=colors.alpha=0.6'])
+
+    def test_floating_terminal_preserves_solid_mode(self):
+        import json
+        from subprocess import CompletedProcess
+        from unittest.mock import patch
+        self.colors.write_text('[colors]\nalpha=1.0\n')
+        responses = [CompletedProcess([], 0, json.dumps(self.snapshot(1))),
+                     CompletedProcess([], 0, '[{"success":true}]')]
+        with patch.object(self.module.subprocess, 'run', side_effect=responses), \
+                patch.object(self.module.os, 'execvp') as launch:
+            self.module.main()
+        self.assertIn('--override=colors.alpha=1', launch.call_args.args[1])
 
     def test_normal_terminal_stays_tiled(self):
         import json

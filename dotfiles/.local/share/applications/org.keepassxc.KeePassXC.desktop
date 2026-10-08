@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=KeePassXC
+Exec=/home/august/.local/bin/keepassxc %f
+Icon=keepassxc
+Terminal=false
+Categories=Utility;Security;
+MimeType=application/x-keepass2;

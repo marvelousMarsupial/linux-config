@@ -5,7 +5,8 @@ Native dialogs that identify a fullscreen parent can appear above it, and stay
 visible when the background window is focused. Floating windows already stack
 above ordinary tiled windows on the same workspace.
 
-The tested `sway-popup-guard` user service is restored and active. New windows
+The `sway-popup-guard` user service is configured to start with the Sway session.
+Current live service health cannot be checked from this sandbox. New windows
 opening during fullscreen are centered and floated (up to 800×550 and 65% of the
 workspace). The helper temporarily disables native fullscreen to reveal them;
 it restores fullscreen when the intervening windows close or leave the workspace.
@@ -26,8 +27,9 @@ remained visible while the parent stayed fullscreen. Explicitly focusing the
 parent left the dialog visible. A separate Foot terminal, forced floating at
 500×300, was reported invisible while that same parent remained fullscreen.
 This distinguishes parented dialogs from independent application windows.
-Download/file dialogs should use the parented-dialog path, but actual Zen and
-portal dialogs still require application-specific verification. Independent
+The Yazi portal picker is an independent Foot window. Its wrapper now exits
+fullscreen before launching Foot; the user confirmed that an upload picker is
+visible with this behavior. See [desired picker behavior](portals.md#desired-fullscreen-behavior). Independent
 terminals above true fullscreen are not resolved by the stock popup setting;
 the restored helper reveals them by temporarily disabling native fullscreen.
 No maximized-layout replacement or compositor patch was installed.
@@ -51,17 +53,27 @@ and [popup condition](https://github.com/swaywm/sway/blob/1.10.1/sway/tree/conta
 
 Foot 1.21.0 has background alpha but no wallpaper-image setting in its installed
 manual. Its live alpha remains 0.08. In native fullscreen Sway hides the wallpaper,
-so the terminal appears solid despite that alpha. The Zen-only local-image
+so the terminal appears solid despite that alpha. Terminals opened with Super+Return
+over a fullscreen window float with at least 60% background opacity for readability;
+solid mode remains opaque. The popup guard also adjusts all standalone Foot windows
+when they switch between floating and tiled: floating gets at least 60%, tiled
+returns to the current theme alpha. This includes Yazi upload/save pickers and
+custom terminal app IDs. Foot's supported OSC 11 sequence changes the background
+without fading text. The existing Sway event subscription drives updates; no new
+service or polling is added. Foot server/client sessions are not covered.
+After updating the popup guard, restart `sway-popup-guard.service` in the user
+session or log out/in to load the new behavior.
+The Zen-only local-image
 workaround does not cover Foot. Preserving the dot wallpaper behind native
 fullscreen Foot remains unresolved; it requires compositor support or a different
 fullscreen/terminal approach. The default fullscreen binding remains unchanged.
 
-## Preserve popups Sway already displays
+## Always reveal newly opened windows
 
-The helper now skips the fullscreen-exit workaround when a new window is already
-reported visible above fullscreen. Already-visible native dialogs are left alone. Tests with the helper active confirmed a transient GTK
-dialog stays above a genuinely fullscreen parent after focusing the parent;
-independent newly opened terminals still pass the reveal/restore tests.
+New windows should leave fullscreen and appear floating, including windows Sway
+already reports visible. The old visible-window exception was removed at the
+user's request. Existing floating windows do not undo a later explicit fullscreen
+action merely because focus or title changes.
 
 The user reports successfully dragging a floating window over fullscreen from
 another physical monitor. A two-output headless test of IPC moves did not reproduce
@@ -73,7 +85,7 @@ do not infer that the user's observed path is impossible from the IPC move test.
 The guard rechecks pending new windows after focus/title events, including focus
 returning to the fullscreen parent, and handles floating windows moved into a
 fullscreen workspace. Startup also recovers already-hidden floating windows.
-Already-visible native dialogs retain native fullscreen behavior. Duplicate
+New visible dialogs also trigger the fullscreen-exit behavior. Duplicate
 floating/focus events do not resize a popup repeatedly. Commands racing with a
 closing window are logged rather than terminating the service.
 
@@ -100,9 +112,8 @@ a `fullscreen-terminal-<parent>-<mode>` app ID. A Sway rule centers and floats t
 it leaves fullscreen before opening the window. Outside fullscreen, Foot opens
 normally as a tiled terminal. Reload Sway after installing the binding and rule.
 
-The popup helper only uses the already-visible exception for floating dialogs;
-a newly opened tiled window still triggers reveal even if its initial IPC
-snapshot reports it visible.
+Both newly opened tiled and floating windows trigger reveal, even if the initial
+IPC snapshot reports them visible.
 
 ## Restore after a shortcut terminal closes or leaves
 

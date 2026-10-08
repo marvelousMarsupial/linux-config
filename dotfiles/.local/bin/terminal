@@ -2,6 +2,8 @@
 """Open Foot; leave fullscreen first and float the new terminal when needed."""
 import json
 import os
+import configparser
+from pathlib import Path
 import subprocess
 
 
@@ -36,6 +38,12 @@ def main():
     command = ['foot']
     if floating:
         command.append(f'--app-id=fullscreen-terminal-{int(parent["id"])}-{int(parent["fullscreen_mode"])}')
+        # A webpage behind a popup is busier than the wallpaper behind tiles.
+        # Keep solid mode opaque and only raise a translucent background.
+        colors = configparser.ConfigParser(interpolation=None)
+        colors.read(Path.home() / '.config/foot/colors.ini')
+        alpha = colors.getfloat('colors', 'alpha', fallback=1.0)
+        command.append(f'--override=colors.alpha={max(0.60, alpha):g}')
     os.execvp(command[0], command)
 
 

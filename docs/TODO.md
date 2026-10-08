@@ -2,84 +2,61 @@
 
 Updated: 2026-10-08. Keep this file current as work is completed or priorities change. Record reusable lessons in [LESSONS.md](LESSONS.md).
 
+This list contains unfinished work only, including optional and deferred tasks.
+Hardware tasks are grouped below because their final verification cannot be done
+in this VM. Other tasks may still need an interactive session, network access or
+privileges unavailable in the current sandbox. `[target-machine]` marks checks
+needed on the production/replacement installation.
+
 ## Security — next priorities
 
-- [x] Disabled automatic clipboard-history capture in the repo and installed test-VM config; removed the history shortcut and cliphist package requirement. Existing history has not been inspected or erased. Normal clipboard copying remains configured. Log out/in to stop any existing watcher; sandbox access could not verify or stop it.
-- [x] Configured swaylock after 30 minutes idle and before suspend in repo and installed VM config. Removed blanket fullscreen idle inhibition. Log out/in to activate; live idle, unlock and suspend checks remain pending below because sandbox access is restricted.
-- [x] Installed pending APT updates. The package audit is clean. Reboot to use the new kernel.
-- [ ] Install the exact repo APT policy. On 2026-10-08, the native APT parser verified the repo policy merged with a temporary copy of installed settings: exactly four Debian origins, daily updates, weekly cleanup, no automatic reboot/removal. Installation and privileged dry run remain blocked by sandbox root restrictions; see [updates](updates.md). Debian update timers were previously verified enabled.
-- [ ] Correct the editor smoke test’s unchanged-code assertion when a formatter is installed. Latest full run: 96 passed, 1 failed, no skips.
-- [x] Inspected the effective firewall/listeners and installed boot-enabled nftables host filtering. Live incoming/outgoing tests passed; see [firewall](firewall.md).
-- [ ] Review obsolete Incus/LXCFS/Netavark services on the disposable VM. Preserve the Incus guest agent and remote access until migration is complete.
-- [ ] Verify sudoers, libvirt permissions, and failed update services with privileged access.
-- [ ] Review Markdown preview's unverified helper download; replace or verify it when rebuilding that feature.
+- [ ] Finish system-health verification: warning-free ShellCheck, live daily timer schedule/automatic run, and a real installer receipt. Run the updated file picker through selection and cancellation; install UPower on the current system. See [system health](sysreport.md).
+- [ ] Verify OpenSnitch prompts and connection collection after a fresh setup and login. Setup now provisions matching daemon/UI sockets and the session UI service; offline provisioning tests pass.
+
+- [ ] Verify a real unattended-upgrade dry run and later update notification on the target machine. Setup installs the exact APT policy; both policy files matched the development VM during the latest read-only check. See [updates](updates.md).
+- [ ] Deferred container cleanup: user requested Incus be left unharmed. Keep Incus, its guest support and LXCFS dependency untouched. Any later Netavark/Podman cleanup needs a privileged workload/access check; preserve data and avoid blanket purge/autoremove.
+- [ ] Finish privileged verification of sudoers, libvirt permissions and failed update services. Partial review 2026-10-08 confirms august is in libvirt/kvm and the packaged Polkit rule grants libvirt management; live authentication, protected sudoers/local rules and system update logs remain inaccessible from the sandbox. See [review](security-audit.md#privilege-and-update-review--2026-10-08).
 - [ ] Reconcile the installed lazy.nvim revision with the repo lock during an intentional plugin maintenance session. The remaining 26 installed plugin revisions matched at audit time.
 
 Details, evidence, caveats, and commands: [security audit](security-audit.md).
 
-## Functionality and migration
+## Desktop and security roadmap (optional enhancements)
+
+- [ ] [target-machine] Boot with the disk passphrase only, then auto-login into Sway. Keep swaylock for idle and suspend. The boot/login flow can be developed in an encrypted VM; verify it on the production installation.
+- [ ] Add Healthchecks check-ins to detect missed job runs.
+
+## Ongoing conventions
+
+These are implementation rules, not unfinished tasks:
+
+- Keep scripts in the dotfiles repo and install user commands into `~/.local/bin`. Anything run as root must live in a root-owned location.
+- Prefer Bash for glue and Bun TypeScript once a new script has real logic. Existing scripts do not require a blanket rewrite.
+- Preserve Incus, guest support and LXCFS; avoid blanket purge/autoremove.
+
+## Hardware and later laptop setup
+
+Configuration and offline checks can be prepared in the VM; complete these checks
+on the laptop or with the intended devices.
+
+Publishing and optional features below are deferred. Current work is preparation;
+do not publish the repo as part of it.
+
+- [ ] Choose the final hosted repository/raw bootstrap URL, then commit and publish when ready.
+- [ ] Test the published curl installer on fresh Debian 13 x86_64: packages, themes, sudo prompts, cleanup after success/failure, and operation after deleting the checkout. Repeat on the replacement laptop before discarding the VM.
+- [ ] Set up optional VPN support with a fuzzel toggle using NetworkManager or a narrow sudo rule; consider a kill switch. Preserve the active network.
+- [ ] Rebuild dictation if needed. Its binaries, service and shortcuts were removed; model data is backed up.
+- [ ] Decide whether browser Markdown preview is useful beyond Space+mr. If wanted, install and verify its helper.
+- [ ] Configure the Restic target and password, run a backup and restore test, then enable its timer. The integration is ready; this VM has no target. See [backups](backups.md).
 
 - [ ] Fix audio on the production XPS. Check its exact model, audio devices, firmware and PipeWire logs on the laptop. The VM has no sound card and cannot verify this.
-- [ ] Test brightness keys on the production XPS after installing the brightness permissions and rebooting.
-- [ ] Grow the VM disk if it will stay in use. Safe package caches were cleared. Container data and backups were kept.
-
-- [x] Confirmed `file` is installed on the live VM; interactive Yazi preview checks remain below.
-- [ ] Confirm Yazi works with representative text, code, JSON, images and PDFs; install optional preview dependencies only when wanted.
-- [ ] Install IPython on the live VM if still missing; it is already included in future installs.
-- [ ] Exercise Wi-Fi authentication interactively. Offline tests do not verify NetworkManager's password exchange.
-- [ ] Test Sway logout/relogin, 30-minute idle locking (including a fullscreen terminal), password unlock, suspend locking, and running guest connectivity. Session target, IPC monitor, kanshi and notification timer are now active; libvirt’s default network is active.
-- [ ] Validate a clean installation on the replacement machine; offline setup tests use stubs for privileged/network operations.
-- [ ] Review and commit the current changes, then push when requested before discarding the VM.
-- [ ] Rebuild dictation later only if needed. Its implementation, binaries, service and shortcuts have been removed; model data is backed up.
-- [ ] Rebuild VPN support with the fuzzel toggle described below. Repo integrations are currently removed; the active network was not changed.
-
-## Desktop and security roadmap
-
-- [ ] Boot with the disk passphrase only, then auto-login into Sway. Keep swaylock for idle and suspend.
-- [ ] Use Yazi as Zen's file picker through the portal backend.
-- [ ] Set up KeePassXC 2.8 with fingerprint quick unlock and a short lock timeout. Use the AppImage until Debian ships it.
-- [ ] Run a Polkit agent in Sway.
-- [ ] Evaluate an optional USB fingerprint reader or YubiKey for use when the laptop lid is closed.
-- [ ] Put KeePassXC in the Sway scratchpad behind a hotkey.
-- [ ] Add a key file or YubiKey as the database's second factor, with a backup in the safe.
-- [ ] Run desktop jobs as systemd user units.
-- [ ] Add a job failure hook that notifies the desktop and ntfy.
-- [ ] Add Healthchecks check-ins to detect missed job runs.
-- [ ] Show a failed-units count in the bar.
-- [ ] Add a fuzzel VPN toggle using NetworkManager or a narrow sudo rule; optionally add a kill switch.
-- [ ] Keep scripts in the dotfiles repo and install user commands into `~/.local/bin`. Anything run as root must live in a root-owned location.
-- [ ] Use Bash for glue and Bun TypeScript once a script has real logic.
-
-## Completed
-
-- [x] Removed duplicate Mako startup. One notification daemon runs under systemd.
-- [x] Fixed the Foot socket startup ordering cycle.
-- [x] Installed the missing accessibility bus and corrected the Debian ALSA rule label.
-- [x] Cleared safe APT and npm caches. VM disk use dropped from 92 to 87 percent.
-- [x] Allowed systemd-networkd in the machine-local OpenSnitch trial. The daemon restarted and the UI reconnected.
-- [x] Added journal logging for future Sway logins.
-
-- [x] Added and installed user notification files for completed APT upgrades, including deduplication, delivery retries and reboot reminders. User timer is now active and its service succeeded. The exact repo APT policy still needs installation.
-
-- [x] Added explicit automatic Debian stable/security update policy and activation/monitoring instructions; the manual update run succeeded with existing local settings. The exact repo policy is not yet installed.
-
-- [x] Bound the Sway systemd target to an IPC monitor, made kanshi a direct dependency, scoped failure resets and documented session checks. The services are active. Logout and suspend checks remain pending.
-
-
-- [x] Split tests by area and expanded from 33 to 90 behavior tests, including real offline LSP/formatter exchanges, session startup, menu actions, setup download boundaries and documentation links.
-- [x] Fixed regressions exposed by tests: backup symlink escape, invalid compositor responses creating notes, standard Wi-Fi connection type/profile parsing, truncated MOTD input, multiline Bluetooth names and partial monitor-profile output.
-
-- [x] Organized setup, editor, appearance, script, testing and security docs behind one index; removed stale counts, dead aliases, unused wallpaper and retired build artifacts.
-
-- [x] Simplified to configs/scripts with direct libvirt tools; retired Forge and container-management integration.
-- [x] Removed tmux, Obsidian integration, dictation and VPN integration from future installs.
-- [x] Preserved shared palettes, terminal/desktop contrast, rounded bat output and a dollar prompt.
-- [x] Refined existing desktop appearance without adding programs, plugins or services.
-- [x] Fixed the application-search placeholder leaking into the info popup and other menus. The placeholder now belongs only to the application-launcher wrapper.
-- [x] Added installer backups, atomic per-file copies, migration retirement and path checks.
-- [x] Audited scripts and added cancellation/failure regression checks.
-- [x] Added pinned Neovim checksums and plugin-manager bootstrap, private backup permissions, safe runtime environment parsing and editor safeguards.
-- [x] Restricted the local HTTP-server alias to loopback, switched network aliases to HTTPS, and removed command expansions from alias notifications.
+- [ ] Verify brightness controls and brightness keys on the production XPS after installing the brightness permissions and rebooting.
+- [ ] Verify volume up/down and mute keys, volume indication and actual speaker/headphone volume on the production XPS.
+- [ ] Configure and test fingerprint enrollment and authentication with the intended laptop or external reader.
+- [ ] Exercise Wi-Fi authentication interactively with a real Wi-Fi adapter and access point. Offline tests do not verify NetworkManager's password exchange; this VM's virtual Ethernet cannot verify it.
+- [ ] Verify locking before suspend and after resume on the production laptop, including lid-close behavior and running guest connectivity after resume. VM checks cannot establish laptop sleep/wake behavior.
+- [ ] Recheck released KeePassXC support for Linux fingerprint quick unlock before choosing an upgrade; stable is 2.7.12 as of 2026-10-08, VM package is 2.7.10. Five-minute lock defaults are prepared; fingerprint enrollment and unlock require the intended reader.
+- [ ] Evaluate an optional USB fingerprint reader or YubiKey for use when the laptop lid is closed. Test the chosen device on the laptop.
+- [ ] If choosing a YubiKey as the database's second factor, configure and test it with the physical key and verify backup recovery.
 
 Use `./scripts/check --full` for the current suite. Latest results and limits are
 recorded in [testing](testing.md); installed-machine differences are in

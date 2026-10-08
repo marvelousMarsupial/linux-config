@@ -44,6 +44,37 @@ class InstallerTests(unittest.TestCase):
         for rel in paths:
             self.assertEqual((self.home / rel).read_text(), 'local customization\n')
 
+    def test_browser_config_installs_without_touching_profile(self):
+        import json
+        profile = self.home / '.zen/existing/prefs.js'
+        profile.parent.mkdir(parents=True)
+        profile.write_text('user_pref("unrelated.setting", true);\n')
+        policy = self.home / '.local/zen/distribution/policies.json'
+        policy.parent.mkdir(parents=True)
+        policy.write_text('{"policies": {}}\n')
+        self.assertEqual(self.install('--dry-run').returncode, 0)
+        self.assertEqual(policy.read_text(), '{"policies": {}}\n')
+        self.assertFalse((self.home / '.surfingkeys.js').exists())
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for rel in ('.local/zen/distribution/policies.json',
+                    '.local/zen/defaults/pref/linux-config.js', '.surfingkeys.js'):
+            self.assertEqual((self.home / rel).read_bytes(),
+                             (REPO / 'dotfiles' / rel).read_bytes())
+        policies = json.loads(policy.read_text())['policies']
+        self.assertEqual(set(policies['ExtensionSettings']), {
+            'uBlock0@raymondhill.net', 'addon@darkreader.org',
+            '{a8332c60-5b6d-41ee-bfc8-e9bb331d34ad}',
+            'keepassxc-browser@keepassxc.org',
+        })
+        self.assertTrue(policies['UserMessaging']['SkipOnboarding'])
+        self.assertTrue(all(item['installation_mode'] == 'normal_installed'
+                            for item in policies['ExtensionSettings'].values()))
+        self.assertEqual(profile.read_text(), 'user_pref("unrelated.setting", true);\n')
+        saved = next((self.home / '.local/state/linux-config/backups').glob(
+            '*/.local/zen/distribution/policies.json'))
+        self.assertEqual(saved.read_text(), '{"policies": {}}\n')
+
     def test_backs_up_symlink_without_writing_through_it(self):
         original = self.home / 'original'
         original.write_text('leave me alone\n')
@@ -100,3 +131,27 @@ class InstallerTests(unittest.TestCase):
         backups = list((self.home / '.local/state/linux-config/backups').glob('*/.local/bin/theme'))
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].stat().st_mode & 0o777, 0o644)
+
+    def test_app_dark_themes_merge_without_replacing_existing_settings(self):
+        fixtures = {
+            '.config/keepassxc/keepassxc.ini': ('[General]\nLastDatabases=private.kdbx\n[Browser]\nEnabled=true\n[GUI]\nApplicationTheme=light\nHideToolbar=true\n', 'ApplicationTheme=dark'),
+            '.config/opensnitch/settings.conf': ('[global]\ndefault_action=1\ntheme=light_blue.xml\n[statsDialog]\ngeometry=@ByteArray(\\0\\x1)\n', 'theme=dark_amber.xml'),
+        }
+        for rel, (original, expected) in fixtures.items():
+            path = self.home / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(original)
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for rel, (original, expected) in fixtures.items():
+            path = self.home / rel
+            text = path.read_text()
+            for line in original.splitlines():
+                if not line.startswith(('ApplicationTheme=', 'theme=')):
+                    self.assertIn(line, text)
+            self.assertIn(expected, text)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            backup = next((self.home / '.local/state/linux-config/backups').glob('*/' + rel))
+            self.assertEqual(backup.read_text(), original)
+        again = self.install()
+        self.assertIn('0 file(s) changed.', again.stdout)

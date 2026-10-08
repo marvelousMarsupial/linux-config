@@ -1,0 +1,66 @@
+#!/usr/bin/python3
+"""Set an app's dark theme before launching its packaged binary."""
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+
+def set_ini_value(text, section, key, value):
+    lines = text.splitlines(keepends=True)
+    start = next((i for i, line in enumerate(lines)
+                  if line.strip() == f'[{section}]'), None)
+    replacement = f'{key}={value}\n'
+    if start is None:
+        return text.rstrip('\n') + f'\n\n[{section}]\n' + replacement
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].strip().startswith('[')), len(lines))
+    found = [i for i in range(start + 1, end)
+             if lines[i].partition('=')[0].strip() == key]
+    if found:
+        lines[found[0]] = replacement
+        for i in reversed(found[1:]):
+            del lines[i]
+    else:
+        if lines and not lines[end - 1].endswith('\n'):
+            lines[end - 1] += '\n'
+        lines.insert(end, replacement)
+    return ''.join(lines)
+
+
+THEMES = {
+    'keepassxc': ('.config/keepassxc/keepassxc.ini', 'GUI', 'ApplicationTheme', 'dark'),
+    'opensnitch-ui': ('.config/opensnitch/settings.conf', 'global', 'theme', 'dark_amber.xml'),
+}
+
+
+def apply(home, app):
+    rel, section, key, value = THEMES[app]
+    path = home / rel
+    if not path.parent.resolve().is_relative_to(home.resolve()):
+        raise ValueError('App configuration directory must stay inside the home')
+    existing = path.read_text() if path.exists() else ''
+    content = set_ini_value(existing, section, key, value)
+    if content == existing:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as staged:
+        temporary = Path(staged.name)
+        staged.write(content)
+    try:
+        temporary.chmod(0o600)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] not in THEMES:
+        raise SystemExit('Usage: app-dark-mode keepassxc|opensnitch-ui [arguments...]')
+    app = sys.argv[1]
+    apply(Path.home(), app)
+    os.execv('/usr/bin/' + app, [app, *sys.argv[2:]])
+
+
+if __name__ == '__main__':
+    main()

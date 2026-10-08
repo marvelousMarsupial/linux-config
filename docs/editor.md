@@ -51,3 +51,18 @@ Space+vc opens Neovim's config; Space+vh opens LSP health; Space+vt lists tools.
 Edit source configs in the repo and rerun `scripts/install` to preserve changes
 for the next machine. Space+vc opens the live copy for quick experiments; copy
 those edits back into the repo before reinstalling. Restart Neovim after changes.
+
+## Markdown view
+
+Space+mr toggles the existing in-buffer Markdown view. Rendering depends on the
+Markdown Treesitter parser; optional parser setup remains part of `--dev-tools`.
+Plain text and Markdown paragraphs remain unchanged on save.
+
+Browser preview (`MarkdownPreview` and Space+mp) is disabled. Its former build
+hook downloaded and extracted an external helper without verifying a checksum,
+and could execute an existing helper while checking its version. Disabling the
+plugin prevents the normal command/filetype paths from loading that helper;
+the build hook has also been removed. The installed plugin and binary were not
+deleted or claimed verified. Restart Neovim to apply the installed config; already
+running editor/preview processes are unaffected. Revisit browser preview only
+with a verified installation path if the feature is wanted.

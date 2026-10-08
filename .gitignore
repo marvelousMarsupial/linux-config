@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 dotfiles/.config/sway/local.conf
+
+# Per-machine backup credentials must never be committed.
+dotfiles/.config/restic-home/

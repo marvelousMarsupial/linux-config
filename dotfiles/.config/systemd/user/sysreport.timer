@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily local system health report
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

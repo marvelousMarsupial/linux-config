@@ -4,4 +4,4 @@ Documentation=man:systemd.special(7)
 # The IPC monitor exits when Sway disconnects, stopping this target too.
 BindsTo=graphical-session.target sway-session-monitor.service
 After=graphical-session-pre.target sway-session-monitor.service
-Wants=sway-popup-guard.service graphical-session-pre.target kanshi.service mako.service update-notify.timer
+Wants=sway-popup-guard.service graphical-session-pre.target kanshi.service mako.service update-notify.timer battery-monitor.service swayidle.service udiskie.service opensnitch-ui.service

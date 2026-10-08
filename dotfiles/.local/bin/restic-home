@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Optional per-machine encrypted home backups. Configuration is trusted shell code.
+set -euo pipefail
+umask 077
+
+fail() { echo "restic-home: $*" >&2; exit 1; }
+private_file() {
+    [[ -f "$1" && -O "$1" ]] || fail "Missing or unowned private file: $1"
+    local mode
+    mode=$(stat -Lc '%a' -- "$1")
+    (( (8#$mode & 077) == 0 )) || fail "Run chmod 600 on $1"
+}
+
+case "${1:-}" in
+    init|backup|snapshots|check|restore) action=$1; shift ;;
+    *) echo 'Usage: restic-home {init|backup|snapshots|check|restore} [restic arguments]' >&2; exit 2 ;;
+esac
+config_dir="$HOME/.config/restic-home"
+private_file "$config_dir/env"
+# Avoid inherited settings silently changing the repository or password source.
+unset RESTIC_REPOSITORY RESTIC_REPOSITORY_FILE RESTIC_PASSWORD RESTIC_PASSWORD_COMMAND RESTIC_PASSWORD_FILE
+set -a
+# shellcheck source=/dev/null
+source "$config_dir/env"
+set +a
+[[ -n "${RESTIC_REPOSITORY:-}" ]] || fail 'Set RESTIC_REPOSITORY in the configuration'
+[[ -n "${RESTIC_PASSWORD_FILE:-}" ]] || fail 'Set RESTIC_PASSWORD_FILE in the configuration'
+[[ -z "${RESTIC_PASSWORD:-}${RESTIC_PASSWORD_COMMAND:-}${RESTIC_REPOSITORY_FILE:-}" ]] || fail 'Use RESTIC_REPOSITORY and RESTIC_PASSWORD_FILE only'
+private_file "$RESTIC_PASSWORD_FILE"
+[[ -s "$RESTIC_PASSWORD_FILE" ]] || fail 'Password file is empty'
+command -v restic >/dev/null || fail 'Install restic: sudo apt-get install restic'
+
+# A local repository must stay outside the source tree to avoid backing up itself.
+case "$RESTIC_REPOSITORY" in
+    local:*) fail 'Use an absolute local path without the local: prefix' ;;
+    /*|./*|../*)
+        repository_path=$(realpath -m -- "$RESTIC_REPOSITORY")
+        home_path=$(realpath -- "$HOME")
+        [[ "$repository_path" != "$home_path" && "$repository_path" != "$home_path/"* ]] || fail 'Local repository must be outside your home directory'
+        ;;
+    *:*) ;;
+    *) fail 'Use an absolute path for a local repository or a Restic backend URL' ;;
+esac
+
+if [[ "$action" == backup ]]; then
+    # Keep recovery credentials separately; caches are reproducible.
+    exec restic backup --tag linux-config-home \
+        --exclude "$HOME/.cache" --exclude "$config_dir" \
+        --exclude "$RESTIC_PASSWORD_FILE" "$@" -- "$HOME"
+fi
+exec restic "$action" "$@"

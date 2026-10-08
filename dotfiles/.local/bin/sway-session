@@ -17,6 +17,13 @@ if systemctl --user --quiet is-active "$SESSION_TARGET"; then
     exit 0
 fi
 
+# Also cover Sway launched manually or by a display manager.
+if [[ -r "$HOME/.config/environment.d/appearance.conf" ]]; then
+    source "$HOME/.config/environment.d/appearance.conf"
+    export GTK_THEME
+fi
+VARS="$VARS GTK_THEME"
+
 # Confirm that the compositor accepts IPC before starting session services.
 swaymsg --type get_version >/dev/null
 
@@ -24,7 +31,17 @@ if command -v dbus-update-activation-environment >/dev/null 2>&1; then
     # shellcheck disable=SC2086 # intentional splitting of variable names
     dbus-update-activation-environment --systemd $VARS
 fi
-systemctl --user reset-failed kanshi.service sway-session-monitor.service
+# reset-failed rejects units that have not been loaded yet. Query the failed
+# subset first; leave unrelated user services alone.
+failed=$(systemctl --user list-units --failed --type=service --plain --no-legend --no-pager \
+    kanshi.service sway-session-monitor.service battery-monitor.service swayidle.service udiskie.service)
+failed_units=()
+while read -r unit _rest; do
+    [[ -z "$unit" ]] || failed_units+=("$unit")
+done <<< "$failed"
+if (( ${#failed_units[@]} )); then
+    systemctl --user reset-failed "${failed_units[@]}"
+fi
 # shellcheck disable=SC2086 # intentional splitting of variable names
 systemctl --user import-environment $VARS
 # kanshi is started through the target after its session dependencies.

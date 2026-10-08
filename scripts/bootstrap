@@ -1,0 +1,44 @@
+#!/bin/bash
+# Download a disposable checkout, run setup, and remove only that checkout.
+set -euo pipefail
+umask 077
+
+main() {
+    local repository=${LINUX_CONFIG_REPOSITORY:-https://git.rat/August/linux-config.git}
+    local revision=${LINUX_CONFIG_REF:-main}
+    local temporary status=0
+    case "${1:-}" in
+        --help)
+            echo 'Usage: bash bootstrap [--dry-run] [--dev-tools]'
+            echo 'Downloads a temporary checkout and forwards arguments to scripts/setup.'
+            echo 'Override the source with LINUX_CONFIG_REPOSITORY (HTTPS) and LINUX_CONFIG_REF (branch/tag).'
+            return 0 ;;
+    esac
+    if (( EUID == 0 )); then
+        echo 'Run as your normal desktop user; setup calls sudo when needed.' >&2
+        return 1
+    fi
+    [[ "$repository" == https://* ]] || { echo 'Repository must use HTTPS.' >&2; return 1; }
+    [[ -n "$revision" && "$revision" != -* ]] || { echo 'Invalid branch/tag.' >&2; return 1; }
+    for command in git python3 sudo mktemp; do
+        command -v "$command" >/dev/null || { echo "Install prerequisite: $command" >&2; return 1; }
+    done
+    temporary=$(mktemp -d /tmp/linux-config-bootstrap.XXXXXXXX)
+    trap "rm -rf -- '$temporary'" EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    echo "Downloading $repository ($revision) into a temporary directory."
+    git clone --depth 1 --single-branch --branch "$revision" -- "$repository" "$temporary/repo"
+    # Keep piped script input away from child commands. sudo uses the terminal.
+    "$temporary/repo/scripts/setup" "$@" </dev/null || status=$?
+    if (( status != 0 )); then
+        echo 'Setup failed; completed changes remain. Fix the error and rerun bootstrap.' >&2
+    fi
+    # Run cleanup before the local variable goes out of scope.
+    rm -rf -- "$temporary"
+    trap - EXIT INT TERM
+    return "$status"
+}
+
+# Read the complete script before running commands when invoked through curl | bash.
+main "$@"

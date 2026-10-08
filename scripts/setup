@@ -1,0 +1,279 @@
+#!/usr/bin/python3
+"""Set up this Debian 13 desktop. Run as your normal user, not through sudo."""
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import pwd
+import re
+import shlex
+import shutil
+import subprocess
+import tarfile
+import tempfile
+import urllib.request
+import zipfile
+
+REPO = Path(__file__).resolve().parent.parent
+PORTAL_COMMIT = 'cb8cec0b30aa6e2cc36b1b5cb34d6dc9a1face29'
+BUILD_PACKAGES = ['build-essential', 'meson', 'ninja-build', 'libinih-dev', 'libsystemd-dev', 'scdoc']
+
+
+def run(*args, dry=False, **kwargs):
+    print('+ ' + shlex.join(map(str, args)), flush=True)
+    if not dry:
+        return subprocess.run(list(map(str, args)), check=True, **kwargs)
+
+
+def request(url):
+    if not url.startswith('https://'):
+        raise ValueError('Downloads must use HTTPS')
+    response = urllib.request.urlopen(urllib.request.Request(
+        url, headers={'User-Agent': 'linux-config-setup', 'Accept': 'application/vnd.github+json'}), timeout=60)
+    if not response.url.startswith('https://'):
+        response.close()
+        raise ValueError('Refusing non-HTTPS redirect')
+    return response
+
+
+def release_asset(repository, name, destination):
+    """Resolve one official release and verify its asset before extraction."""
+    with request(f'https://api.github.com/repos/{repository}/releases/latest') as response:
+        release = json.load(response)
+    asset = next((item for item in release['assets'] if item['name'] == name), None)
+    if not asset or not re.fullmatch(r'sha256:[0-9a-f]{64}', asset.get('digest') or ''):
+        raise ValueError(f'No published SHA-256 for {repository}/{name}; nothing installed')
+    url = asset['browser_download_url']
+    if not url.startswith(f'https://github.com/{repository}/releases/download/'):
+        raise ValueError('Unexpected release download URL')
+    digest = hashlib.sha256()
+    with request(url) as response, destination.open('wb') as output:
+        while chunk := response.read(1024 * 1024):
+            digest.update(chunk)
+            output.write(chunk)
+    if digest.hexdigest() != asset['digest'].split(':', 1)[1]:
+        raise ValueError('Release checksum mismatch; nothing installed')
+    print(f'Verified {repository} {release["tag_name"]}: {name}', flush=True)
+
+
+def unpack(archive, destination):
+    """Reject archive traversal and links before writing files."""
+    destination.mkdir()
+    if zipfile.is_zipfile(archive):
+        with zipfile.ZipFile(archive) as source:
+            for item in source.infolist():
+                path = Path(item.filename)
+                if path.is_absolute() or '..' in path.parts or (item.external_attr >> 16) & 0o170000 == 0o120000:
+                    raise ValueError('Unsafe release archive member')
+            source.extractall(destination)
+    else:
+        with tarfile.open(archive) as source:
+            members = source.getmembers()
+            for item in members:
+                path = Path(item.name)
+                if path.is_absolute() or '..' in path.parts or not (item.isfile() or item.isdir()):
+                    raise ValueError('Unsafe release archive member')
+            source.extractall(destination, members=members, filter='data')
+
+
+def replace(source, destination, backup):
+    """Stage on the destination filesystem; preserve replaced installations."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists() or destination.is_symlink():
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        destination.rename(backup)
+    try:
+        source.rename(destination)
+    except OSError:
+        if backup.exists() or backup.is_symlink():
+            backup.rename(destination)
+        raise
+
+
+def applications(home, dry):
+    # Temporary directory is on the same filesystem as the installed applications.
+    local = home / '.local'
+    if not dry:
+        local.mkdir(exist_ok=True)
+    wanted = []
+    if not shutil.which('yazi') or not shutil.which('ya'):
+        wanted.append(('sxyazi/yazi', 'yazi-x86_64-unknown-linux-musl.zip', 'yazi'))
+    if not (local / 'zen/zen').is_file():
+        wanted.append(('zen-browser/desktop', 'zen.linux-x86_64.tar.xz', 'zen'))
+    fontdir = local / 'share/fonts/CaskaydiaCove'
+    fonts = subprocess.run(['fc-match', '-f', '%{family}', 'CaskaydiaCove Nerd Font'],
+                           capture_output=True, text=True).stdout if shutil.which('fc-match') else ''
+    if 'CaskaydiaCove' not in fonts or 'Nerd Font' not in fonts:
+        wanted.append(('ryanoasis/nerd-fonts', 'CascadiaCode.zip', 'font'))
+    for repository, asset, kind in wanted:
+        print(f'Install missing {kind} from verified official release: {repository}/{asset}', flush=True)
+        if dry:
+            continue
+        with tempfile.TemporaryDirectory(prefix='linux-config-', dir=local) as temporary:
+            temporary = Path(temporary)
+            archive = temporary / 'release'
+            release_asset(repository, asset, archive)
+            unpack(archive, temporary / 'extracted')
+            extracted = temporary / 'extracted'
+            stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+            if kind == 'yazi':
+                for binary in ('yazi', 'ya'):
+                    matches = list(extracted.rglob(binary))
+                    if len(matches) != 1 or not matches[0].is_file():
+                        raise ValueError(f'Missing release executable: {binary}')
+                    matches[0].chmod(0o755)
+                    run(matches[0], '--version')
+                for binary in ('yazi', 'ya'):
+                    source = next(extracted.rglob(binary))
+                    dest = local / 'bin' / binary
+                    replace(source, dest, local / f'state/linux-config/backups/{stamp}/.local/bin/{binary}')
+            elif kind == 'zen':
+                source = extracted / 'zen'
+                if not (source / 'zen').is_file():
+                    raise ValueError('Missing Zen executable')
+                run(source / 'zen', '--version')
+                replace(source, local / 'zen', local / f'zen.backup.{stamp}')
+            else:
+                if not list(extracted.rglob('*.ttf')):
+                    raise ValueError('Missing font files')
+                replace(extracted, fontdir, local / f'state/linux-config/backups/{stamp}/fonts')
+                run('fc-cache', '-f', fontdir)
+
+
+def portal(home, dry):
+    marker = home / '.local/state/linux-config/termfilechooser-commit'
+    binary = Path('/usr/lib/xdg-desktop-portal-termfilechooser')
+    metadata = Path('/usr/share/xdg-desktop-portal/portals/termfilechooser.portal')
+    if binary.is_file() and metadata.is_file() and marker.is_file() and marker.read_text().strip() == PORTAL_COMMIT:
+        print('termfilechooser already installed at the pinned revision')
+        return
+    run('sudo', 'apt-get', 'install', '-y', *BUILD_PACKAGES, dry=dry)
+    if dry:
+        print(f'Build and install termfilechooser commit {PORTAL_COMMIT} into /usr')
+        return
+    with tempfile.TemporaryDirectory(prefix='linux-config-portal-') as temporary:
+        source = Path(temporary) / 'source'
+        run('git', 'clone', 'https://github.com/hunkyburrito/xdg-desktop-portal-termfilechooser.git', source)
+        run('git', '-C', source, 'checkout', '--detach', PORTAL_COMMIT)
+        build = source / 'build'
+        run('meson', 'setup', build, source, '--prefix=/usr', '--libexecdir=lib')
+        run('meson', 'compile', '-C', build)
+        run('sudo', 'meson', 'install', '-C', build)
+    if not binary.is_file() or not metadata.is_file():
+        raise ValueError('termfilechooser installation is incomplete')
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(PORTAL_COMMIT + '\n')
+
+
+def opensnitch(dry):
+    """Connect the system daemon to this workstation user's session UI."""
+    destination = Path('/etc/systemd/system/opensnitch.service.d/90-linux-config.conf')
+    address = f'unix:///run/user/{os.getuid()}/opensnitch/osui.sock'
+    content = ('[Service]\nExecStart=\n'
+               'ExecStart=/usr/bin/opensnitchd -rules-path /etc/opensnitchd/rules '
+               f'-ui-socket {address}\n')
+    changed = not destination.is_file() or destination.read_text() != content
+    if changed:
+        if dry:
+            print(f'Back up {destination} if present, then configure OpenSnitch UI socket: {address}')
+        else:
+            stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+            backup = Path('/var/backups/linux-config') / stamp / 'opensnitch.service.d/90-linux-config.conf'
+            if destination.exists():
+                run('sudo', 'install', '-d', '-m', '0700', backup.parent)
+                run('sudo', 'cp', '-a', destination, backup)
+            with tempfile.TemporaryDirectory(prefix='linux-config-opensnitch-') as temporary:
+                source = Path(temporary) / '90-linux-config.conf'
+                source.write_text(content)
+                run('sudo', 'install', '-Dm644', source, destination)
+        run('sudo', 'systemctl', 'daemon-reload', dry=dry)
+    run('sudo', 'systemctl', 'enable', '--now', 'opensnitch.service', dry=dry)
+    if changed:
+        run('sudo', 'systemctl', 'restart', 'opensnitch.service', dry=dry)
+
+
+def host_settings(user, dry):
+    run('sudo', 'usermod', '-aG', 'video,libvirt,kvm', user, dry=dry)
+    run('sudo', 'usermod', '-s', '/bin/zsh', user, dry=dry)
+    locales = subprocess.run(['locale', '-a'], capture_output=True, text=True, check=True).stdout.lower()
+    if 'en_us.utf8' not in locales:
+        run('sudo', 'localedef', '-i', 'en_US', '-f', 'UTF-8', 'en_US.UTF-8', dry=dry)
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+    for name in ('20auto-upgrades', '90linux-config-unattended-upgrades'):
+        source = REPO / 'system/apt/apt.conf.d' / name
+        dest = Path('/etc/apt/apt.conf.d') / name
+        if dest.is_file() and dest.read_bytes() == source.read_bytes():
+            continue
+        backup = Path('/var/backups/linux-config') / stamp / name
+        if dry:
+            print(f'Back up {dest} if present, then install {source}')
+        else:
+            exists = subprocess.run(['sudo', 'test', '-e', str(dest)]).returncode == 0
+            if exists:
+                run('sudo', 'install', '-d', '-m', '0700', backup.parent)
+                run('sudo', 'cp', '-a', dest, backup)
+            run('sudo', 'install', '-Dm644', source, dest)
+    run('sudo', 'systemctl', 'enable', '--now', 'libvirtd.service', 'apt-daily.timer', 'apt-daily-upgrade.timer', dry=dry)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--dry-run', action='store_true', help='Print the plan without downloads, sudo or file changes')
+    parser.add_argument('--backups', action='store_true', help='Also install Restic; backups remain disabled until configured')
+    parser.add_argument('--dev-tools', action='store_true', help='Also install optional editor development tools')
+    args = parser.parse_args()
+    if os.geteuid() == 0:
+        parser.error('Run as your normal desktop user; the script calls sudo only when needed')
+    release = dict(line.split('=', 1) for line in Path('/etc/os-release').read_text().splitlines() if '=' in line)
+    if release.get('ID', '').strip('"') != 'debian' or release.get('VERSION_ID', '').strip('"') != '13':
+        parser.error('This setup supports Debian 13')
+    if platform.machine() != 'x86_64':
+        parser.error('This workstation setup currently supports x86_64 only')
+    home = Path.home().resolve()
+    if not (home / '.local').resolve().is_relative_to(home):
+        parser.error('~/.local must stay inside your home directory')
+    user = pwd.getpwuid(os.getuid()).pw_name
+    os.environ['PATH'] = f'{home}/.local/bin:' + os.environ['PATH']
+    packages = sorted({line.strip() for line in (REPO / 'packages.txt').read_text().splitlines()
+                       if line.strip() and not line.startswith('#')})
+    if args.backups:
+        packages = sorted(set(packages) | {'restic'})
+    run('sudo', 'apt-get', 'update', dry=args.dry_run)
+    run('sudo', 'apt-get', 'install', '-y', *packages, dry=args.dry_run)
+    applications(home, args.dry_run)
+    portal(home, args.dry_run)
+    editor = [str(REPO / 'scripts/setup-editor'), '--skip-apt']
+    if args.dev_tools:
+        # setup-editor skips its APT stage when called here.
+        run('sudo', 'apt-get', 'install', '-y', 'build-essential', 'clangd', 'clang-format', 'nodejs', 'npm', dry=args.dry_run)
+        editor.append('--dev-tools')
+    colors_present = (home / '.config/sway/colors').is_file()
+    run(*editor, dry=args.dry_run)
+    # setup-editor applies user files and installs/checks Neovim plugins.
+    current = home / '.cache/theme/current'
+    if not current.is_file() and not colors_present:
+        run(home / '.local/bin/theme', 'apply', 'summer-dusk', dry=args.dry_run)
+    host_settings(user, args.dry_run)
+    opensnitch(args.dry_run)
+    if args.dry_run or Path(f'/run/user/{os.getuid()}/bus').exists():
+        run('systemctl', '--user', 'daemon-reload', dry=args.dry_run)
+        run('systemctl', '--user', 'enable', '--now', 'sysreport.timer', dry=args.dry_run)
+    else:
+        timer_link = home / '.config/systemd/user/timers.target.wants/sysreport.timer'
+        timer_link.parent.mkdir(parents=True, exist_ok=True)
+        if not timer_link.exists() and not timer_link.is_symlink():
+            timer_link.symlink_to('../sysreport.timer')
+        print('No user bus: log in to the desktop to load user services')
+    run('bash', REPO / 'scripts/install-receipt', REPO, home, 'setup', dry=args.dry_run)
+    print('Plan complete.' if args.dry_run else 'Setup complete. Log out/in (or reboot) to apply groups, shell and portals; restart Zen.')
+    print('Firewall policy, disk encryption, lid rules and hardware tests remain separate; see docs/installation.md.')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
+        raise SystemExit(f'Setup stopped: {error}\nFix the failed step and rerun scripts/setup; completed installations are preserved.')

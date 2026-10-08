@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenSnitch desktop interface
+PartOf=sway-session.target
+After=graphical-session.target
+
+[Service]
+Type=exec
+RuntimeDirectory=opensnitch
+RuntimeDirectoryMode=0700
+ExecStart=%h/.local/bin/opensnitch-ui --socket unix://%t/opensnitch/osui.sock
+Restart=on-failure
+RestartSec=3

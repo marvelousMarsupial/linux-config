@@ -1,7 +1,8 @@
 # Desktop customization status — 2026-10-07
 
-This records the accepted desktop work and outstanding items from the glass and
-fullscreen sessions. It is not a new audit of unrelated host configuration.
+Historical snapshot of the glass/fullscreen work, with later changes noted below.
+For current repository behavior and verification boundaries, use [current state](state.md).
+Statements about active services are evidence from that earlier session.
 
 ## Accepted and installed
 
@@ -24,8 +25,8 @@ fullscreen sessions. It is not a new audit of unrelated host configuration.
   behind fullscreen chrome, preserving the dot appearance. Web pages stay opaque.
   This is a local background replica, not visibility through to other applications.
 - **Fullscreen popups:** `sway-popup-guard.service` is active and starts with the
-  Sway session. It preserves native fullscreen when Sway already shows the popup.
-  Otherwise it temporarily exits fullscreen, centers/floats new windows up to
+  Sway session. The current revision always temporarily exits fullscreen for newly opened
+  windows, including those reported visible, and centers/floats them up to
   800×550 logical pixels and 65% of the workspace, then restores fullscreen after
   the intervening windows close or leave the workspace. Clicking the tiled
   background leaves floating windows above it. With other tiled windows present,
@@ -41,14 +42,16 @@ fullscreen sessions. It is not a new audit of unrelated host configuration.
   from another monitor. Headless IPC moves did not reproduce that exact path.
   Physical mouse dragging, mixed DPI/scaling, rotation, hotplug, and the saved
   hardware monitor profiles still need validation. Existing monitor settings kept.
-- **Password shortcut:** Mod+P still invokes `pass-picker`. Replacing it with a
-  KeePassXC unlock-only workflow remains unfinished. KeePassXC is installed, but
-  no database was found in the common folders checked and no database contents
-  were read. Do not describe Mod+P as migrated or functional KeePass integration.
+- **Password shortcut (updated 2026-10-08):** Super+P now opens/focuses KeePassXC
+  and toggles its focused window into the scratchpad. Browser integration defaults
+  and the native messaging manifest are installed. Database selection/creation,
+  Zen extension installation/pairing and live autofill remain pending. No password
+  database contents were read or migrated. See [passwords](passwords.md).
 - **Popup state:** restoration is in memory. Stopping/restarting the guard during
   an interruption loses its pending restoration; Super+F restores it manually.
   Stop it for the current session with `systemctl --user stop sway-popup-guard`.
-- Actual Zen download/portal dialogs, global fullscreen, and multiple physical
+- Zen upload and floating-picker visibility from fullscreen were confirmed by
+  the user on 2026-10-08. Save/overwrite, global fullscreen, and multiple physical
   outputs still need application/hardware tests. No compositor patch or fullscreen
   layout replacement was installed.
 

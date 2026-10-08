@@ -1,0 +1,11 @@
+[Unit]
+Description=Encrypted home directory backup with Restic
+ConditionPathExists=%h/.config/restic-home/env
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/restic-home backup
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

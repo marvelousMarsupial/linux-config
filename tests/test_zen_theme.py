@@ -69,6 +69,7 @@ class ZenThemeTests(unittest.TestCase):
         prefs = self.profile / 'user.js'
         prefs.write_text('user_pref("some.custom.pref", 42);\n'
                          'user_pref("zen.widget.linux.transparency", true);\n'
+                         'user_pref("layout.css.prefers-color-scheme.content-override", 1);\n'
                          'user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", false);\n')
         self.sync.sync(self.home)
         first = (chrome / 'userChrome.css').read_text()
@@ -82,6 +83,10 @@ class ZenThemeTests(unittest.TestCase):
         self.assertIn('user_pref("zen.widget.linux.transparency", true);', text)
         self.assertIn('user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);', text)
         self.assertEqual(text.count('toolkit.legacyUserProfileCustomizations.stylesheets'), 1)
+        for key, value in [('ui.systemUsesDarkTheme', 1), ('browser.theme.content-theme', 0),
+                           ('layout.css.prefers-color-scheme.content-override', 0)]:
+            self.assertIn(f'user_pref("{key}", {value});', text)
+            self.assertEqual(text.count(f'"{key}"'), 1)
         self.assertEqual(prefs.stat().st_mode & 0o777, 0o600)
 
     def test_solid_mode_gets_theme_without_enabling_glass(self):

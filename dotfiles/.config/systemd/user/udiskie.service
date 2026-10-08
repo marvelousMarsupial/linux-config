@@ -1,0 +1,12 @@
+[Unit]
+Description=Removable drive automounting
+PartOf=sway-session.target
+After=graphical-session.target
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/udiskie --no-tray --automount --notify
+Restart=on-failure
+RestartSec=2

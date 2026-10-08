@@ -216,8 +216,8 @@ bindsym --to-code $mod+m exec $bin/notes-picker
 # File manager
 bindsym --to-code $mod+e exec $term -e yazi
 
-# Password manager (pass with fuzzel picker)
-bindsym --to-code $mod+p exec $bin/pass-picker
+# Password manager: show/unlock KeePassXC; press again to hide it.
+bindsym --to-code $mod+p exec $bin/keepass-toggle
 
 # Editor (vim)
 bindsym $mod+v exec $term -e ~/.local/bin/nvim
@@ -318,6 +318,13 @@ bindsym --locked XF86AudioPrev exec playerctl previous
 # Terminals opened from fullscreen
 for_window [app_id="^fullscreen-terminal(-[0-9]+-[12])?$"] floating enable, resize set 800 550, move position center
 
+# Portal file picker (uploads, downloads and file dialogs)
+for_window [app_id="^yazi-portal$"] floating enable, resize set 900 650, move position center
+
+# KeePassXC: float the main window; Super+P hides it in the scratchpad.
+for_window [app_id="^org\.keepassxc\.KeePassXC$"] floating enable, resize set 1000 700, move position center
+for_window [class="^KeePassXC$"] floating enable, resize set 1000 700, move position center
+
 # Float utility windows
 for_window [app_id="blueman-manager"] floating enable
 for_window [app_id="pavucontrol"] floating enable
@@ -351,27 +358,17 @@ for_window [app_id="notes"] resize set 500 400
 # Import the compositor environment and start session services once.
 # An IPC monitor stops the target and kanshi when Sway exits. Ordering
 # controls service startup; it does not guarantee monitor discovery is done.
+# Start from Sway so Polkit registers against the desktop login session.
+# A systemd user service can belong to a different logind session.
+exec /usr/libexec/polkit-mate-authentication-agent-1
 exec $bin/sway-session
 
-# Prefer dark mode for desktop applications
-exec gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+# Publish dark preferences on session start and on config reload.
+exec_always $bin/desktop-appearance
 
-# Notifications are started by sway-session.target.
-# udiskie auto-mounts removable media (USB sticks, external drives) into
-# /run/media/$USER/<label>/ and pops a notification on plug. Flags:
-#   --no-tray : this sway setup has no system tray, so the default
-#               --tray would silently fail to start the daemon
-#   --automount : mount as soon as a device shows up (the user-facing goal)
-#   --notify : send a libnotify pop on every mount/unmount/error so the
-#              user actually knows when a drive came online
-# Browsing the mounted drives happens inside yazi via the `M` keybind
-# (mount.yazi plugin) or the `gm` jump-to-/run/media binding — see
-# dotfiles/.config/yazi/keymap.toml.
-exec udiskie --no-tray --automount --notify
-# No clipboard-history watcher: copied passwords must not be stored on disk.
-# Lock after 30 minutes idle and before suspend; wait until swaylock has locked.
-exec swayidle -w timeout 1800 'swaylock -f' before-sleep 'swaylock -f'
-exec $bin/battery-monitor
+# Notifications, USB automounting, idle locking and battery warnings are
+# managed by sway-session.target. No clipboard-history watcher is started.
+# Browse mounted drives in Yazi with M or gm.
 
 # Optional machine-specific outputs and bindings.
 include ~/.config/sway/local.conf

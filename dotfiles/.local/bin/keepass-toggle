@@ -1,0 +1,50 @@
+#!/usr/bin/python3
+"""Show KeePassXC, or hide its focused window in the Sway scratchpad."""
+import json
+import os
+import subprocess
+import sys
+
+
+def windows(node, workspace=None):
+    if node.get('type') == 'workspace':
+        workspace = node.get('name')
+    yield node, workspace
+    for child in node.get('nodes', []) + node.get('floating_nodes', []):
+        yield from windows(child, workspace)
+
+
+def main():
+    try:
+        result = subprocess.run(['swaymsg', '-r', '-t', 'get_tree'],
+                                capture_output=True, text=True, timeout=3, check=True)
+        tree = json.loads(result.stdout)
+        if not isinstance(tree, dict) or tree.get('type') != 'root':
+            raise ValueError('Invalid Sway tree')
+        matches = [(n, ws) for n, ws in windows(tree)
+                   if n.get('app_id') == 'org.keepassxc.KeePassXC'
+                   or n.get('window_properties', {}).get('class') == 'KeePassXC']
+        if not matches:
+            os.execvp('keepassxc', ['keepassxc'])
+        node, workspace = next(((n, ws) for n, ws in matches if n.get('focused')),
+                               matches[0])
+        selector = f'[con_id={int(node["id"])}]'
+        if node.get('focused'):
+            command = f'{selector} move scratchpad'
+        elif workspace == '__i3_scratch':
+            command = f'{selector} scratchpad show, focus'
+        else:
+            command = f'{selector} focus'
+        result = subprocess.run(['swaymsg', '-r', command], capture_output=True,
+                                text=True, timeout=3, check=True)
+        replies = json.loads(result.stdout)
+        if not replies or not all(item.get('success') for item in replies):
+            raise ValueError('Sway rejected the KeePassXC window command')
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print(f'keepass-toggle: {error}', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

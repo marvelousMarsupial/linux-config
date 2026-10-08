@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Install desktop colors in Zen's default profile; takes effect on restart."""
 import configparser
+import json
 from pathlib import Path
 import re
 import tempfile
@@ -58,9 +59,18 @@ def sync(home):
     existing = f'{THEME_BEGIN}\n@import "system-theme.css";\n{THEME_END}\n' + existing
     prefs = profile / 'user.js'
     text = prefs.read_text() if prefs.exists() else ''
-    key = 'toolkit.legacyUserProfileCustomizations.stylesheets'
-    text = re.sub(r'(?m)^user_pref\("' + re.escape(key) + r'",.*\);\n?', '', text)
-    text = text.rstrip('\n') + f'\nuser_pref("{key}", true);\n'
+    # Dark is the intended default regardless of the selected browser theme.
+    managed = {
+        'browser.tabs.inTitlebar': 1,
+        'zen.view.experimental-no-window-controls': True,
+        'toolkit.legacyUserProfileCustomizations.stylesheets': True,
+        'ui.systemUsesDarkTheme': 1,
+        'browser.theme.content-theme': 0,
+        'layout.css.prefers-color-scheme.content-override': 0,
+    }
+    for key, value in managed.items():
+        text = re.sub(r'(?m)^user_pref\("' + re.escape(key) + r'",.*\);\n?', '', text)
+        text = text.rstrip('\n') + f'\nuser_pref("{key}", {json.dumps(value)});\n'
     chrome.mkdir(exist_ok=True)
     for name, content in files.items():
         replace_file(chrome / name, content)

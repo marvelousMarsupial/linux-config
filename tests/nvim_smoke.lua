@@ -15,9 +15,20 @@ local function check()
   vim.fn.writefile({ "text", "vim: set ts=13:" }, hostile)
   vim.cmd.edit(vim.fn.fnameescape(hostile))
   assert(vim.bo.tabstop == tabstop, "Untrusted modeline changed an editor option")
+  -- Always exercise code formatting on save, even without optional tools.
+  require("lazy").load({ plugins = { "conform.nvim" } })
+  local conform = require("conform")
+  assert(conform.formatters_by_ft.html, "html: missing formatter mapping")
+  conform.formatters.fixture_html = {
+    command = "/usr/bin/python3",
+    args = { "-c", "import sys; print(sys.stdin.read().strip().replace('><', '>\\n<'))" },
+    stdin = true,
+  }
+  conform.formatters_by_ft.html = { "fixture_html" }
+  local paragraph = string.rep("A long paragraph stays soft-wrapped. ", 12)
   local samples = {
-    { "sample.txt", "text", true, "plain text" },
-    { "sample.md", "markdown", true, "# A heading" },
+    { "sample.txt", "text", true, paragraph },
+    { "sample.md", "markdown", true, "# A heading\n\n" .. paragraph },
     { "sample.c", "c", false, "int main(void) { return 0; }" },
     { "sample.ts", "typescript", false, "const value: number = 1;" },
     { "sample.html", "html", false, "<html><body>test</body></html>" },
@@ -27,7 +38,8 @@ local function check()
   }
   for _, sample in ipairs(samples) do
     local file = root .. "/" .. sample[1]
-    vim.fn.writefile({ sample[4] }, file)
+    local original = vim.split(sample[4], "\n", { plain = true })
+    vim.fn.writefile(original, file)
     vim.cmd.edit(vim.fn.fnameescape(file))
     assert(vim.bo.filetype == sample[2], sample[1] .. ": wrong filetype")
     assert(vim.wo.wrap == sample[3], sample[1] .. ": wrong wrapping")
@@ -35,7 +47,15 @@ local function check()
       assert(vim.wo.linebreak and vim.wo.breakindent, sample[1] .. ": incomplete prose wrapping")
     end
     vim.cmd.write()
-    assert(vim.fn.readfile(file)[1] == sample[4], sample[1] .. ": save unexpectedly rewrote content")
+    local saved = vim.fn.readfile(file)
+    assert(vim.deep_equal(saved, vim.api.nvim_buf_get_lines(0, 0, -1, false)),
+      sample[1] .. ": saved file differs from buffer")
+    if sample[3] then
+      assert(vim.deep_equal(saved, original), sample[1] .. ": save unexpectedly rewrote prose")
+    elseif sample[2] == "html" then
+      assert(table.concat(saved, "\n") == "<html>\n<body>test</body>\n</html>",
+        "HTML fixture did not format on save")
+    end
   end
   require("lazy").load({ plugins = { "nvim-lspconfig", "conform.nvim", "telescope.nvim", "nvim-cmp" } })
   for _, server in ipairs({ "clangd", "ts_ls", "html", "jsonls", "yamlls", "lua_ls" }) do
@@ -50,13 +70,17 @@ local function check()
   assert(vim.o.cmdheight == 1, "Command line must remain visible")
   assert(vim.fn.maparg("j", "n", false, true).expr == 1, "Screen-line movement missing")
   assert(not require("lazy.core.config").plugins["obsidian.nvim"], "Obsidian must be retired")
+  assert(not require("lazy.core.config").plugins["markdown-preview.nvim"],
+    "Unverified Markdown browser helper must stay disabled")
+  assert(vim.fn.exists(":MarkdownPreview") == 0, "Unverified browser preview command is active")
+  local markdown_view = vim.fn.maparg("<leader>mr", "n", false, true)
+  assert(markdown_view.desc == "Toggle Markdown view", "In-buffer Markdown view is missing")
   for _, event in ipairs({ "BufWritePost", "VimLeavePre" }) do
     for _, autocmd in ipairs(vim.api.nvim_get_autocmds({ event = event })) do
       assert(not (autocmd.pattern or ""):find("vault"), "Unexpected note file automation")
     end
   end
   -- Run Conform against a deterministic external formatter without installing tools.
-  local conform = require("conform")
   conform.formatters.fixture_json = {
     command = "/usr/bin/python3",
     args = { "-c", "import json,sys; print(json.dumps(json.load(sys.stdin), indent=2))" },
@@ -64,10 +88,12 @@ local function check()
   }
   conform.formatters_by_ft.json = { "fixture_json" }
   vim.cmd.edit(vim.fn.fnameescape(root .. "/sample.json"))
-  conform.format({ async = false, timeout_ms = 2000, lsp_format = "never" })
-  assert(table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n") == '{\n  "value": 1\n}',
-    "External formatter did not update the buffer")
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { '{"value": 1}' })
   vim.cmd.write()
+  assert(table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n") == '{\n  "value": 1\n}',
+    "External formatter did not update the buffer on save")
+  assert(table.concat(vim.fn.readfile(root .. "/sample.json"), "\n") == '{\n  "value": 1\n}',
+    "Formatted JSON was not saved to disk")
   -- Exercise the configured LspAttach callback with a real stdio client/server.
   local file = root .. "/protocol.c"
   vim.fn.writefile({ "int value;" }, file)

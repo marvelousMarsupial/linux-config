@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# termfilechooser's six-argument wrapper protocol; see docs/portals.md.
+set -euo pipefail
+umask 077
+if (( $# != 6 )); then
+    echo 'yazi-portal: expected multiple directory save path output debug' >&2
+    exit 2
+fi
+multiple=$1 directory=$2 save=$3 path=$4 out=$5
+export PATH="$HOME/.local/bin:$PATH"
+# Reveal the picker before Foot maps, without depending on the popup service.
+# Only affect the focused workspace (or a globally fullscreen container).
+parent= mode= cwd=
+cleanup() {
+    [[ -z $cwd ]] || rm -f -- "$cwd"
+    if [[ -n $parent ]]; then
+        # Do not override a different window that the user made fullscreen.
+        if swaymsg -r -t get_tree 2>/dev/null | jq -e --argjson id "$parent" '
+            [.. | objects | select(.type? == "con" or .type? == "floating_con")] |
+            any(.id == $id) and all((.fullscreen_mode // 0) == 0)
+        ' >/dev/null 2>&1; then
+            if [[ $mode == 2 ]]; then
+                swaymsg -r "[con_id=$parent] fullscreen enable global" >/dev/null 2>&1 || true
+            else
+                swaymsg -r "[con_id=$parent] fullscreen enable" >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
+}
+trap cleanup EXIT
+if [[ -n ${SWAYSOCK:-} ]]; then
+    selected=$(swaymsg -r -t get_tree 2>/dev/null | jq -r '
+        def walkws($ws):
+            (if .type == "workspace" then .id else $ws end) as $w |
+            {node: ., ws: $w}, ((.nodes[]?, .floating_nodes[]?) | walkws($w));
+        [walkws(null)] as $entries |
+        ([$entries[] | select(.node.focused == true) | .ws][0]) as $focused |
+        [$entries[] | select(.node.type == "con" or .node.type == "floating_con") |
+            select(.node.fullscreen_mode == 2 or
+                (.node.fullscreen_mode == 1 and .ws == $focused))][0].node |
+        select(. != null) | [.id, .fullscreen_mode] | @tsv
+    ' 2>/dev/null) || selected=
+    if [[ -n $selected ]]; then
+        read -r candidate candidate_mode <<< "$selected"
+        if swaymsg -r "[con_id=$candidate] fullscreen disable" 2>/dev/null |
+                jq -e 'length > 0 and all(.success == true)' >/dev/null 2>&1; then
+            parent=$candidate mode=$candidate_mode
+        fi
+    fi
+fi
+args=(--chooser-file="$out")
+if [[ $directory == 1 && $save != 1 ]]; then
+    cwd=$(mktemp)
+    args+=(--cwd-file="$cwd")
+fi
+# Foot stays attached until Yazi exits. Never interpolate paths into shell code.
+# The picker floats over busy webpages; give it more backing than tiled terminals.
+alpha=1.0
+if [[ -f $HOME/.config/theme/glass-mode && $(< "$HOME/.config/theme/glass-mode") == on ]]; then
+    alpha=0.60
+fi
+foot --app-id=yazi-portal --title='Choose a file' --override="colors.alpha=$alpha" \
+    -e yazi "${args[@]}" -- "$path"
+if [[ $directory == 1 && $save != 1 && ! -s $out && -s $cwd ]]; then
+    # Same current-directory fallback as upstream: q accepts the current folder.
+    cat -- "$cwd" > "$out"
+fi
+if [[ $multiple != 1 && -s $out ]]; then
+    # Yazi allows multi-selection; a single-file request must return one path.
+    first=$(head -n 1 -- "$out")
+    printf '%s\n' "$first" > "$out"
+fi
+# A cancelled file request still needs an empty result file. Without it the
+# backend logs a file-open error. Never overwrite a selection or follow a
+# pre-existing symlink when creating the cancellation result.
+if [[ ! -e $out ]]; then
+    (set -C; : > "$out")
+fi

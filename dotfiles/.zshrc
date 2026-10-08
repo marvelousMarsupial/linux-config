@@ -4,6 +4,12 @@
 # found" because Debian's default PATH for non-root users is bare bones.
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/sbin:/bin"
 
+# Sway and every app it launches inherit the same toolkit settings.
+if [[ -r "$HOME/.config/environment.d/appearance.conf" ]]; then
+  source "$HOME/.config/environment.d/appearance.conf"
+  export GTK_THEME
+fi
+
 # Auto-start Sway on tty1
 if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" = "1" ] && command -v sway >/dev/null; then
   exec systemd-cat --identifier=sway sway

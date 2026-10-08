@@ -1,0 +1,380 @@
+#!/usr/bin/env bash
+# Read-only daily health snapshot. No dependency on the source checkout.
+set -uo pipefail
+umask 077
+export LC_ALL=C
+export PATH="$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+demo=0
+case "${1:-}" in
+    '') ;;
+    --demo) demo=1 ;;
+    *) echo 'Usage: sysreport [--demo]' >&2; exit 2 ;;
+esac
+output="$HOME/.local/share/sysreport"
+[[ ! -L "$output" ]] || { echo 'Refusing symlinked output directory' >&2; exit 1; }
+mkdir -p -- "$output" || exit 1
+chmod 700 -- "$output" || exit 1
+exec 9>"$output/.lock"
+flock -n 9 || exit 0
+work=$(mktemp -d "$output/.work.XXXXXXXX") || exit 1
+trap 'rm -rf -- "$work"' EXIT
+problems="$work/problems"
+: > "$problems"
+escape() { sed -e 's/\&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&#39;/g"; }
+problem() {
+    printf '%s\n' "$*" >> "$problems"
+    printf '%s\n' "$*" >> "$work/${section:-general}.problems"
+}
+# Every command's output, including diagnostics, passes through escape exactly once.
+run() {
+    local rc=0
+    timeout 30s "$@" > "$work/command" 2>&1 || rc=$?
+    cat "$work/command"
+    if (( rc )); then
+        printf '\nERROR: command failed (exit %s): %s\n' "$rc" "$1"
+        problem "$section: $1 unavailable or failed (exit $rc)"
+    fi
+    return 0
+}
+installation() {
+    local state="$HOME/.local/state/linux-config/install-info"
+    if [[ -r "$state" ]]; then cat "$state"; else
+        echo 'Installed version/date: unknown (no installation receipt)'
+        problem 'Installation version/date unknown; no installation receipt'
+    fi
+}
+backup() {
+    if [[ ! -f "$HOME/.config/restic-home/env" ]] || ! command -v restic >/dev/null; then
+        echo 'Backup not configured: Restic or its configuration is missing.'
+        problem 'Backup not configured; last success unknown'
+        return
+    fi
+    run systemctl --user show restic-home.service -p ExecMainStartTimestamp -p ExecMainExitTimestamp -p Result -p ExecMainStatus
+    local success success_seconds
+    if timeout 30s journalctl --user -u restic-home.service --no-pager -o json > "$work/backup-journal" 2> "$work/backup-journal-error"; then
+        success=$(jq -sr '[.[] | select(.MESSAGE_ID=="39f53479d3a045ac8e11786248231fbf")] | max_by(.__REALTIME_TIMESTAMP|tonumber) | .__REALTIME_TIMESTAMP // empty' "$work/backup-journal")
+        if [[ "$success" =~ ^[0-9]+$ ]]; then
+            success_seconds=$((success / 1000000))
+            printf 'Last journal-confirmed successful completion: %s\n' "$(date -d "@$success_seconds" --iso-8601=seconds)"
+            printf 'Hours since confirmed success: %s\n' "$(( ($(date +%s) - success_seconds) / 3600 ))"
+            (( $(date +%s) - success_seconds <= 93600 )) || problem 'Backup confirmed success older than 26 hours'
+        else
+            echo 'Last successful exit-0 completion: unknown in retained journal'
+            problem 'Backup: last successful completion unknown'
+        fi
+    else
+        echo 'ERROR: backup success journal unavailable'; problem 'Backup: success journal unavailable'
+    fi
+    # Snapshot metadata is inexpensive; never run a backup, check, or full repo scan.
+    local rc=0 latest age
+    timeout 30s restic-home snapshots --no-lock --json --tag linux-config-home > "$work/snapshots" 2> "$work/snapshot-error" || rc=$?
+    if (( rc )); then cat "$work/snapshot-error"; problem 'Backup: cannot read snapshot metadata'; return; fi
+    latest=$(jq -er 'map(select(.time != null)) | max_by(.time).time' "$work/snapshots") || {
+        echo 'No successful snapshot found'; problem 'Backup: no successful snapshot found'; return;
+    }
+    age=$(( $(date +%s) - $(date -d "$latest" +%s) ))
+    printf 'Latest snapshot: %s\nAge: %s hours\n' "$latest" "$((age / 3600))"
+    echo 'Snapshot existence does not prove a complete exit-0 backup; consult service result above.'
+    (( age <= 93600 )) || problem 'Backup snapshot older than 26 hours'
+    echo 'Repository size: skipped to avoid repository scans or remote traffic.'
+}
+units_scope() {
+    local scope=$1 units unit state
+    local -a flags=()
+    [[ "$scope" == user ]] && flags=(--user)
+    echo "Scope: $scope"
+    run systemctl "${flags[@]}" list-timers --all --no-pager
+    if ! systemctl "${flags[@]}" --failed --no-legend --plain --no-pager > "$work/failed" 2> "$work/unit-error"; then
+        cat "$work/unit-error"; problem "Systemd: $scope failed units unknown"; return
+    fi
+    echo 'Failed units:'; cat "$work/failed"
+    [[ ! -s "$work/failed" ]] || problem "Failed $scope units: $(awk '{print $1}' "$work/failed" | paste -sd ' ' -)"
+    units=$({
+        awk '{print $1}' "$work/failed"
+        systemctl "${flags[@]}" list-unit-files --state=enabled --type=service --type=timer --no-legend --no-pager | awk '{print $1}'
+        systemctl "${flags[@]}" list-units --all --type=timer --no-legend --plain --no-pager | awk '{print $1}'
+        if [[ "$scope" == user ]]; then
+            find "$HOME/.config/systemd/user" -maxdepth 1 -type f \( -name '*.service' -o -name '*.timer' \) -printf '%f\n'
+        else
+            printf '%s\n' apt-daily.service apt-daily-upgrade.service flatpak-update.service fstrim.service dpkg-db-backup.service e2scrub_all.service logrotate.service
+        fi
+    } | sort -u)
+    while IFS= read -r unit; do
+        [[ "$unit" == *.service || "$unit" == *.timer ]] || continue
+        case "$unit" in getty@*|console-getty*|systemd-*|grub-*|accounts-daemon*|remote-fs*) continue;; esac
+        echo "--- $unit"
+        run systemctl "${flags[@]}" show "$unit" -p ActiveState -p SubState -p Result -p ExecMainStatus -p ExecMainCode -p ExecMainStartTimestamp -p ExecMainExitTimestamp -p LastTriggerUSec -p NextElapseUSecRealtime -p Triggers
+        state=$(systemctl "${flags[@]}" show "$unit" -p Result --value 2>/dev/null)
+        [[ -z "$state" || "$state" == success ]] || problem "$scope $unit result: $state"
+    done <<< "$units"
+}
+units() { units_scope system; units_scope user; }
+updates() {
+    local checked result completed epoch
+    checked=$(timeout 10s systemctl show apt-daily-upgrade.service -p Result -p ExecMainStatus -p ExecMainExitTimestamp 2>/dev/null) || checked=''
+    result=$(sed -n 's/^Result=//p' <<< "$checked")
+    completed=$(sed -n 's/^ExecMainExitTimestamp=//p' <<< "$checked")
+    epoch=$(date -d "$completed" +%s 2>/dev/null) || epoch=0
+    if [[ "$result" == success && "$checked" == *'ExecMainStatus=0'* ]] && (( epoch > 0 && $(date +%s) - epoch <= 172800 )); then
+        printf 'Update check completed successfully: %s\n' "$completed"
+        touch "$work/updates-confirmed"
+    elif [[ -n "$result" && "$result" != success ]]; then
+        problem "Update service failed: $result"
+    else
+        problem 'Recent successful automatic update check not confirmed'
+    fi
+    echo 'Last recorded APT transaction (not a record of every apt invocation):'
+    if [[ -r /var/log/apt/history.log ]]; then
+        awk 'BEGIN {RS=""} /Start-Date:/ {last=$0} END {print last}' /var/log/apt/history.log
+        echo 'Latest recorded upgrade in current history log:'
+        awk 'BEGIN {RS=""} /Upgrade:/ {last=$0} END {print last ? last : "No upgrades in current log"}' /var/log/apt/history.log
+    else problem 'APT history unreadable'; echo 'ERROR: APT history unreadable'; fi
+    echo 'Pending updates (cached metadata; no apt update is run):'
+    local rc=0 count
+    timeout 30s apt-get -s -o Debug::NoLocking=1 upgrade > "$work/apt" 2>&1 || rc=$?
+    cat "$work/apt"
+    if (( rc )); then problem 'Pending update count unknown'; else
+        count=$(awk '/^Inst / {n++} END {print n+0}' "$work/apt")
+        printf 'Pending upgrade count: %s\n' "$count"
+        (( count == 0 )) || problem "$count package upgrades pending (cached metadata)"
+    fi
+    echo 'Package metadata timestamps:'
+    find /var/lib/apt/lists -maxdepth 1 -name '*InRelease' -printf '%TY-%Tm-%Td %TH:%TM %f\n'
+    local metadata
+    metadata=$(find /var/lib/apt/lists -maxdepth 1 -name '*InRelease' -printf '%T@\n' | sort -nr | head -n 1)
+    if [[ -z "$metadata" ]]; then problem 'APT metadata age unknown';
+    elif (( $(date +%s) - ${metadata%%.*} > 172800 )); then problem 'APT metadata older than 48 hours'; fi
+    if [[ -e /run/reboot-required ]]; then
+        echo 'Reboot required'; problem 'Reboot required'; cat /run/reboot-required
+        [[ ! -r /run/reboot-required.pkgs ]] || cat /run/reboot-required.pkgs
+    else echo 'No reboot-required marker (absence does not guarantee no reboot is needed).'; fi
+}
+performance() {
+    run uptime
+    run free -h
+    awk '/MemTotal:/ {total=$2} /MemAvailable:/ {available=$2} END {if(total>0 && available/total<0.1) print "Available RAM below 10%"}' /proc/meminfo >> "$problems"
+    run df -hPT
+    df -PT | awk 'NR>1 {gsub(/%/,"",$6); if ($6>=90) print "Disk usage >=90%: " $7}' >> "$problems"
+    echo 'Top CPU processes (%CPU averaged over process lifetime):'
+    ps -eo pid,comm,pcpu,pmem --sort=-pcpu | head -n 6
+    echo 'Top memory processes:'
+    ps -eo pid,comm,pcpu,pmem --sort=-pmem | head -n 6
+    echo 'CPU/thermal sensors (millidegrees Celsius):'
+    local file found=0
+    for file in /sys/class/thermal/thermal_zone*/temp; do
+        [[ -r "$file" ]] || continue; found=1
+        printf '%s: ' "$file"; cat "$file"
+    done
+    (( found )) || echo 'Temperature unavailable'
+    echo 'Battery health:'; found=0
+    for file in /sys/class/power_supply/*/uevent; do
+        [[ -r "$file" ]] || continue
+        grep -q 'POWER_SUPPLY_TYPE=Battery' "$file" || continue
+        found=1
+        awk -F= '/POWER_SUPPLY_(STATUS|CAPACITY|CYCLE_COUNT|ENERGY_FULL|ENERGY_FULL_DESIGN|CHARGE_FULL|CHARGE_FULL_DESIGN)=/ {print} /POWER_SUPPLY_(ENERGY|CHARGE)_FULL=/ {full=$2} /POWER_SUPPLY_(ENERGY|CHARGE)_FULL_DESIGN=/ {design=$2} END {if(design>0) printf "Health: %.1f%% of design capacity\n", 100*full/design}' "$file"
+    done
+    (( found )) || echo 'Battery unavailable'
+    echo 'Disk devices:'; run lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL
+    echo 'Disk health: read-only SMART health query; no self-tests are started.'
+    if command -v smartctl >/dev/null; then
+        while read -r file; do
+            [[ -n "$file" ]] || continue
+            run smartctl -n standby -H "/dev/$file"
+        done < <(lsblk -dn -o NAME,TYPE | awk '$2=="disk" {print $1}')
+    else
+        echo 'SMART/NVMe health unavailable: smartctl not installed. Capacity is shown above.'
+        problem 'Disk hardware health unknown: smartctl unavailable'
+    fi
+    return 0
+}
+journal() {
+    local rc=0
+    if ! id -nG | tr ' ' '\n' | grep -qx systemd-journal; then
+        touch "$work/journal-limited"
+        echo 'System journal coverage is not guaranteed: user is not in systemd-journal.'
+        problem 'Journal: user lacks systemd-journal membership; coverage may be incomplete'
+    fi
+    timeout 30s journalctl --since '24 hours ago' -p warning -o json --no-pager > "$work/journal" 2> "$work/journal-error" || rc=$?
+    cat "$work/journal-error"
+    if (( rc )) || grep -q 'not seeing' "$work/journal-error"; then
+        touch "$work/journal-limited"
+        problem 'Journal: full system warning/error coverage unavailable'
+    fi
+    jq -s 'length' "$work/journal" > "$work/journal-count" || echo unknown > "$work/journal-count"
+    jq -r '[._SYSTEMD_USER_UNIT // ._SYSTEMD_UNIT // .SYSLOG_IDENTIFIER // "unknown", .MESSAGE // ""] | @tsv' "$work/journal" | sort | uniq -c | sort -nr
+    [[ ! -s "$work/journal" ]] || problem 'Journal contains warnings/errors in the last 24 hours; review counts'
+}
+network_snitch() {
+    local settings="$HOME/.config/opensnitch/settings.conf" db
+    db=$(awk -F= '/^\[/{section=$0} section=="[database]" && $1=="file" {print substr($0,6)}' "$settings" 2>/dev/null)
+    if [[ -z "$db" || "$db" == *:memory:* ]]; then
+        echo 'No persistent OpenSnitch database configured; statistics skipped.'; return
+    fi
+    echo "Database: $db"
+    local missing=0
+    if [[ ! -f "$db" ]]; then
+        echo 'Database file missing. Restart the OpenSnitch UI after saving its database settings.'
+        problem 'OpenSnitch: database file missing'; missing=1
+    elif [[ ! -r "$db" ]]; then
+        echo 'Database file unreadable.'; problem 'OpenSnitch: database file unreadable'; missing=1
+    fi
+    if ! command -v sqlite3 >/dev/null; then
+        echo 'sqlite3 missing. Install with: sudo apt install sqlite3'
+        problem 'OpenSnitch: sqlite3 not installed'; missing=1
+    fi
+    (( missing == 0 )) || return 0
+    local connections
+    connections=$(timeout 10s sqlite3 -readonly "$db" 'PRAGMA query_only=ON; SELECT count(*) FROM connections;' 2>/dev/null) || connections=unknown
+    printf 'Saved connections: %s\n' "$connections"
+    if [[ "$connections" == 0 ]]; then
+        problem 'OpenSnitch: no connections recorded yet'
+    elif [[ "$connections" == unknown ]]; then
+        problem 'OpenSnitch: could not read connections'
+    fi
+    # URI mode=ro plus query_only; short transactions and zero busy timeout.
+    echo 'Rules created in the last 24 hours:'
+    run sqlite3 -readonly -header -column "$db" "PRAGMA query_only=ON; SELECT created,name,action,operator_operand,operator_data FROM rules WHERE datetime(created)>=datetime('now','-1 day','localtime');"
+    echo 'Denied connections in the last 24 hours:'
+    run sqlite3 -readonly -header -column "$db" "PRAGMA query_only=ON; SELECT process,dst_host,dst_ip,dst_port,count(*) AS connections FROM connections WHERE action='deny' AND datetime(time)>=datetime('now','-1 day','localtime') GROUP BY process,dst_host,dst_ip,dst_port ORDER BY connections DESC;"
+    echo 'Top processes by connections in the last 24 hours:'
+    run sqlite3 -readonly -header -column "$db" "PRAGMA query_only=ON; SELECT process,count(*) AS connections FROM connections WHERE datetime(time)>=datetime('now','-1 day','localtime') GROUP BY process ORDER BY connections DESC LIMIT 10;"
+}
+network_basics() { run ss -lntup; run ip -brief address show up; }
+sections=(installation backup units updates performance journal network_snitch network_basics)
+titles=('Installation' 'Backup' 'Systemd units' 'Updates' 'Performance and disk health' 'Journal' 'Network' 'Network basics')
+for section in "${sections[@]}"; do
+    if (( demo )); then
+        printf 'Sample data\n' > "$work/$section"
+        continue
+    fi
+    # Separate process isolates section errors; shared problems file preserves findings.
+    ( "$section" ) > "$work/$section" 2>&1 || {
+        printf '\nERROR: section failed\n' >> "$work/$section"
+        problem "$section failed"
+    }
+done
+# Build a small, evidence-based overview; detailed command output stays folded.
+tile() {
+    local title=$1 state=$2 label=$3 detail=$4
+    printf '<article class="tile %s"><h3>' "$state"
+    printf '%s' "$title" | escape
+    printf '</h3><strong>'; printf '%s' "$label" | escape
+    printf '</strong><p>'; printf '%s' "$detail" | escape
+    printf '</p></article>\n'
+}
+overview() {
+    local state label detail
+    if (( demo )); then
+        tile Backups ok 'Backup ran' 'Last success: 2 hours ago'
+        tile Updates ok 'Checked today' 'No updates waiting'
+        tile Services ok 'Running' 'No failed services'
+        tile Resources ok 'OK' 'Disk and memory usage normal'
+        tile 'Disk health' ok 'OK' 'SMART passed'
+        tile Journal ok 'Quiet' 'No warnings in 24 hours'
+        tile Network ok 'Connected' 'Interfaces and ports checked'
+        tile OpenSnitch ok 'Saved' 'Connection history available'
+        return
+    fi
+    state=ok; label='Backup ran'; detail='Last success within 26 hours.'
+    if [[ -s "$work/backup.problems" ]]; then
+        state=warn; label='Check backup'; detail=$(head -n 1 "$work/backup.problems")
+    fi
+    if grep -Eq '^Result=(exit-code|signal|timeout|core-dump|oom-kill)' "$work/backup"; then
+        state=bad; label='Failed'; detail='Last backup failed.'
+    fi
+    tile Backups "$state" "$label" "$detail"
+    state=warn; label='Unknown'; detail='No recent update check found.'
+    if [[ -e "$work/updates-confirmed" ]]; then
+        state=ok; label='Checked'; detail='Last successful check within 48 hours.'
+    fi
+    if [[ -s "$work/updates.problems" ]]; then
+        state=warn; label='Check updates'; detail=$(head -n 1 "$work/updates.problems")
+    fi
+    if grep -q 'Update service failed:' "$problems"; then state=bad; label='Updates failed'; fi
+    tile Updates "$state" "$label" "$detail"
+    state=ok; label='OK'; detail='No failed services.'
+    if [[ -s "$work/units.problems" ]]; then
+        state=warn; label='Unknown'; detail='Could not read service status.'
+        if grep -Eq '^Failed .* units:|result:' "$work/units.problems"; then
+            state=bad; label='Failed'; detail='See failed services below.'
+        fi
+    fi
+    tile Services "$state" "$label" "$detail"
+    state=ok; label='OK'; detail='Disk and memory usage normal.'
+    if grep -Eq 'Disk usage|Available RAM' "$problems"; then
+        state=bad; label='Low space or memory'; detail=$(grep -E 'Disk usage|Available RAM' "$problems" | head -n 1)
+    elif grep -q '^ERROR:' "$work/performance"; then
+        state=warn; label='Unknown'; detail='Could not read resource usage.'
+    fi
+    tile Resources "$state" "$label" "$detail"
+    state=warn; label='Unknown'; detail='SMART unreadable or disk asleep.'
+    if grep -Eqi 'overall-health.*PASSED|Health Status: OK' "$work/performance" && ! grep -q '^ERROR:' "$work/performance"; then
+        state=ok; label='OK'; detail='SMART passed.'
+    fi
+    if grep -Eqi 'overall-health.*FAILED|Health Status:.*(CRITICAL|FAILED)' "$work/performance"; then
+        state=bad; label='Failed'; detail='SMART reported a disk problem.'
+    fi
+    tile 'Disk health' "$state" "$label" "$detail"
+    state=ok; label='Quiet'; detail='No warnings in 24 hours.'
+    if [[ -s "$work/journal.problems" ]]; then
+        state=warn; label='Check journal'; detail='Could not read logs.'
+        if [[ -r "$work/journal-count" ]]; then
+            label="$(cat "$work/journal-count") warnings"; detail='In the last 24 hours.'
+        fi
+        if [[ -e "$work/journal-limited" ]]; then
+            detail='Last 24 hours; some system logs unreadable.'
+        fi
+    fi
+    tile Journal "$state" "$label" "$detail"
+    state=ok; label='Checked'; detail='Interfaces and ports listed below.'
+    if [[ -s "$work/network_basics.problems" ]]; then
+        state=warn; label='Unknown'; detail='Could not read network status.'
+    fi
+    tile Network "$state" "$label" "$detail"
+    state=ok; label='Saved'; detail='Connection history available.'
+    if grep -q 'No persistent' "$work/network_snitch"; then
+        state=warn; label='History off'; detail='No saved connection history.'
+    elif [[ -s "$work/network_snitch.problems" ]]; then
+        state=warn; label='Unknown'; detail='Could not read connection history.'
+        if grep -q 'Saved connections: 0' "$work/network_snitch"; then
+            label='No connections'; detail='Database is empty. Check the UI connection.'
+        fi
+    fi
+    tile OpenSnitch "$state" "$label" "$detail"
+}
+report="$work/report"
+{
+    cat <<'HTML'
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>System health</title>
+<style>:root{color-scheme:light dark;--green:#176638;--red:#a32020;--amber:#895100}body{font:16px system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem}pre{font:14px ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;border:1px solid #8886;border-radius:6px}.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin:1.5rem 0}.tile{border:1px solid #8886;border-top:5px solid;border-radius:8px;padding:1rem}.tile h3{margin:0 0 .6rem;font-size:.95rem}.tile strong{font-size:1.3rem}.tile p{margin:.6rem 0 0;font-size:.9rem}.ok{border-top-color:var(--green)}.ok strong{color:var(--green)}.bad{border-top-color:var(--red)}.bad strong{color:var(--red)}.warn{border-top-color:var(--amber)}.warn strong,.problem{color:var(--amber)}details{border-bottom:1px solid #8886;padding:1rem 0}summary{cursor:pointer;font-weight:600}h2{margin-top:2rem}@media(prefers-color-scheme:dark){:root{--green:#7fdb9b;--red:#ff9494;--amber:#ffbc70}}</style>
+<h1>System health</h1><pre>
+HTML
+    printf 'Host: %s\nGenerated: %s\n' "$(hostname)" "$(date --iso-8601=seconds)" | escape
+    if (( demo )); then printf 'Demo — sample data\n'; fi
+    escape < "$work/installation"
+    printf '</pre><div class="tiles">\n'
+    overview
+    printf '</div>\n'
+    if [[ -s "$problems" ]]; then
+        printf '<details><summary>Issues</summary><pre class="problem">'
+        sort -u "$problems" | escape; printf '</pre></details>\n'
+    else printf '<p>all OK</p>\n'; fi
+    printf '<h2>Details</h2>\n'
+    for i in 1 2 3 4 5 6 7; do
+        printf '<details><summary>'; printf '%s' "${titles[i]}" | escape; printf '</summary><pre>'
+        escape < "$work/${sections[i]}"; printf '</pre></details>\n'
+    done
+    printf '</html>\n'
+} > "$report" || exit 1
+chmod 600 "$report"
+if (( demo )); then
+    mv -fT -- "$report" "$output/demo.html" || exit 1
+    printf '%s\n' "$output/demo.html"
+    exit 0
+fi
+name="report-$(date -u +%Y%m%dT%H%M%S.%NZ).html"
+mv -- "$report" "$output/$name" || exit 1
+cp -- "$output/$name" "$work/latest"
+mv -fT -- "$work/latest" "$output/latest.html" || exit 1
+find "$output" -maxdepth 1 -type f -name 'report-*.html' -printf '%f\n' | sort -r | tail -n +15 | while IFS= read -r old; do rm -- "$output/$old"; done
+printf '%s\n' "$output/latest.html"

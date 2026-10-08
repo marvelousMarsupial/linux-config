@@ -1,0 +1,10 @@
+#!/bin/sh
+# Apply the repo dark preference before every app launch.
+if [ "$#" -eq 0 ]; then
+    # Match opensnitch-ui.service; the packaged /tmp default cannot reach our daemon.
+    runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+    mkdir -p "$runtime_dir/opensnitch" || exit 1
+    chmod 700 "$runtime_dir/opensnitch" || exit 1
+    set -- --socket "unix://$runtime_dir/opensnitch/osui.sock"
+fi
+exec "$HOME/.local/bin/app-dark-mode" opensnitch-ui "$@"

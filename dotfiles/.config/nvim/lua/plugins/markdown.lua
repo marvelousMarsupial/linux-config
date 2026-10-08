@@ -45,14 +45,13 @@ return {
     },
   },
 
-  -- Live browser preview
+  -- Disabled until its external helper has a verified installation path.
+  -- Use the in-buffer Markdown view above instead.
   {
     "iamcco/markdown-preview.nvim",
+    enabled = false,
     cmd = { "MarkdownPreviewToggle", "MarkdownPreview", "MarkdownPreviewStop" },
     ft = { "markdown" },
-    build = function()
-      vim.fn["mkdp#util#install"]()
-    end,
     keys = {
       { "<leader>mp", "<cmd>MarkdownPreviewToggle<cr>", desc = "Markdown preview" },
     },

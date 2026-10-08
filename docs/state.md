@@ -1,34 +1,53 @@
 # Current state
 
-Checked 2026-10-07 on the Debian 13 VM.
-See [TODO](TODO.md) for work still needed on the XPS.
+Updated 2026-10-08. The goal is a fresh Debian 13 x86_64 installation configured
+by `./scripts/setup`, without manual application theme edits or cleanup tailored
+to the development VM. See [installation](installation.md) for the entry point
+and [TODO](TODO.md) for remaining decisions and verification.
 
-| Area | Current state |
+| Area | Current repository behavior |
 | --- | --- |
-| User files | Installer dry run shows no changes. Local profiles and backups are kept. |
-| Sway | Responds to IPC. Virtual display is active. New tty1 logins send output to the journal. Current session output was not saved. |
-| Locking (2026-10-08) | Repo and installed config lock after 30 minutes idle and before suspend. Blanket fullscreen inhibition removed; application-requested inhibitors respected. Logout/login and live idle/unlock/suspend checks pending; sandbox cannot access live Sway. |
-| Session services | Session target, IPC monitor, kanshi and update timer are active. Logout and suspend still need a live test. |
-| Clipboard (2026-10-08) | Automatic history capture disabled in repo and installed config; history shortcut removed. Logout/login still needed: the sandbox cannot access live Sway/user services to stop or verify any existing watcher. Existing history was not inspected or erased. Normal copying remains available through wl-clipboard. |
-| Notifications | One Mako daemon runs under systemd. Duplicate Sway startup was removed. |
-| Foot | Running. Socket override fixes a startup ordering cycle. |
-| Updates | APT timers are active. The manual update run finished. No pending upgrades at this check. The repo's named APT policy file is still absent from /etc. Existing local settings permit Debian maintenance updates and disable automatic reboot. |
-| Kernel | Running 6.12.74+deb13+1-amd64. Installed 6.12.111+deb13-amd64 needs a reboot. Old kernel kept as fallback. |
-| Update notices | Timer active and recent checks succeeded. Delivery after a future update still needs confirmation. |
-| Firewall | nftables enabled and active. Earlier live incoming and outgoing probes passed. |
-| OpenSnitch | Machine-local trial only. Daemon and UI active. Added an allow rule for systemd-networkd and restarted the daemon. UI reconnected. |
-| Audio | VM has no sound card. PipeWire has a dummy output. XPS audio problems need investigation on the laptop. |
-| Brightness | Screen-only controls and backup shortcuts installed. Permission rules installed and user added to video group. Reboot and test on the XPS. VM has no backlight. |
-| Accessibility | Missing at-spi2-core installed. Accessibility bus responds. |
-| ALSA rules | Local override fixes Debian's duplicate label. udev verification passes. Remove override when Debian fixes its packaged rule. |
-| Storage | Cache cleanup lowered disk use from 92 to 87 percent. About 2.6 GB free. Container data and backups kept. |
-| Memory | About 2.5 GB available at inspection. No logged out of memory or disk I/O errors found. |
-| Editor | Known HTML save test failure. Installed lazy.nvim revision still needs reconciliation with the lock. |
-| File tools | file installed. ipython3 missing. Interactive Yazi checks pending. |
+| Remote entry point | `scripts/bootstrap` downloads a disposable checkout and removes it after setup or failure. Publication and fresh-machine verification remain pending. |
+| Monitors | Fresh installs receive the saved laptop/LG profiles; existing local kanshi settings are preserved. |
+| Full setup | Installs Debian packages, missing verified Yazi/Zen/font releases, pinned termfilechooser, Neovim/plugins, user files, initial theme, groups, zsh login shell and APT policy. Existing apps/configs are reused where appropriate. |
+| Dark defaults | GTK dark settings and desktop preference; explicit KeePassXC/OpenSnitch dark themes; app launchers reapply dark on startup. OpenSnitch theme support is an installed dependency. Zen requests dark content; websites must implement the preference. No desktop environment or global Qt theme plugin is required. |
+| OpenSnitch | Setup provisions a daemon socket override for the installing user's UID; the Sway session starts the matching UI service. Existing daemon preferences and rules are preserved. Fresh-login collection still needs live verification. |
+| Chromium | Installed from Debian by full setup, alongside Zen. |
+| Python | IPython keeps its normal recommended dependencies. NumPy, Matplotlib and SciPy are explicit setup packages, as requested. |
+| Passwords | Super+P opens/focuses/hides KeePassXC; browser integration and native messaging defaults are configured. Database creation/selection and Zen extension pairing remain interactive. See [passwords](passwords.md). |
+| Upload/save picker | Zen uses XDG Desktop Portal → termfilechooser → Yazi in Foot. The picker leaves Sway fullscreen before opening, then restores it when closed unless another window is fullscreen. This is the desired behavior; preserve it. |
+| General fullscreen windows | The popup guard exits fullscreen for new windows, floats/centers/focuses them and restores fullscreen after tracked windows close or leave. Explicit fullscreen actions take priority. See [window behavior](window-behavior.md). |
+| Authentication prompts | Setup installs mate-polkit; Sway starts its agent directly in the desktop login session. The user confirmed the graphical authentication test works on 2026-10-08 after switching to direct Sway startup. |
+| Sway/session | Session target starts the IPC monitor, popup guard, kanshi, Mako and update notifications. Local monitor layouts remain local. Live service health is separate from configuration. |
+| Locking/clipboard | 30-minute idle lock and lock before suspend; no blanket fullscreen inhibition. Automatic clipboard history capture is disabled. KeePassXC defaults include five-minute idle locking and ten-second clipboard clearing. |
+| Updates | Setup installs both APT policy files and enables Debian update timers. No automatic reboots or dependency/kernel removal. |
+| Editor | Neovim/plugins and in-editor Markdown preview; optional development tools stay explicit. Browser Markdown preview is disabled. |
+| Obsidian | Not installed by the repo. Setup does not uninstall it or perform development-VM cleanup. |
+| Scope | Firewall policy, encryption, firmware/drivers, monitor adjustments, VM networking/storage, hardware unlock and backup choices remain machine-specific. Existing Incus/data are not targeted. |
 
-System and user managers report no failed units after the fixes.
-The full suite ran 97 tests. 96 passed and the known HTML save test failed.
-Syntax and theme checks passed. See [testing](testing.md) for limits.
+## Verification
 
-OpenSnitch restart logged shutdown warnings. Its next startup completed and the
-UI connected. This does not prove every network flow works.
+The user ran full setup on the development VM and rebooted. Read-only checks
+confirmed required packages, installed user files, both APT policy files, shell,
+group memberships, locale and portal backend files. The user confirmed Zen
+uploads through Yazi and the fullscreen-exit/floating-picker behavior. These
+checks precede later package/theme additions and do not establish a fresh-machine
+installation of the final revision.
+
+The current sandbox cannot certify live systemd/Sway state or apply privileged
+package changes. Older host snapshots in audit documents are dated evidence,
+not current service status. Fresh installation, final dark app appearance,
+browser pairing/autofill, save/overwrite, screen sharing and hardware behavior
+still need their respective live checks. See [testing](testing.md).
+## System health — 2026-10-08
+
+The report and user timer are installed. The user accepted the simplified tiles
+and confirmed OpenSnitch collection after correcting the UI socket mismatch.
+The report works without the source checkout. Installation receipts are recorded
+by future successful installs; the previous installation has no receipt.
+
+Session startup and picker-cancellation fixes are installed and covered by 25
+passing command/portal tests. UPower is in the package list but still needs local
+installation. Live timer behavior, ShellCheck, full journal access, SMART access
+and fresh-install daemon socket configuration remain unverified. See
+[system health](sysreport.md) and [TODO](TODO.md).

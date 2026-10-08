@@ -4,26 +4,44 @@ Personal Debian 13 workstation configs and small scripts: Sway, Foot, Fuzzel,
 Neovim, Yazi, zsh and six shared Base16 palettes. VM management uses libvirt
 directly. The default package list keeps development tools minimal.
 
+## Intended installation flow
+
+The goal is to keep this setup in a hosted Git repository (GitHub or equivalent),
+run a single curl command on a fresh Debian 13 x86_64 workstation, and leave no
+local checkout behind. Installed applications and configs remain independent of
+the downloaded source. `scripts/bootstrap` implements temporary checkout cleanup;
+the current changes must be committed and published before remote use works.
+See [remote bootstrap](docs/installation.md#remote-bootstrap) for commands and limits.
+
 ## Start here
 
 Read [installation](docs/installation.md) before applying the setup. It covers
 packages, separately installed applications, config backups and local settings.
+Finish the [short manual checklist](docs/manual.md) after setup.
 See [current state](docs/state.md) for checked repository/host differences and
 [systemd](docs/systemd.md), [updates](docs/updates.md) and
 [firewall](docs/firewall.md) for system integration.
 Use [editor setup](docs/editor.md) for Neovim and optional language tools.
 
-For an existing installation:
+For a fresh Debian 13 x86_64 workstation, run as your normal
+user from the checkout:
 
 ```sh
-./scripts/check --full
-./scripts/install --dry-run
-./scripts/install
+./scripts/setup --dry-run
+./scripts/setup
 ```
 
-The installer copies user files with backups and preserves local monitor profiles,
-plugin locks and generated colors. It also retires named files from old integrations.
-It does not install packages, change services or alter networking.
+Setup installs Debian packages, missing Yazi/Zen/font releases, the pinned Yazi
+portal backend, Neovim/plugins, user configs, initial colors, group permissions,
+zsh login shell and the automatic-update policy. It requires sudo and network
+access. It includes IPython with NumPy/Matplotlib/SciPy, KeePassXC/OpenSnitch dark
+defaults and the Yazi upload/save picker with fullscreen handling. It does not
+install Obsidian or perform development-VM cleanup. Log out/in or reboot afterward. See [installation](docs/installation.md)
+for details and the system settings that remain manual.
+
+For config-only updates, use `./scripts/install --dry-run` and `./scripts/install`.
+The config installer backs up changed files and preserves local monitor profiles,
+plugin locks and generated colors. Run `./scripts/check --full` to verify the repo.
 
 ## Repository layout
 

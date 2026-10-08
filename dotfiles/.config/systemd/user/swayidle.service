@@ -1,0 +1,12 @@
+[Unit]
+Description=Idle and suspend screen locking
+PartOf=sway-session.target
+After=graphical-session.target
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/swayidle -w timeout 1800 'swaylock -f' before-sleep 'swaylock -f'
+Restart=on-failure
+RestartSec=2

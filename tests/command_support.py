@@ -36,7 +36,8 @@ with open(os.environ['TEST_LOG'], 'a') as log:
         'desktop': os.environ.get('XDG_CURRENT_DESKTOP'),
         'session': os.environ.get('XDG_SESSION_TYPE'),
         'data': os.environ.get('XDG_DATA_DIRS'),
-        'wayland': os.environ.get('MOZ_ENABLE_WAYLAND')}) + '\\n')
+        'wayland': os.environ.get('MOZ_ENABLE_WAYLAND'),
+        'portal': os.environ.get('GTK_USE_PORTAL')}) + '\\n')
 responses = json.loads(os.environ['TEST_RESPONSES'])
 response = responses.get(name + ' ' + ' '.join(args), responses.get(name, {}))
 ''' + body + '''
