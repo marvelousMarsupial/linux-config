@@ -38,6 +38,7 @@ permissions. The inventory below describes the user commands and maintenance scr
 | zen | Small quoted launcher for a separately installed browser. |
 | scripts/install | Atomic per-file copies, backups and explicit retirement list; refuses directory symlinks leading outside the destination home; skips bytecode and preserves local settings while merging only the required dark theme for KeePassXC/OpenSnitch. Not a transaction across the entire home. |
 | scripts/setup-editor | Explicit package/development branches, private download directory and cleanup, validates release override, checks editor version/plugins, avoids following a directory symlink when replacing the launcher. Downloads official release assets over HTTPS; verifies pinned SHA-256 digests before extraction. |
+| scripts/setup-shell | Installs fzf-tab v1.2.0 after checking the pinned Git commit; supports dry run and destination home, backs up replaced copies and preserves them on download/validation failure. See [shell](shell.md). |
 | scripts/editor-tools.lua | Explicit optional installs, verifies tool and parser installation and exits nonzero on failure. |
 | scripts/check | Offline syntax/render checks; full suite uses temporary homes and command stubs for disruptive actions. |
 | update-notify | Checks completed APT upgrades, baselines existing history, deduplicates notifications and retries failed delivery. |

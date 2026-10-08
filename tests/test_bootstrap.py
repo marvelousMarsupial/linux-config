@@ -6,6 +6,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 import tarfile
 import tempfile
@@ -80,8 +81,71 @@ class BootstrapTests(unittest.TestCase):
         self.assertIn('--skip-apt', result.stdout)
         self.assertIn('configure OpenSnitch UI socket:', result.stdout)
         self.assertIn('enable --now opensnitch.service', result.stdout)
+        self.assertIn('enable --now nftables.service', result.stdout)
+        self.assertIn('reload nftables.service', result.stdout)
+        self.assertIn('nft list table inet linux_config', result.stdout)
         self.assertFalse((self.home / '.local').exists())
         self.assertNotIn('unexpected-sudo', result.stderr)
+
+    def test_firewall_backs_up_both_files_and_reloads_without_global_flush(self):
+        policy = '/etc/nftables.conf'
+        override = '/etc/systemd/system/nftables.service.d/10-linux-config.conf'
+        files = {policy: b'previous firewall', override: b'previous override'}
+        commands = []
+
+        def command(*args, **kwargs):
+            args = tuple(map(str, args))
+            commands.append(args)
+            if args[1:3] == ('cp', '-a'):
+                files[args[-1]] = files[args[-2]]
+            elif args[1:3] == ('install', '-Dm644'):
+                files[args[-1]] = Path(args[-2]).read_bytes()
+
+        def exists(args):
+            self.assertEqual(args[:3], ['sudo', 'test', '-e'])
+            return subprocess.CompletedProcess(args, 0 if args[-1] in files else 1)
+
+        with patch.object(setup, 'run', side_effect=command), \
+             patch.object(setup.subprocess, 'run', side_effect=exists):
+            setup.firewall(False)
+        self.assertEqual(files[policy], (REPO / 'system/nftables.conf').read_bytes())
+        self.assertEqual(files[override], (REPO / 'system/systemd/nftables.service.d/10-linux-config.conf').read_bytes())
+        backups = {path: data for path, data in files.items() if path.startswith('/var/backups/')}
+        self.assertEqual(set(backups.values()), {b'previous firewall', b'previous override'})
+        self.assertEqual(commands[0][:4], ('sudo', 'nft', '--check', '--file'))
+        self.assertEqual(commands[-6:], [
+            ('sudo', 'systemctl', 'daemon-reload'),
+            ('sudo', 'systemctl', 'enable', '--now', 'nftables.service'),
+            ('sudo', 'systemctl', 'reload', 'nftables.service'),
+            ('sudo', 'systemctl', 'is-enabled', '--quiet', 'nftables.service'),
+            ('sudo', 'systemctl', 'is-active', '--quiet', 'nftables.service'),
+            ('sudo', 'nft', 'list', 'table', 'inet', 'linux_config'),
+        ])
+        self.assertFalse(any('restart' in cmd or 'flush' in cmd for cmd in commands))
+
+    def test_firewall_validation_failure_prevents_installation(self):
+        with patch.object(setup, 'run', side_effect=subprocess.CalledProcessError(1, 'nft')) as command, \
+             patch.object(setup.subprocess, 'run') as probe:
+            with self.assertRaises(subprocess.CalledProcessError):
+                setup.firewall(False)
+        self.assertEqual(command.call_count, 1)
+        probe.assert_not_called()
+
+    def test_fresh_firewall_failure_propagates_without_claiming_verification(self):
+        for failure in ('reload', 'is-enabled', 'is-active', 'list'):
+            with self.subTest(failure=failure):
+                commands = []
+                def command(*args, **kwargs):
+                    commands.append(tuple(map(str, args)))
+                    if failure in args:
+                        raise subprocess.CalledProcessError(1, args)
+                with patch.object(setup, 'run', side_effect=command), \
+                     patch.object(setup.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1)), \
+                     patch.object(Path, 'is_symlink', return_value=False):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        setup.firewall(False)
+                self.assertIn(failure, commands[-1])
+                self.assertFalse(any('cp' in cmd for cmd in commands))
 
     def test_verified_download_and_rejected_digest(self):
         payload = b'release fixture'

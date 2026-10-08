@@ -39,7 +39,7 @@ subsequent local edits. The published URL and real sudo prompts remain untested.
 | Systemd / updates | Real swaymsg subscription and disconnect against a disposable IPC socket; session startup failure paths; completed APT upgrade detection, notification baseline, deduplication and delivery retry. |
 | Portals | Offline Foot/Yazi wrapper checks for literal filenames, single/multiple selection, cancellation and directory fallback cleanup; Zen launcher environment. The user confirmed a live single-file upload and fullscreen picker reveal; other dialog/backend paths still require live checks in [portals](portals.md). |
 | Wi-Fi | Escaped SSIDs and saved profiles, strongest 15 networks, cached credentials, authentication retry, cancellation, timeouts and exact picker selections. |
-| Shell/Yazi | Remote terminfo option validation, alias reminder privacy and prefix matching, and Yazi editor argument forwarding. |
+| Shell/Yazi | Real interactive Zsh prefix history and Ctrl+R insertion, both arrow formats and editing modes; plugin installer dry runs/backups/repeats and commit rejection; remote terminfo option validation, alias reminder privacy and prefix matching, and Yazi editor argument forwarding. |
 | Desktop setup | Side-effect-free dry run, verified release download/rejection, archive traversal/link rejection, reuse of installed apps, replacement rollback and destination-user paths. Real APT/source builds and fresh-machine behavior need host testing. |
 | Setup | Default/optional branches, local verified release installation, existing-install backup, rejected version/digest/architecture, failed binary/plugin validation and temporary-file cleanup. |
 | Security | Runtime environment injection and symlinks, private backups under a shared umask, editor safeguards and download rejection. |
@@ -70,6 +70,10 @@ A bad template fails before theme writes begin; filesystem failures can still le
 a multi-file theme apply incomplete. Atomic replacement is per file.
 
 ## Manual verification
+
+- In a new terminal, verify Tab selection/cancellation, directory/file previews
+  and completion-based grey suggestions after downloading fzf-tab. Prefix
+  Up/Down is user-confirmed. See [shell verification](shell.md#verification).
 
 - Restart `sway-popup-guard.service`, toggle Foot with Super+Shift+Space, and check
   60% floating opacity versus the tiled theme opacity. Reopen an upload picker

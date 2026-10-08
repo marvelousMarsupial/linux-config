@@ -9,7 +9,8 @@ and [TODO](TODO.md) for remaining decisions and verification.
 | --- | --- |
 | Remote entry point | `scripts/bootstrap` downloads a disposable checkout and removes it after setup or failure. Publication and fresh-machine verification remain pending. |
 | Monitors | Fresh installs receive the saved laptop/LG profiles; existing local kanshi settings are preserved. |
-| Full setup | Installs Debian packages, missing verified Yazi/Zen/font releases, pinned termfilechooser, Neovim/plugins, user files, initial theme, groups, zsh login shell and APT policy. Existing apps/configs are reused where appropriate. |
+| Shell | Prefix Up/Down (user-confirmed), history/completion autosuggestions, fzf Ctrl+R and pinned fzf-tab setup. Interactive history checks pass; plugin download and live Tab/previews remain unverified in the restricted session. See [shell](shell.md). |
+| Full setup | Installs Debian packages, missing verified Yazi/Zen/font releases, pinned termfilechooser and fzf-tab, Neovim/plugins, user files, initial theme, groups, zsh login shell and APT policy. Existing apps/configs are reused where appropriate. |
 | Dark defaults | GTK dark settings and desktop preference; explicit KeePassXC/OpenSnitch dark themes; app launchers reapply dark on startup. OpenSnitch theme support is an installed dependency. Zen requests dark content; websites must implement the preference. No desktop environment or global Qt theme plugin is required. |
 | OpenSnitch | Setup provisions a daemon socket override for the installing user's UID; the Sway session starts the matching UI service. Existing daemon preferences and rules are preserved. Fresh-login collection still needs live verification. |
 | Chromium | Installed from Debian by full setup, alongside Zen. |
@@ -23,7 +24,7 @@ and [TODO](TODO.md) for remaining decisions and verification.
 | Updates | Setup installs both APT policy files and enables Debian update timers. No automatic reboots or dependency/kernel removal. |
 | Editor | Neovim/plugins and in-editor Markdown preview; optional development tools stay explicit. Browser Markdown preview is disabled. |
 | Obsidian | Not installed by the repo. Setup does not uninstall it or perform development-VM cleanup. |
-| Scope | Firewall policy, encryption, firmware/drivers, monitor adjustments, VM networking/storage, hardware unlock and backup choices remain machine-specific. Existing Incus/data are not targeted. |
+| Scope | Setup now activates the repository firewall; required incoming exceptions remain machine-specific. Encryption, firmware/drivers, monitor adjustments, VM networking/storage, hardware unlock and backup choices remain manual. Existing Incus/data are not targeted. |
 
 ## Verification
 

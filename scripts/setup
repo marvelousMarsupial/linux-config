@@ -195,6 +195,38 @@ def opensnitch(dry):
         run('sudo', 'systemctl', 'restart', 'opensnitch.service', dry=dry)
 
 
+def firewall(dry):
+    """Install and activate the host policy without restarting other firewall tables."""
+    source = REPO / 'system/nftables.conf'
+    override = 'systemd/system/nftables.service.d/10-linux-config.conf'
+    files = ((source, Path('/etc/nftables.conf')),
+             (REPO / 'system/systemd/nftables.service.d/10-linux-config.conf',
+              Path('/etc') / override))
+    # Check against the current ruleset before replacing boot configuration.
+    run('sudo', 'nft', '--check', '--file', source, dry=dry)
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+    for source, destination in files:
+        if dry:
+            print(f'Back up {destination} if present, then install {source}')
+            continue
+        exists = subprocess.run(['sudo', 'test', '-e', str(destination)])
+        if exists.returncode not in (0, 1):
+            raise subprocess.CalledProcessError(exists.returncode, exists.args)
+        if exists.returncode == 0 or destination.is_symlink():
+            backup = Path('/var/backups/linux-config') / stamp / 'firewall' / destination.relative_to('/etc')
+            run('sudo', 'install', '-d', '-m', '0700', backup.parent)
+            run('sudo', 'cp', '-a', destination, backup)
+        run('sudo', 'install', '-Dm644', source, destination)
+    run('sudo', 'systemctl', 'daemon-reload', dry=dry)
+    run('sudo', 'systemctl', 'enable', '--now', 'nftables.service', dry=dry)
+    # An already-active service still needs to load the newly installed rules.
+    # Reload is atomic and touches only inet linux_config; never restart/flush all.
+    run('sudo', 'systemctl', 'reload', 'nftables.service', dry=dry)
+    run('sudo', 'systemctl', 'is-enabled', '--quiet', 'nftables.service', dry=dry)
+    run('sudo', 'systemctl', 'is-active', '--quiet', 'nftables.service', dry=dry)
+    run('sudo', 'nft', 'list', 'table', 'inet', 'linux_config', dry=dry)
+
+
 def host_settings(user, dry):
     run('sudo', 'usermod', '-aG', 'video,libvirt,kvm', user, dry=dry)
     run('sudo', 'usermod', '-s', '/bin/zsh', user, dry=dry)
@@ -243,6 +275,7 @@ def main():
         packages = sorted(set(packages) | {'restic'})
     run('sudo', 'apt-get', 'update', dry=args.dry_run)
     run('sudo', 'apt-get', 'install', '-y', *packages, dry=args.dry_run)
+    firewall(args.dry_run)
     applications(home, args.dry_run)
     run(REPO / 'scripts/setup-shell', dry=args.dry_run)
     portal(home, args.dry_run)
@@ -270,7 +303,7 @@ def main():
         print('No user bus: log in to the desktop to load user services')
     run('bash', REPO / 'scripts/install-receipt', REPO, home, 'setup', dry=args.dry_run)
     print('Plan complete.' if args.dry_run else 'Setup complete. Log out/in (or reboot) to apply groups, shell and portals; restart Zen.')
-    print('Firewall policy, disk encryption, lid rules and hardware tests remain separate; see docs/installation.md.')
+    print('Disk encryption, lid rules and hardware tests remain separate; see docs/installation.md.')
 
 
 if __name__ == '__main__':

@@ -5,6 +5,12 @@ Open `file:///home/august/.local/share/sysreport/latest.html` in your browser.
 Reports are private (directory 0700, HTML 0600); the newest 14 dated reports remain
 alongside the atomic latest copy. No server, JavaScript, or external assets are used.
 
+Refreshing the browser reads the saved file; it does not collect new data.
+Running `sysreport`, manually or through its daily timer, replaces `latest.html`
+with a new snapshot. A later browser refresh can therefore show changed values.
+Check the report's `Generated` timestamp to identify the snapshot. Dated
+`report-*.html` files retain their captured values until retention removes them.
+
 The overview has eight status tiles: backups, updates, services, resources, disk
 health, journal, network, and OpenSnitch. Green means confirmed success, red a
 failure or resource alert, and amber attention or unknown data. Update checks must

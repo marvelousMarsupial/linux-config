@@ -22,6 +22,8 @@ Details, evidence, caveats, and commands: [security audit](security-audit.md).
 
 ## Desktop and security roadmap (optional enhancements)
 
+- [ ] Complete shell verification after downloading fzf-tab with `./scripts/setup-shell`: Tab selection/cancellation, directory/file previews and completion-based suggestions. Prefix Up/Down is user-confirmed; interactive prefix/Ctrl+R tests pass. See [shell](shell.md#verification).
+
 - [ ] [target-machine] Boot with the disk passphrase only, then auto-login into Sway. Keep swaylock for idle and suspend. The boot/login flow can be developed in an encrypted VM; verify it on the production installation.
 - [ ] Add Healthchecks check-ins to detect missed job runs.
 

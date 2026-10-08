@@ -22,6 +22,8 @@ See [current state](docs/state.md) for checked repository/host differences and
 [systemd](docs/systemd.md), [updates](docs/updates.md) and
 [firewall](docs/firewall.md) for system integration.
 Use [editor setup](docs/editor.md) for Neovim and optional language tools.
+See [shell](docs/shell.md) for prefix history, suggestions, fuzzy completion and
+the Git prompt.
 
 For a fresh Debian 13 x86_64 workstation, run as your normal
 user from the checkout:
@@ -32,8 +34,9 @@ user from the checkout:
 ```
 
 Setup installs Debian packages, missing Yazi/Zen/font releases, the pinned Yazi
-portal backend, Neovim/plugins, user configs, initial colors, group permissions,
-zsh login shell and the automatic-update policy. It requires sudo and network
+portal backend, fzf-tab, Neovim/plugins, user configs, initial colors, group permissions,
+zsh login shell, incoming firewall and the automatic-update policy. Review required
+incoming access in [the firewall guide](docs/firewall.md) before setup. It requires sudo and network
 access. It includes IPython with NumPy/Matplotlib/SciPy, KeePassXC/OpenSnitch dark
 defaults and the Yazi upload/save picker with fullscreen handling. It does not
 install Obsidian or perform development-VM cleanup. Log out/in or reboot afterward. See [installation](docs/installation.md)
@@ -48,9 +51,9 @@ plugin locks and generated colors. Run `./scripts/check --full` to verify the re
 | Path | Contents |
 | --- | --- |
 | `dotfiles/` | User configs, desktop commands, theme templates and assets. |
-| `scripts/` | Install, check and explicit editor setup commands. |
+| `scripts/` | Install, check and explicit editor/shell setup commands. |
 | `packages.txt` | Debian desktop package requirements. |
-| `system/` | Optional `/etc` configuration; review and copy explicitly. |
+| `system/` | APT/firewall configuration applied by setup; optional lid and udev settings. |
 | `examples/` | Hardware-specific reference configurations. |
 | `tests/` | Offline integration and editor smoke checks. |
 | `docs/` | Setup, usage, maintenance, security and project tracking. |

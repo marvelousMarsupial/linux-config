@@ -32,6 +32,7 @@ A normal run:
   avoids repeating the build when that revision and its files are present.
 - Calls `setup-editor` for Neovim and plugins, and `install` for user files.
   Existing applications are reused; setup is not a general application updater.
+- Calls `setup-shell` to install the pinned fzf-tab plugin. See [shell setup](#shell-setup).
 - Applies summer-dusk on a fresh home. Existing theme selections/colors and
   local monitor profiles are preserved. Paths are rendered for the destination
   user rather than assuming `/home/august`.
@@ -39,6 +40,10 @@ A normal run:
   the configured English UTF-8 locale if missing, and enables libvirtd.
 - Backs up changed APT policy files under `/var/backups/linux-config/`, installs
   the repo update policy, and enables Debian's update timers.
+- Validates and installs the incoming firewall and its service override, backs
+  up previous files, then enables and reloads nftables. Checks active/enabled
+  state and the project table before continuing. Review the [firewall policy](firewall.md)
+  and required incoming access before running setup, especially remotely.
 - Installs the Polkit authentication agent and starts it directly from Sway
   for graphical password prompts after login. See [systemd](systemd.md#graphical-authentication).
 - Reloads the user service manager when a user bus is available.
@@ -51,7 +56,7 @@ and no packages are purged. No running desktop or browser is restarted.
 
 Log out and back in, or reboot, then launch Zen normally. Verify file dialogs,
 screen sharing and screen locking in the live session. The script does not
-configure disk encryption, firmware, new monitor layouts, firewall rules, lid policy,
+configure disk encryption, firmware, new monitor layouts, lid policy,
 VM networks/storage or hardware-specific drivers. Keep those machine decisions
 in the sections below. Incus and its data are not explicitly modified or removed.
 
@@ -132,26 +137,22 @@ Open a new terminal after installation and press Super+Shift+c to reload Sway.
 Choose zsh as your login shell with `chsh -s /bin/zsh` if desired. Sway starts
 on tty1; run `sway` manually for an initial session.
 
-In Zsh, type a command prefix and press Up/Down to browse history entries
-starting with the text before the cursor. For example, `git st` finds
-`git status` and `git stash` commands while skipping `git log`. The cursor stays
-at the prefix so repeated presses keep the same search. With an empty prompt,
-Up/Down browse all history; Down past the newest match restores the typed prefix.
-Open a new terminal after updating `.zshrc` to load the bindings.
+## Shell setup
 
-Zsh initializes its completion system and tries history followed by completion
-for grey autosuggestions. Right Arrow at the end of the typed line accepts the
-suggestion. Ctrl+R opens fzf history search; choosing an entry inserts it for
-editing. Up/Down retain the prefix search described above.
+Zsh provides prefix history on Up/Down, grey history/completion suggestions,
+fzf search on Ctrl+R, and a searchable Tab menu with directory/file previews.
+Full setup installs the pinned fzf-tab plugin. For an existing installation:
 
-Full setup installs fzf-tab v1.2.0 at pinned commit
-`01dad759c4466600b639b442ca24aebd5178e799`. For an existing installation, run
-`./scripts/setup-shell` to download the plugin, then open a new terminal after
-installing the updated `.zshrc`. It adds a searchable Tab menu with directory
-listings and file previews (first 200 lines). Enter selects a completion; Escape
-cancels. The plugin lives in `~/.local/share/zsh/fzf-tab`; the installer backs up
-replaced copies. If fzf-tab is absent, standard Zsh completion remains available.
-The Debian `fzf` and `bat` packages provide history search and previews.
+```sh
+./scripts/setup-shell
+./scripts/install
+```
+
+Open a new terminal afterward. The config installer applies all project user
+configs with backups; `./scripts/install --dry-run` previews those changes.
+Plugin installation requires GitHub access. Without fzf-tab, standard Zsh
+completion remains available. See [shell](shell.md) for shortcuts, the pinned
+revision, Git prompt indicators and verification boundaries.
 
 ## Screen brightness
 
@@ -214,9 +215,11 @@ Zen integration, activation and live verification.
 
 ## Firewall
 
-See [host firewall](firewall.md) for the nftables policy and required service
-override. Review the target machine’s remote-access and VM networking needs
-before installing system rules.
+Full setup installs and activates the nftables policy and required service
+override. See [host firewall](firewall.md) and review the target machine's
+remote-access and VM networking needs before running setup. There is no default
+SSH exception. A failed firewall step stops setup; config-only installation
+does not change the firewall.
 
 ## Automatic updates
 
@@ -255,9 +258,9 @@ description so connector changes do not affect the external display identities.
 
 `system/` mirrors selected `/etc` files for unattended apt updates and lid
 behavior. Review and copy individual files with sudo only when wanted.
-Full setup applies the two APT policy files only; the other files stay manual. The nftables host policy and its required
-service override also live under `system/`; follow [firewall](firewall.md) before
-applying them. Networking and remote access remain under your control.
+Full setup applies the two APT policy files, the nftables host policy and its
+required service override. Lid and udev changes remain manual. Review
+[firewall](firewall.md) before setup and customize required incoming access.
 
 ## Updating an existing installation
 

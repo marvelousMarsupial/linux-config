@@ -13,6 +13,16 @@ exception. Deliberately sharing a service requires adding a narrowly scoped rule
 ICMP remains available for diagnostics, IPv6 discovery and path MTU handling.
 This is host protection, not an outbound application firewall or a VM isolation policy.
 
+Full `scripts/setup` installs and activates this policy after package installation.
+Review required incoming access before setup; there is no default SSH exception.
+Setup validates the source with `nft --check`, backs up both existing files under
+`/var/backups/linux-config/<timestamp>/firewall/`, installs the policy and service
+override, enables/starts nftables and reloads it. It checks service enablement,
+active state and table presence, stopping setup on failure. Setup is not
+transactional: backups remain available, but failed later steps do not undo an
+already applied firewall. Packet-level and reboot checks remain necessary.
+The config-only installer leaves the firewall unchanged.
+
 The config atomically flushes and rebuilds only its own table on reload. The
 service override replaces Debian's global `ExecStop` flush with deletion of only
 this table, preserving libvirt and other applications' rules on stop/restart.
@@ -59,7 +69,7 @@ Project sources are `system/nftables.conf` and
 when configuring another machine. Inspect its existing firewall and management
 path first. The user-file installer does not apply system configuration.
 
-After inspecting a target machine and backing up its existing configuration,
+For manual maintenance, after inspecting a target machine and backing up its existing configuration,
 install both files from the repository root:
 
 ```sh
