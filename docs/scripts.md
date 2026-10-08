@@ -32,7 +32,8 @@ permissions. The inventory below describes the user commands and maintenance scr
 | sway-session | Explicit environment import rather than importing all variables; active-session guard; systemctl failures stop startup. Live service behavior requires desktop testing. |
 | appearance-menu | Compact GTK palette-dot picker with arrow navigation, a transparency switch, Enter to apply and Escape to cancel. Super+G opens the popup. |
 | zen-theme-sync | Copies generated desktop colors into the default Zen profile; preserves unrelated custom CSS/preferences, explicitly sets dark preferences, and keeps the glass import last. Zen loads updates on restart. |
-| terminal | Super+Enter exits fullscreen before launching a centered floating Foot window; launches ordinary Foot outside fullscreen. |
+| terminal | Super+Enter exits fullscreen before launching a centered floating Foot window with at least 60% background opacity; launches ordinary Foot outside fullscreen. |
+| sway-popup-guard | Reveals popups during fullscreen and restores fullscreen on close; adjusts standalone Foot background opacity on floating/tiled changes. Restart the user service after updating it. |
 | theme | Validates palette mappings/colors; renders before writing; atomic per-file replacement with temporary cleanup; reload hooks execute argument lists without a shell. A filesystem failure can still interrupt a multi-file apply; this is not a transactional update of all targets. |
 | zen | Small quoted launcher for a separately installed browser. |
 | scripts/install | Atomic per-file copies, backups and explicit retirement list; refuses directory symlinks leading outside the destination home; skips bytecode and preserves local settings while merging only the required dark theme for KeePassXC/OpenSnitch. Not a transaction across the entire home. |

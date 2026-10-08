@@ -49,21 +49,33 @@ multiple outputs, global fullscreen, and real application dialogs remain pending
 Source: [installed-version Sway transient visibility logic](https://github.com/swaywm/sway/blob/1.10.1/sway/tree/view.c)
 and [popup condition](https://github.com/swaywm/sway/blob/1.10.1/sway/tree/container.c).
 
+## Floating Foot opacity
+
+Standalone Foot windows use at least **60% background opacity when floating**.
+Tiling them restores the current theme alpha (8% in glass mode). Solid mode stays
+opaque. This includes upload/save pickers and terminals toggled with
+Super+Shift+Space. Text stays opaque. Foot server/client sessions are not covered.
+
+After installing an updated helper, run this in your desktop session:
+
+```sh
+systemctl --user restart sway-popup-guard.service
+```
+
+Or log out/in. Restarting Zen alone does not reload this helper. Toggle a Foot
+window between floating and tiled to check it; reopen the upload picker to check
+its launch setting.
+
+The existing popup guard uses Sway events and Foot's supported OSC 11 sequence
+to change background alpha. No extra service or polling is added. Offline tests
+cover state changes, solid mode, retries and actual PTY delivery; live appearance
+still needs checking in Sway.
+
 ## Foot fullscreen limitation
 
 Foot 1.21.0 has background alpha but no wallpaper-image setting in its installed
-manual. Its live alpha remains 0.08. In native fullscreen Sway hides the wallpaper,
-so the terminal appears solid despite that alpha. Terminals opened with Super+Return
-over a fullscreen window float with at least 60% background opacity for readability;
-solid mode remains opaque. The popup guard also adjusts all standalone Foot windows
-when they switch between floating and tiled: floating gets at least 60%, tiled
-returns to the current theme alpha. This includes Yazi upload/save pickers and
-custom terminal app IDs. Foot's supported OSC 11 sequence changes the background
-without fading text. The existing Sway event subscription drives updates; no new
-service or polling is added. Foot server/client sessions are not covered.
-After updating the popup guard, restart `sway-popup-guard.service` in the user
-session or log out/in to load the new behavior.
-The Zen-only local-image
+manual. In native fullscreen Sway hides the wallpaper, so Foot appears solid
+despite its theme alpha. The Zen-only local-image
 workaround does not cover Foot. Preserving the dot wallpaper behind native
 fullscreen Foot remains unresolved; it requires compositor support or a different
 fullscreen/terminal approach. The default fullscreen binding remains unchanged.

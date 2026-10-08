@@ -1,5 +1,12 @@
 """Shell helpers must preserve arguments and keep command secrets out of hints."""
 import json
+import fcntl
+import os
+import pty
+import select
+import subprocess
+import termios
+import time
 from support import REPO, run
 from command_support import CommandSandbox
 
@@ -7,6 +14,73 @@ from command_support import CommandSandbox
 class ShellTests(CommandSandbox):
     def zsh(self, script):
         return run('zsh', '-f', '-c', script, env=self.env)
+
+    def test_arrows_search_the_typed_prefix_in_interactive_zsh(self):
+        # Exercise real ZLE and the installed plugins, without executing history
+        # entries or reading/writing the user's history.
+        for keymap in ('emacs', 'viins'):
+            for up, down in ((b'\x1b[A', b'\x1b[B'), (b'\x1bOA', b'\x1bOB')):
+                with self.subTest(keymap=keymap, up=up):
+                    setup = self.home / 'history-test.zsh'
+                    setup.write_text(f'''source {json.dumps(str(REPO / 'dotfiles/.zshrc'))}
+fc -p /dev/null
+for entry in 'git status' 'echo unrelated' 'git stash list' 'git log' 'git status --short'; do
+  print -s -- "$entry"
+done
+_capture() {{ print -r -- "CAPTURE:$BUFFER:END"; zle -R; }}
+_reset() {{ zle .end-of-history; BUFFER=''; CURSOR=0; }}
+zle -N _capture
+zle -N _reset
+bindkey -A {keymap} main
+bindkey '^X' _capture
+bindkey '^Y' _reset
+PS1='history-test> '
+export FZF_CTRL_R_OPTS='--filter="git status --short"'
+print SETUP-DONE
+''')
+                    master, slave = pty.openpty()
+                    process = subprocess.Popen(
+                        ['zsh', '-f'], stdin=slave, stdout=slave, stderr=slave,
+                        start_new_session=True,
+                        preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0),
+                        env=dict(self.env, TERM='xterm', ZDOTDIR=str(self.home), XDG_VTNR='0'))
+                    os.close(slave)
+
+                    def read_until(marker):
+                        output = b''
+                        deadline = time.monotonic() + 10
+                        while marker not in output:
+                            self.assertLess(time.monotonic(), deadline, repr(output))
+                            if select.select([master], [], [], 0.1)[0]:
+                                output += os.read(master, 65536)
+                        return output
+
+                    def check(keys, expected):
+                        os.write(master, keys + b'\x18')
+                        output = read_until(b':END\r\n')
+                        self.assertIn(b'CAPTURE:' + expected + b':END\r\n', output)
+
+                    try:
+                        os.write(master, f'source "{setup}"\n'.encode())
+                        read_until(b'\r\nSETUP-DONE\r\n')
+                        check(b'git st' + up, b'git status --short')
+                        check(up, b'git stash list')
+                        check(up, b'git status')
+                        check(up, b'git status')  # Exhaustion keeps the match.
+                        check(down, b'git stash list')
+                        check(down, b'git status --short')
+                        check(down, b'git st')  # Restore original input.
+                        check(b'\x19git status -' + up, b'git status --short')
+                        check(b'\x19stash' + up, b'stash')  # Match only at start.
+                        check(b'\x19' + up, b'git status --short')
+                        check(up, b'git log')  # Empty input browses everything.
+                        check(down, b'git status --short')
+                        check(down, b'')
+                        check(b'\x12', b'git status --short')  # fzf Ctrl+R inserts, never executes.
+                    finally:
+                        process.kill()
+                        process.wait(timeout=5)
+                        os.close(master)
 
     def test_remote_terminfo_helper_rejects_options_and_requires_one_host(self):
         self.stub('ssh')

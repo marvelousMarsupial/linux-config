@@ -1,0 +1,53 @@
+#!/usr/bin/python3
+"""Install the pinned fzf-tab plugin; shell configuration is copied by scripts/install."""
+import argparse
+from datetime import datetime, timezone
+from pathlib import Path
+import runpy
+import subprocess
+import tempfile
+
+REPO = Path(__file__).resolve().parent.parent
+COMMIT = '01dad759c4466600b639b442ca24aebd5178e799'  # fzf-tab v1.2.0
+helpers = runpy.run_path(str(REPO / 'scripts/setup'))
+
+
+def install(home, dry=False):
+    root = home / '.local/share/zsh'
+    if not root.resolve().is_relative_to(home.resolve()):
+        raise ValueError('Zsh plugin directory must stay inside the destination home')
+    destination = root / 'fzf-tab'
+    marker = destination / '.linux-config-commit'
+    if (not destination.is_symlink() and marker.is_file()
+            and marker.read_text().strip() == COMMIT
+            and (destination / 'fzf-tab.plugin.zsh').is_file()):
+        print('fzf-tab is already installed at the pinned commit')
+        return
+    print(f'Install fzf-tab v1.2.0 ({COMMIT}) into {destination}', flush=True)
+    if dry:
+        return
+    root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.fzf-tab-', dir=root) as temporary:
+        source = Path(temporary) / 'source'
+        helpers['run']('git', 'clone', '--depth=1', '--branch=v1.2.0',
+                       'https://github.com/Aloxaf/fzf-tab.git', source)
+        actual = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
+        if actual != COMMIT:
+            raise ValueError('fzf-tab tag does not match the pinned commit; nothing installed')
+        helpers['run']('git', '-C', source, 'submodule', 'update', '--init', '--recursive')
+        helpers['run']('zsh', '-n', source / 'fzf-tab.zsh')
+        (source / '.linux-config-commit').write_text(COMMIT + '\n')
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+        helpers['replace'](source, destination,
+                           home / f'.local/state/linux-config/backups/{stamp}/fzf-tab')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--home', type=Path, default=Path.home())
+    parser.add_argument('--dry-run', action='store_true')
+    args = parser.parse_args()
+    try:
+        install(args.home.expanduser().resolve(), args.dry_run)
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        parser.exit(1, f'Shell plugin installation failed: {error}\n')

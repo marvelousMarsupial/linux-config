@@ -132,6 +132,27 @@ Open a new terminal after installation and press Super+Shift+c to reload Sway.
 Choose zsh as your login shell with `chsh -s /bin/zsh` if desired. Sway starts
 on tty1; run `sway` manually for an initial session.
 
+In Zsh, type a command prefix and press Up/Down to browse history entries
+starting with the text before the cursor. For example, `git st` finds
+`git status` and `git stash` commands while skipping `git log`. The cursor stays
+at the prefix so repeated presses keep the same search. With an empty prompt,
+Up/Down browse all history; Down past the newest match restores the typed prefix.
+Open a new terminal after updating `.zshrc` to load the bindings.
+
+Zsh initializes its completion system and tries history followed by completion
+for grey autosuggestions. Right Arrow at the end of the typed line accepts the
+suggestion. Ctrl+R opens fzf history search; choosing an entry inserts it for
+editing. Up/Down retain the prefix search described above.
+
+Full setup installs fzf-tab v1.2.0 at pinned commit
+`01dad759c4466600b639b442ca24aebd5178e799`. For an existing installation, run
+`./scripts/setup-shell` to download the plugin, then open a new terminal after
+installing the updated `.zshrc`. It adds a searchable Tab menu with directory
+listings and file previews (first 200 lines). Enter selects a completion; Escape
+cancels. The plugin lives in `~/.local/share/zsh/fzf-tab`; the installer backs up
+replaced copies. If fzf-tab is absent, standard Zsh completion remains available.
+The Debian `fzf` and `bat` packages provide history search and previews.
+
 ## Screen brightness
 
 The brightness keys change the screen in 10 percent steps.

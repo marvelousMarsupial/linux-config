@@ -12,7 +12,7 @@ Run from the repository root:
 
 The basic check validates shell/Python/Lua syntax, TOML, and all six palette renders.
 The full check also runs the offline integration suite. Latest full run on
-2026-10-08 in the restricted session: **174 tests run, 172 passed, two skipped**
+2026-10-08 in the restricted session: **193 tests run, 191 passed, two skipped**
 (GTK display routing and local IPC unavailable). Syntax, TOML, Lua and six
 palette renders passed. The editor smoke test now preserves entire prose files
 exactly while allowing code formatting. Deterministic external HTML/JSON fixtures
@@ -71,6 +71,9 @@ a multi-file theme apply incomplete. Atomic replacement is per file.
 
 ## Manual verification
 
+- Restart `sway-popup-guard.service`, toggle Foot with Super+Shift+Space, and check
+  60% floating opacity versus the tiled theme opacity. Reopen an upload picker
+  and check its background too. Offline tests verify transitions and PTY delivery.
 - Open a new Foot window and inspect the launcher, info popup, notifications,
   rounded bat output and the selected theme.
 - Reload Sway with Super+Shift+c and verify window focus, layouts, monitor profiles,

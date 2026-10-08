@@ -17,10 +17,11 @@ State is stored in `~/.config/theme/glass-mode`; no state file means glass is of
 - Zen chrome follows the system palette for text, surfaces and accents in both
   solid and glass modes. Restart Zen after selecting a new theme.
 - Zen glass chrome uses an 8% base00 tint. Floating sidebar tint is 38%; expanded
-  search tint is 24%, with browser-local blur. The resting search field has a
+  search tint is 24%, with 8px sidebar blur and 14px search blur. The resting search field has a
   faint edge. Its outer container is clear to avoid a ghost pill when opened.
-- Foot uses an 8% base00 background in glass mode, matching Zen. Text remains
-  opaque. Glass off restores a solid base01 background.
+- Tiled Foot uses an 8% base00 background in glass mode. Floating Foot uses at
+  least 60%, updated by the popup guard when floating changes. Text remains opaque.
+  Glass off restores a solid base01 background. [Activation](window-behavior.md#floating-foot-opacity)
 - Fuzzel launchers and the centered info panel use base00 with alpha `14`
   (about 8%). Glass off restores solid base01. Text remains opaque.
 - Mako notification backgrounds and GTK backgrounds remain about 72% opaque.

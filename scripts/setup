@@ -244,6 +244,7 @@ def main():
     run('sudo', 'apt-get', 'update', dry=args.dry_run)
     run('sudo', 'apt-get', 'install', '-y', *packages, dry=args.dry_run)
     applications(home, args.dry_run)
+    run(REPO / 'scripts/setup-shell', dry=args.dry_run)
     portal(home, args.dry_run)
     editor = [str(REPO / 'scripts/setup-editor'), '--skip-apt']
     if args.dev_tools:

@@ -45,7 +45,29 @@ if [[ -f "$XDG_RUNTIME_DIR/dbus-env" && -O "$XDG_RUNTIME_DIR/dbus-env" && ! -L "
   unset _dbus_line _dbus_address
 fi
 
-# Plugins
+# Completion first; fzf-tab wraps it before the other plugins wrap ZLE widgets.
+autoload -Uz compinit
+(( ${+_comps} )) || compinit
+zstyle ':completion:*:descriptions' format '[%d]'
+if command -v fzf >/dev/null && [[ -r "$HOME/.local/share/zsh/fzf-tab/fzf-tab.plugin.zsh" ]]; then
+  zstyle ':completion:*' menu no
+  zstyle ':fzf-tab:*' fzf-flags --height=60% --layout=reverse --border
+  zstyle ':fzf-tab:complete:*' fzf-preview 'if [[ -d $realpath ]]; then
+    ls -Ahl --color=always -- "$realpath"
+  elif [[ -f $realpath ]]; then
+    batcat --color=always --paging=never --style=numbers --line-range=:200 -- "$realpath"
+  fi'
+  source "$HOME/.local/share/zsh/fzf-tab/fzf-tab.plugin.zsh"
+fi
+
+# Load only fzf's key bindings, leaving Tab completion to fzf-tab. Enable Ctrl+R
+# history search without adding the separate file/directory picker shortcuts.
+if command -v fzf >/dev/null && [[ -r /usr/share/doc/fzf/examples/key-bindings.zsh ]]; then
+  FZF_CTRL_T_COMMAND='' FZF_ALT_C_COMMAND='' source /usr/share/doc/fzf/examples/key-bindings.zsh
+fi
+
+# Plugins: suggestions try history first, then the completion system.
+ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
@@ -76,6 +98,17 @@ setopt appendhistory
 setopt sharehistory
 setopt hist_ignore_dups
 setopt hist_ignore_space
+
+# Arrow keys search from the start of the line through the cursor. Keep the
+# cursor at the prefix so repeated Up/Down presses use the same search text.
+# Cover normal and application cursor keys in Emacs and vi insert mode.
+for _history_keymap in emacs viins; do
+  bindkey -M "$_history_keymap" '^[[A' history-beginning-search-backward
+  bindkey -M "$_history_keymap" '^[OA' history-beginning-search-backward
+  bindkey -M "$_history_keymap" '^[[B' history-beginning-search-forward
+  bindkey -M "$_history_keymap" '^[OB' history-beginning-search-forward
+done
+unset _history_keymap
 
 # Yazi wrapper - cd to directory on exit
 function y() {

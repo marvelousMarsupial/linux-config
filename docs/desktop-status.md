@@ -15,7 +15,8 @@ Statements about active services are evidence from that earlier session.
   `wallpaper-texture list`, a style name, or `next` changes it. Grid/dots use a
   120×120 tile with 24-pixel spacing and stronger anchors every five cells.
   Larger displays show more cells instead of stretching the pattern.
-- **Matching surfaces:** normal Zen chrome and Foot use an 8% base00 background.
+- **Matching surfaces:** normal Zen chrome and tiled Foot use an 8% base00 background.
+  Floating Foot uses at least 60% opacity for readability over webpages.
   Fuzzel launchers and the centered clock/network/power info panel use about 8%.
   Text stays opaque. GTK and Mako backgrounds retain their stronger 72% tint.
 - **Zen search:** a subtle resting-field surface, clear outer container, consistent

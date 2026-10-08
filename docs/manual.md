@@ -18,6 +18,8 @@ After `./scripts/setup`. Follow the links only when you need details.
 
 Only when needed:
 
+- [ ] **Terminal helper updated:** run `systemctl --user restart sway-popup-guard.service`.
+  Floating Foot windows use 60% opacity; tiled windows return to the theme setting.
 - [ ] **Firewall:** review access/VM needs, then apply the policy. [Firewall](firewall.md)
 - [ ] **Backups:** choose target/password, test backup and restore, enable timer. [Backups](backups.md)
 - [ ] **Laptop:** test audio, volume/brightness keys, Wi-Fi and lid suspend;

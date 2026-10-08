@@ -5,7 +5,7 @@
 The desktop uses the selected Base16 palette throughout. Summer Dusk remains the live selection; the other five palettes still render through the same templates.
 
 - Desktop: base00 background, equal 6px gutters, 2px borders. Accent color identifies the focused window; inactive outlines use a quiet surface color.
-- Foot: existing 11pt CaskaydiaCove font, centered 12x10px padding, 8% base00 background in glass mode (solid base01 when off) and steady beam cursor.
+- Foot: 11pt CaskaydiaCove, centered 12x10px padding, 8% background when tiled and at least 60% when floating in glass mode. Solid mode stays opaque; the beam cursor is steady.
 - Fuzzel: the same font family at 12pt, ten rows, 26px row height, 1px outline and 8px corners. Selection and search accents come from the palette.
 - Mako: matching typography, 14px padding, 1px outlines and 72% background opacity in glass mode.
 - Neovim: rounded native popup borders, bounded completion menu, no filler tildes or accidental dashboard tabline. Prose wrapping is retained.
@@ -104,7 +104,10 @@ No extension or background service is needed.
 ## Glass and drafting-grid wallpaper
 
 The current glass setup uses a pin-dot wallpaper with matching 8% backgrounds
-for Zen chrome, Foot, and Fuzzel (including the info panel). Use **Appearance → Transparency** in the app launcher; restart Zen and reopen terminals afterward.
+for Zen chrome, tiled Foot, and Fuzzel (including the info panel). Floating Foot
+windows use at least 60% background opacity, including upload/save pickers;
+text stays opaque. The popup guard updates opacity when floating changes.
+Use **Appearance → Transparency** in the app launcher; restart Zen and reopen terminals afterward.
 `wallpaper-texture dots` and `wallpaper-texture grid` select fixed-spacing
 repeating patterns. Larger displays show more cells. Physical multi-monitor,
 mixed-scale, and rotation checks remain pending; existing monitor profiles are

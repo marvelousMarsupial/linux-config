@@ -19,6 +19,10 @@ sites that need recoloring. Its settings remain in the browser profile.
 Zen's redundant title bar/window controls are disabled by application defaults
 and profile sync. Use Super+Q to close the window in Sway.
 
+The glass sidebar uses 8px blur; expanded search uses 14px. Restart Zen after
+changing the CSS. Upload/save pickers use a floating Foot window with 60%
+background opacity; see [window behavior](window-behavior.md#floating-foot-opacity).
+
 KeePassXC's native messaging manifest is installed by the same config installer.
 Open KeePassXC, enable browser integration, unlock your database, and connect
 the extension to it. Database approval and pairing remain interactive.
@@ -43,6 +47,8 @@ Do not put API keys or other credentials in the tracked snippets.
 
 Run `wl-copy < ~/.surfingkeys.js`, open the Surfingkeys extension settings, enable
 advanced mode, replace the snippets with the clipboard contents, and save.
+Use a terminal inside Sway for clipboard access. If this VM's shell has no
+`WAYLAND_DISPLAY`, use `WAYLAND_DISPLAY=wayland-1 wl-copy < ~/.surfingkeys.js`.
 Reload a regular HTTPS page. Extensions cannot run on protected browser pages
 such as `about:addons` or Mozilla Add-ons pages.
 
@@ -57,8 +63,8 @@ such as `about:addons` or Mozilla Add-ons pages.
    press `i`, type, then `jj`. It should return to Vim Normal mode while keeping
    the editor open. `:q!` discards the test edit and closes the editor.
 
-These steps require live browser testing. Syntax checks do not verify key
-handling or layout. Keep Escape available while trying new mappings.
+The user confirmed `jj` works in the live browser. The other checks still need
+browser testing; syntax checks do not verify key handling or layout.
 
 ## Updates
 
