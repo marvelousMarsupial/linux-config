@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Render the shared Base16 palette across desktop applications."""
+"""Apply shared desktop colors"""
 import argparse
 import glob
 import os
@@ -30,12 +30,12 @@ def main():
     if name and name.isdigit() and 1 <= int(name) <= len(schemes):
         name = schemes[int(name) - 1]
     if name not in schemes:
-        parser.error('Choose a scheme from theme list')
+        parser.error('Choose a theme from theme list')
     try:
         import yaml
         from jinja2 import Environment, FileSystemLoader, StrictUndefined
     except ImportError:
-        parser.exit(1, 'Install python3-jinja2 and python3-yaml with apt first.\n')
+        parser.exit(1, 'Install python3-jinja2 and python3-yaml\n')
     palette = yaml.safe_load((root / 'schemes' / f'{name}.yaml').read_text())
     if not isinstance(palette, dict):
         parser.error(f"{name}: palette must be a mapping")
@@ -79,13 +79,13 @@ def main():
             try:
                 result = subprocess.run(shlex.split(target['hook']), capture_output=True, timeout=5)
                 if result.returncode:
-                    print(f"{target['name']}: reload unavailable; restart the application")
+                    print(f"{target['name']}: restart the app to apply colors")
             except (OSError, subprocess.TimeoutExpired):
-                print(f"{target['name']}: reload timed out; restart the application")
+                print(f"{target['name']}: restart the app to apply colors")
     if args.command == 'apply':
         current.parent.mkdir(parents=True, exist_ok=True)
         current.write_text(name + '\n')
-        print(f'Applied {name}. Reload Sway and restart open editors to finish.')
+        print(f'Applied {name}\nReload Sway, reopen editors, and restart Zen')
 
 
 if __name__ == '__main__':

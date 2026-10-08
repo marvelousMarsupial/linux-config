@@ -11,8 +11,8 @@ for argument in "$@"; do
         --skip-apt) skip_apt=true ;;
         --help)
             echo 'Usage: scripts/setup-editor [--dev-tools] [--skip-apt]'
-            echo 'Default: Neovim, configs, plugins, IPython, jq, and bat.'
-            echo '--dev-tools explicitly adds compilers, Node/npm, LSP servers, formatters, and parsers.'
+            echo 'Installs Neovim, plugins, IPython, jq and bat'
+            echo '--dev-tools adds compilers, Node, language servers, formatters and parsers'
             exit 0 ;;
         *) echo "Unknown option: $argument" >&2; exit 1 ;;
     esac
@@ -30,7 +30,7 @@ if ! command -v nvim >/dev/null || ! nvim --headless -u NONE '+lua if vim.fn.has
     case $(uname -m) in
         x86_64) nvim_arch=x86_64 ;;
         aarch64) nvim_arch=arm64 ;;
-        *) echo 'Install Neovim 0.12+ manually for this architecture.' >&2; exit 1 ;;
+        *) echo 'Install Neovim 0.12 or newer for this architecture' >&2; exit 1 ;;
     esac
     nvim_version=${NVIM_VERSION:-v0.12.2}
     [[ "$nvim_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid NVIM_VERSION" >&2; exit 1; }
@@ -42,12 +42,13 @@ if ! command -v nvim >/dev/null || ! nvim --headless -u NONE '+lua if vim.fn.has
             arm64) nvim_sha256=f697d4e4582b6e4b5c3c26e76e06ce26efa08ba1768e03fd2733fcc422bb0490 ;;
         esac
     fi
-    [[ "$nvim_sha256" =~ ^[[:xdigit:]]{64}$ ]] || { echo "Set NVIM_SHA256 to a verified SHA-256 digest for this release." >&2; exit 1; }
+    [[ "$nvim_sha256" =~ ^[[:xdigit:]]{64}$ ]] || { echo "Set NVIM_SHA256 to the verified release checksum" >&2; exit 1; }
     download_dir=$(mktemp -d)
     trap 'rm -rf -- "$download_dir"' EXIT
     curl --proto '=https' --tlsv1.2 --fail --location --retry 3 "https://github.com/neovim/neovim/releases/download/$nvim_version/nvim-linux-$nvim_arch.tar.gz" -o "$download_dir/nvim.tar.gz"
     printf '%s  %s\n' "$nvim_sha256" "$download_dir/nvim.tar.gz" | sha256sum --check --status || {
-        echo 'Neovim download failed checksum verification; nothing installed.' >&2
+        echo 'Neovim checksum failed
+Nothing installed' >&2
         exit 1
     }
     mkdir -p "$download_dir/nvim"
@@ -67,4 +68,5 @@ if "$dev_tools"; then
     nvim --headless '+lua dofile(vim.env.LINUX_CONFIG_EDITOR_SETUP)' +qa
 fi
 "$repo_dir/scripts/check"
-echo 'Editor setup complete. Development tools are optional: rerun with --dev-tools when wanted.'
+echo 'Editor ready
+Use --dev-tools to add development tools'

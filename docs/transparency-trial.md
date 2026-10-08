@@ -5,14 +5,18 @@
 ## One switch
 
 `glass-mode on`, `glass-mode off`, `glass-mode toggle`, and `glass-mode status`
-control desktop and Zen glass together. **Super+Ctrl+G** toggles the same state.
+control desktop and Zen glass together. Open **Appearance** from the app launcher or press **Super+G**. Use **Up/Down** to reach a palette or the transparency switch.
+**Enter** on the switch toggles transparency immediately and leaves the popup
+open; **Enter** on a palette applies the palette and closes. **Escape** closes.
 Restart Zen and reopen terminals after changing modes; reopen launchers and GTK
 applications as needed. Running applications stay open and the palette is retained.
 State is stored in `~/.config/theme/glass-mode`; no state file means glass is off.
 
 ## Accepted appearance
 
-- Zen chrome uses an 8% base00 tint. Floating sidebar tint is 38%; expanded
+- Zen chrome follows the system palette for text, surfaces and accents in both
+  solid and glass modes. Restart Zen after selecting a new theme.
+- Zen glass chrome uses an 8% base00 tint. Floating sidebar tint is 38%; expanded
   search tint is 24%, with browser-local blur. The resting search field has a
   faint edge. Its outer container is clear to avoid a ghost pill when opened.
 - Foot uses an 8% base00 background in glass mode, matching Zen. Text remains
@@ -68,6 +72,10 @@ panels has not been calibrated or verified.
 Theme sources live in `dotfiles/.config/theme/`; Zen CSS lives in
 `dotfiles/.config/zen/userChrome.css`. The switch installs a managed local import
 and updates only the three appearance preferences in the default Zen profile.
+Every theme apply also runs `zen-theme-sync`, which installs the generated
+`system-theme.css`, the glass palette and glass styling in that profile.
+Its managed import precedes the glass import, so the existing glass appearance
+wins for translucency. Other CSS and unrelated preferences are preserved.
 Web-page transparency stays disabled. Other CSS and preferences are retained.
 
 `transparency-trial` is an older exact-file snapshot rollback utility, not the

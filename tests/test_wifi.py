@@ -56,7 +56,7 @@ class WifiTests(unittest.TestCase):
              patch.object(self.wifi, 'prompt_password', return_value='secret'), \
              patch.object(self.wifi, 'notify') as notify:
             self.wifi.connect('Home', True)
-        self.assertIn('Failed to connect', notify.call_args.args[1])
+        self.assertIn('Could not connect', notify.call_args.args[1])
         self.assertTrue(notify.call_args.kwargs['critical'])
 
     def test_password_masking_cancellation_and_whitespace(self):
@@ -102,8 +102,8 @@ class WifiTests(unittest.TestCase):
         scan.assert_not_called()
 
     def test_empty_scan_explains_adapter_or_wired_connection(self):
-        for devices, expected in (('ethernet:connected', 'No WiFi - using Ethernet'),
-                                  ('loopback:connected', 'No WiFi adapter'), ('wifi:disconnected', 'No networks found')):
+        for devices, expected in (('ethernet:connected', 'Using Ethernet'),
+                                  ('loopback:connected', 'No WiFi adapter'), ('wifi:disconnected', 'No WiFi networks')):
             with self.subTest(devices=devices), patch('sys.argv', ['wifi-menu']), \
                  patch.object(self.wifi, 'nm_running', return_value=True), \
                  patch.object(self.wifi, 'scan_networks', return_value=[]), \
@@ -117,4 +117,4 @@ class WifiTests(unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()) as output:
             self.wifi.main()
         manager.assert_not_called()
-        self.assertIn('USAGE', output.getvalue())
+        self.assertIn('Choose a WiFi network', output.getvalue())

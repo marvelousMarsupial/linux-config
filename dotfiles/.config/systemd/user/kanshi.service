@@ -1,49 +1,16 @@
 [Unit]
-# Dynamic display configuration daemon. Watches the wlr-output-management
-# protocol (sway speaks it) and applies one of the profiles defined in
-# ~/.config/kanshi/config based on the currently-connected outputs.
 Description=Dynamic display configuration with kanshi
 Documentation=man:kanshi(1)
-
-# Lifecycle binding: when graphical-session.target stops (sway exit /
-# logout / shutdown), kanshi stops with it. After= guarantees we don't
-# start kanshi until the compositor has signaled that the graphical
-# session is up and its IPC sockets are ready — that ordering is the
-# whole point of moving away from sway's `exec_always` autostart, which
-# fires while sway is still bringing up outputs and was the trigger for
-# the boot-time subscribe-before-ready wedge we hit (kanshi 1.7.0
-# subscribing too early ends up with no events being delivered, the
-# laptop panel stays on, externals stack left-to-right, and fuzzel
-# popups render off-screen).
-PartOf=graphical-session.target
+PartOf=sway-session.target
 After=graphical-session.target
+StartLimitIntervalSec=30
+StartLimitBurst=5
 
 [Service]
-Type=simple
-
-# We run the system-installed binary directly (apt-installed
-# `kanshi` package on this Debian setup). No sudoers, no flock
-# wrappers — systemd handles single-instance enforcement and lifetime
-# management.
+Type=exec
 ExecStart=/usr/bin/kanshi
-
-# `on-failure` rather than `always`:
-#   * always   — restart even on clean exit (e.g. `systemctl stop`),
-#                which would make manual debugging impossible.
-#   * on-failure — restart only on non-zero exit / signal kill /
-#                  watchdog miss. That matches what we want for a
-#                  long-running daemon: heal crashes, respect manual
-#                  stops.
 Restart=on-failure
-
-# Brief backoff on restart so a permanent fail-loop (e.g. malformed
-# kanshi config, missing /usr/bin/kanshi) doesn't burn CPU.
 RestartSec=2
 
 [Install]
-# Pulled in when sway-session.target activates. The session script
-# (`~/.local/bin/sway-session`) starts that target after sway-IPC is
-# fully ready, which is what makes the ordering race go away —
-# kanshi can't subscribe early because systemd won't let it start
-# until the target is active.
 WantedBy=sway-session.target

@@ -50,20 +50,15 @@ def notify(title: str, msg: str, critical: bool = False) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="battery-monitor",
-        description="Background daemon that monitors battery and sends notifications",
+        description="Show low battery warnings",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Runs in a loop checking battery level. Sends notifications when:
-  - Battery falls below warning level (default: 20%)
-  - Battery falls below critical level (default: 10%)
+Warns at 20 percent and 10 percent
+Warnings reset when charging starts
+No battery means no warnings
 
-Warnings reset when battery starts charging.
-Exits silently if no battery is detected (desktop systems).
-
-Usage:
-  battery-monitor &              # Run in background
-  battery-monitor --warn 25      # Warn at 25%
-  battery-monitor --interval 30  # Check every 30 seconds
+battery-monitor --warn 25
+battery-monitor --interval 30
 """
     )
 
@@ -72,26 +67,26 @@ Usage:
         type=int,
         default=DEFAULT_WARN_LEVEL,
         metavar="PCT",
-        help=f"Warning level percentage (default: {DEFAULT_WARN_LEVEL})"
+        help=f"Low battery level in percent default {DEFAULT_WARN_LEVEL}"
     )
     parser.add_argument(
         "-c", "--critical",
         type=int,
         default=DEFAULT_CRITICAL_LEVEL,
         metavar="PCT",
-        help=f"Critical level percentage (default: {DEFAULT_CRITICAL_LEVEL})"
+        help=f"Critical battery level in percent default {DEFAULT_CRITICAL_LEVEL}"
     )
     parser.add_argument(
         "-i", "--interval",
         type=int,
         default=DEFAULT_CHECK_INTERVAL,
         metavar="SEC",
-        help=f"Check interval in seconds (default: {DEFAULT_CHECK_INTERVAL})"
+        help=f"Check interval in seconds default {DEFAULT_CHECK_INTERVAL}"
     )
 
     args = parser.parse_args()
     if not 0 <= args.critical <= args.warn <= 100 or args.interval <= 0:
-        parser.error("Require 0 <= critical <= warn <= 100 and interval > 0")
+        parser.error("Use levels from 0 to 100 with critical at or below warn and a positive interval")
 
     bat_path = find_battery()
 
@@ -117,12 +112,12 @@ Usage:
         else:
             # Critical warning
             if level <= args.critical and not warned_critical:
-                notify("Battery Critical", f"{level}% - Plug in now!", critical=True)
+                notify("Battery critical", f"{level}%\nPlug in now", critical=True)
                 warned_critical = True
                 warned_low = True
             # Low warning
             elif level <= args.warn and not warned_low:
-                notify("Battery Low", f"{level}% remaining")
+                notify("Battery low", f"{level}% remaining")
                 warned_low = True
 
         time.sleep(args.interval)

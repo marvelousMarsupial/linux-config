@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Power
-Comment=Lock, suspend, logout, reboot, shutdown
+Comment=Lock or turn off the computer
 Exec=/home/august/.local/bin/power-menu
 Icon=system-shutdown
 Type=Application

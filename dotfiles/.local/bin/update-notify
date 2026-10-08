@@ -1,0 +1,52 @@
+#!/usr/bin/python3
+"""Notify once about newly completed APT package upgrades in the desktop session."""
+import gzip
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+
+
+def completed_updates(text):
+    results = {}
+    for block in text.split('\n\n'):
+        fields = dict(line.split(': ', 1) for line in block.splitlines() if ': ' in line)
+        if 'End-Date' not in fields or 'Error' in fields or 'Upgrade' not in fields:
+            continue
+        key = hashlib.sha256(block.strip().encode()).hexdigest()
+        results[key] = fields['End-Date'].strip()
+    return results
+
+
+def main():
+    state_dir = Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state'))) / 'linux-config'
+    state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    state = state_dir / 'update-notify.json'
+    updates = {}
+    for path in (Path('/var/log/apt/history.log.1.gz'), Path('/var/log/apt/history.log')):
+        try:
+            opener = gzip.open if path.suffix == '.gz' else open
+            with opener(path, 'rt') as log:
+                updates.update(completed_updates(log.read()))
+        except FileNotFoundError:
+            pass
+    previous = set(json.loads(state.read_text())) if state.exists() else None
+    new = set(updates) - (previous or set())
+    # Baseline on first use: don't announce old installation history.
+    if previous is not None and new:
+        message = ''
+        if Path('/var/run/reboot-required').exists():
+            message = 'Restart when convenient'
+        subprocess.run(['notify-send', '--app-name=System updates', '--icon=system-software-update',
+                        'Updates installed', message], check=True, timeout=15)
+    # Retain identities through rotation; write only after successful delivery.
+    saved = sorted((previous or set()) | set(updates))[-4096:]
+    temporary = state.with_suffix('.tmp')
+    temporary.write_text(json.dumps(saved) + '\n')
+    temporary.chmod(0o600)
+    temporary.replace(state)
+
+
+if __name__ == '__main__':
+    main()

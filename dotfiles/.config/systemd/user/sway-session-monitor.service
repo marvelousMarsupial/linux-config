@@ -1,0 +1,12 @@
+[Unit]
+Description=Watch the Sway compositor connection
+Documentation=man:swaymsg(1)
+PartOf=sway-session.target
+# Targets normally order themselves after their dependencies. This monitor
+# must start before the session target, without pulling in that target itself.
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/swaymsg --monitor --type subscribe '["shutdown"]'
+Restart=no
+StandardOutput=null

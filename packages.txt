@@ -1,13 +1,14 @@
 # Debian desktop packages. Install explicitly; see README.md.
 adwaita-icon-theme
 alsa-utils
+at-spi2-core
 bat
 blueman
 bluez
 brightnessctl
+brightness-udev
 btop
 ca-certificates
-cliphist
 curl
 dbus-user-session
 eza
@@ -19,11 +20,13 @@ fonts-noto-color-emoji
 foot
 fuzzel
 fzf
+gir1.2-gtk-3.0
 gir1.2-spiceclientgtk-3.0
 git
 grim
 hicolor-icon-theme
 ipython3
+python3-gi
 jq
 kanshi
 keepassxc
@@ -46,6 +49,7 @@ pipewire-pulse
 playerctl
 power-profiles-daemon
 python3
+python3-gi
 python3-jinja2
 python3-yaml
 qemu-system-modules-spice

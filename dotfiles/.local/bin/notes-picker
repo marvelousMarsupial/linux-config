@@ -3,7 +3,7 @@
 set -euo pipefail
 vault="$HOME/vault"
 [[ -d "$vault" ]] || exit 0
-note=$(find "$vault" -type f -name '*.md' -printf '%P\n' | sort | fuzzel --dmenu --prompt="Note: ") || exit 0
+note=$(find "$vault" -type f -name '*.md' -printf '%P\n' | sort | fuzzel --dmenu --prompt="Notes ") || exit 0
 [[ -n "$note" ]] || exit 0
 path=$(realpath -e -- "$vault/$note") || exit 1
 [[ "$path" == "$vault/"* && -f "$path" && "$path" == *.md ]] || exit 1

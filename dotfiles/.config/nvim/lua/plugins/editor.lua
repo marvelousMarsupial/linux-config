@@ -13,9 +13,9 @@ return {
     "mikavilpas/yazi.nvim",
     event = "VeryLazy",
     keys = {
-      { "<leader>y", "<cmd>Yazi<cr>", desc = "Open yazi (current file)" },
-      { "<leader>Y", "<cmd>Yazi cwd<cr>", desc = "Open yazi (cwd)" },
-      { "<leader>-", "<cmd>Yazi toggle<cr>", desc = "Resume yazi session" },
+      { "<leader>y", "<cmd>Yazi<cr>", desc = "Browse file folder" },
+      { "<leader>Y", "<cmd>Yazi cwd<cr>", desc = "Browse working folder" },
+      { "<leader>-", "<cmd>Yazi toggle<cr>", desc = "Resume file browser" },
     },
     opts = {
       open_for_directories = true,

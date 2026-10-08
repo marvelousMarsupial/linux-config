@@ -8,6 +8,9 @@ directly. The default package list keeps development tools minimal.
 
 Read [installation](docs/installation.md) before applying the setup. It covers
 packages, separately installed applications, config backups and local settings.
+See [current state](docs/state.md) for checked repository/host differences and
+[systemd](docs/systemd.md), [updates](docs/updates.md) and
+[firewall](docs/firewall.md) for system integration.
 Use [editor setup](docs/editor.md) for Neovim and optional language tools.
 
 For an existing installation:

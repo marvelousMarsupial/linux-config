@@ -13,15 +13,18 @@ SESSION_TARGET="sway-session.target"
 
 # Do not overwrite another active session's environment.
 if systemctl --user --quiet is-active "$SESSION_TARGET"; then
-    echo "sway-session: $SESSION_TARGET already active — skipping" >&2
+    echo "sway-session: $SESSION_TARGET already active" >&2
     exit 0
 fi
+
+# Confirm that the compositor accepts IPC before starting session services.
+swaymsg --type get_version >/dev/null
 
 if command -v dbus-update-activation-environment >/dev/null 2>&1; then
     # shellcheck disable=SC2086 # intentional splitting of variable names
     dbus-update-activation-environment --systemd $VARS
 fi
-systemctl --user reset-failed
+systemctl --user reset-failed kanshi.service sway-session-monitor.service
 # shellcheck disable=SC2086 # intentional splitting of variable names
 systemctl --user import-environment $VARS
 # kanshi is started through the target after its session dependencies.

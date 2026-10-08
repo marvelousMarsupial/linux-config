@@ -7,5 +7,6 @@
     --glass-text: #{{ base05 }};
     --glass-muted: #{{ base04 }};
     --glass-accent: #{{ base0D }};
+    --glass-accent-rgb: {{ base0D[0:2]|int(base=16) }}, {{ base0D[2:4]|int(base=16) }}, {{ base0D[4:6]|int(base=16) }};
   }
 }

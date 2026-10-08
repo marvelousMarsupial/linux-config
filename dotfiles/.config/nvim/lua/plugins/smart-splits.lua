@@ -17,10 +17,10 @@ return {
     })
 
     -- Navigation: Alt + hjkl
-    vim.keymap.set("n", "<M-h>", ss.move_cursor_left, { desc = "Move to left split" })
-    vim.keymap.set("n", "<M-j>", ss.move_cursor_down, { desc = "Move to below split" })
-    vim.keymap.set("n", "<M-k>", ss.move_cursor_up, { desc = "Move to above split" })
-    vim.keymap.set("n", "<M-l>", ss.move_cursor_right, { desc = "Move to right split" })
+    vim.keymap.set("n", "<M-h>", ss.move_cursor_left, { desc = "Focus left split" })
+    vim.keymap.set("n", "<M-j>", ss.move_cursor_down, { desc = "Focus lower split" })
+    vim.keymap.set("n", "<M-k>", ss.move_cursor_up, { desc = "Focus upper split" })
+    vim.keymap.set("n", "<M-l>", ss.move_cursor_right, { desc = "Focus right split" })
 
     -- Resize: Alt + Shift + hjkl
     vim.keymap.set("n", "<M-H>", ss.resize_left, { desc = "Resize left" })

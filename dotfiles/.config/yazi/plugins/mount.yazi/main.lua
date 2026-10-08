@@ -161,10 +161,10 @@ function M:redraw()
 			:area(self._area)
 			:type(ui.Border.ROUNDED)
 			:style(ui.Style():fg("blue"))
-			:title(ui.Line("Mount"):align(ui.Align.CENTER)),
+			:title(ui.Line("Drives"):align(ui.Align.CENTER)),
 		ui.Table(rows)
 			:area(self._area:pad(ui.Pad(1, 2, 1, 2)))
-			:header(ui.Row({ "Src", "Label", "Dist", "FSType" }):style(ui.Style():bold()))
+			:header(ui.Row({ "Device", "Name", "Location", "Format" }):style(ui.Style():bold()))
 			:row(self.cursor)
 			:row_style(ui.Style():fg("blue"):underline())
 			:widths {

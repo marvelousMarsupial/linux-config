@@ -193,7 +193,7 @@ def prompt_password(ssid: str) -> str | None:
                 "fuzzel",
                 "--dmenu",
                 "--password=•",
-                f"--prompt=Password for {ssid}: ",
+                f"--prompt=Password for {ssid} ",
                 # `--lines=0` hides the (empty) candidate list and shows
                 # only the prompt + input field — exactly the layout we
                 # want for password entry.
@@ -248,6 +248,18 @@ def is_auth_error(stderr: str) -> bool:
     )
 
 
+def connection_error(ssid: str, error: str) -> str:
+    if is_auth_error(error):
+        return f"Could not connect to {ssid}\nCheck the password"
+    if "timeout" in error.lower():
+        return f"Could not connect to {ssid}\nConnection timed out"
+    if "device" in error.lower():
+        return "No WiFi adapter"
+    if "not installed" in error.lower():
+        return "WiFi tools are not installed"
+    return f"Could not connect to {ssid}\nTry again"
+
+
 def connect(ssid: str, secured: bool) -> None:
     """Connect without deleting saved profiles or exposing passwords in argv."""
     saved = ssid in saved_connections()
@@ -258,7 +270,7 @@ def connect(ssid: str, secured: bool) -> None:
         if ok:
             notify("WiFi", f"Connected to {ssid}")
         else:
-            notify("WiFi", f"Failed to connect to {ssid}: {err}", critical=True)
+            notify("WiFi", connection_error(ssid, err), critical=True)
         return
 
     # Case 2 / 3: secured network we already have a saved profile for.
@@ -272,7 +284,7 @@ def connect(ssid: str, secured: bool) -> None:
         if not is_auth_error(err):
             # Non-auth failure (out of range, hardware issue, etc.).
             # Don't bother re-prompting — a new password won't help.
-            notify("WiFi", f"Failed to connect to {ssid}: {err}", critical=True)
+            notify("WiFi", connection_error(ssid, err), critical=True)
             return
         # Prompt for replacement credentials without discarding profile settings.
         # Preserve the existing profile even if authentication fails.
@@ -290,7 +302,7 @@ def connect(ssid: str, secured: bool) -> None:
         notify("WiFi", f"Connected to {ssid}")
         return
 
-    notify("WiFi", f"Failed to connect to {ssid}: {err}", critical=True)
+    notify("WiFi", connection_error(ssid, err), critical=True)
 
 
 def main() -> None:
@@ -299,20 +311,15 @@ def main() -> None:
     # the ASCII bars without having to read the source.
     if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
         print(
-            """wifi-menu - WiFi network selector
+            """Choose a WiFi network to connect
+Saved passwords are reused
+New networks ask for a password
 
-USAGE: wifi-menu
-
-Scans for WiFi networks and displays them in fuzzel.
-Select a network to connect. Secured networks prompt for a
-password (masked) on first connect; saved passwords are reused
-automatically.
-
-Signal bars:
-  ▂▄▆█  75-100%
-  ▂▄▆░  50-74%
-  ▂▄░░  25-49%
-  ▂░░░  0-24%
+Signal strength
+  ▂▄▆█  75 to 100 percent
+  ▂▄▆░  50 to 74 percent
+  ▂▄░░  25 to 49 percent
+  ▂░░░  0 to 24 percent
 """
         )
         return
@@ -320,24 +327,24 @@ Signal bars:
     # Bail early with a clear notification if the daemon isn't up. The
     # NetworkManager must be running; installation does not enable it.
     if not nm_running():
-        notify("WiFi", "NetworkManager not running", critical=True)
+        notify("WiFi", "NetworkManager is stopped", critical=True)
         sys.exit(1)
 
     networks = scan_networks()
 
     # Empty scan result: figure out *why* and surface that in a tiny
     # one-line fuzzel popup. This is much more useful than the original
-    # "No networks found" message because users on a wired box don't
+    # "No WiFi networks" message because users on a wired box don't
     # want to be told their wifi is broken when it's actually just
     # turned off in favor of ethernet.
     if not networks:
         devices = run_output(["nmcli", "-t", "-f", "TYPE,STATE", "device"])
         if "ethernet:connected" in devices:
-            msg = "No WiFi - using Ethernet"
+            msg = "Using Ethernet"
         elif "wifi:" not in devices:
             msg = "No WiFi adapter"
         else:
-            msg = "No networks found"
+            msg = "No WiFi networks"
 
         # Show the diagnosis in fuzzel so the user has a visible, fixed-
         # width popup rather than a fleeting libnotify bubble.
@@ -370,7 +377,7 @@ Signal bars:
     except subprocess.TimeoutExpired:
         sys.exit(0)
     except FileNotFoundError:
-        notify("WiFi", "fuzzel not installed", critical=True)
+        notify("WiFi", "Fuzzel is not installed", critical=True)
         sys.exit(1)
 
     choice = result.stdout.rstrip("\n")

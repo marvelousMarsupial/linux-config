@@ -63,22 +63,16 @@ def get_disk() -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="motd",
-        description="Display message of the day with system information",
+        description="Show system info",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Displays:
-  - Hostname
-  - Local IP
-  - Uptime
-  - Load average, memory, and disk usage
-
-Typically added to shell profile for login display.
+Shows host, IP, uptime, load, memory and disk use
 """
     )
     parser.add_argument(
         "--no-color",
         action="store_true",
-        help="Disable colored output"
+        help="Use plain text"
     )
     args = parser.parse_args()
 
@@ -96,7 +90,6 @@ Typically added to shell profile for login display.
 
     print()
     print(f"{CYAN}{host}{RESET}")
-    print(f"{DIM}─────────────────────────{RESET}")
     print(f"  {DIM}ip{RESET}    {local_ip}")
     print(f"  {DIM}up{RESET}    {uptime}")
     print(f"  {DIM}load{RESET}  {load}  {DIM}mem{RESET} {mem}  {DIM}disk{RESET} {disk}")

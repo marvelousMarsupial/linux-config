@@ -1,8 +1,16 @@
 # Security audit — 2026-10-07
 
-## Result and scope
+## Current status
 
-The most important unresolved findings are clipboard persistence, missing inactivity locking, pending security updates, and uncertainty about the VM's effective firewall and obsolete services. No matching secrets were found in the pattern scan. That is not proof that the repository or host is free of secrets or vulnerabilities.
+This document preserves the initial restricted audit and its follow-up evidence.
+Use [current state](state.md) for the latest repository/host comparison and
+[testing](testing.md) for current test results. The firewall uncertainty was
+resolved with privileged checks and installation; the project APT policy is still
+pending. Initial sandbox limitations below describe the earlier audit session.
+
+## Initial result and scope
+
+The most important unresolved findings at the original audit were clipboard persistence, missing inactivity locking, pending security updates, and uncertainty about the VM's effective firewall and obsolete services. No matching secrets were found in the pattern scan. That is not proof that the repository or host is free of secrets or vulnerabilities.
 
 Reviewed all repository scripts, desktop startup, password/clipboard flow, Neovim plugin installation, user services, permissions, package requirements, and readable host configuration. Applied safe repository fixes and copied them to the live user configuration. No packages were installed, no firewall rules or remote services were changed, no clipboard entries were deleted, and no remote session was interrupted.
 
@@ -12,9 +20,9 @@ The tool environment has an isolated process/network view and no privileged syst
 
 | Priority | Finding | Status |
 | --- | --- | --- |
-| High if credentials are copied | Sway captures clipboard changes into persistent cliphist history. Installed pass copies ordinary clipboard text and only restores/clears the clipboard later; it does not delete the cliphist entry. The installed wl-clipboard cannot reliably label secrets for the watcher. Ten retained entries still permit credential persistence. No actual password content was inspected or claimed found. | User preference pending: disable automatic capture, or retain history with this risk. Existing history was not erased. |
+| High if credentials are copied | Sway captures clipboard changes into persistent cliphist history. Installed pass copies ordinary clipboard text and only restores/clears the clipboard later; it does not delete the cliphist entry. The installed wl-clipboard cannot reliably label secrets for the watcher. Ten retained entries still permit credential persistence. No actual password content was inspected or claimed found. | Resolved 2026-10-08 by disabling automatic capture in the repo and installed test-VM config, removing the history shortcut and future-install package requirement. Existing history was not inspected or erased; old entries may still contain secrets. Sandbox restrictions prevented stopping/verifying a running watcher; log out/in to apply the startup change. |
 | High maintenance priority | Cached APT metadata lists 183 upgradable packages, including 63 whose candidate listings include a security repository. Examples include Flatpak, bubblewrap, jq, media libraries, and Incus. These counts are candidates, not counts of CVEs, and metadata was not refreshed. | Needs privileged package update review. Unattended upgrade settings and enabled timers exist but do not establish that updates succeeded. |
-| Medium | The desktop locks before suspend but has no inactivity timeout. A logged-in desktop can remain accessible indefinitely. Fullscreen applications also inhibit idle. | User preference pending for a 10-minute timeout. Manual and suspend locking preserved. |
+| Medium | The desktop locks before suspend but has no inactivity timeout. A logged-in desktop can remain accessible indefinitely. Fullscreen applications also inhibit idle. | Configured 2026-10-08: 30-minute idle timeout, retained synchronous pre-suspend locking and removed blanket fullscreen inhibition in repo and installed VM config. Application-requested inhibitors remain respected. Logout/login and live idle/unlock/suspend checks are pending; sandbox restrictions prevent live activation/verification. |
 | Medium, exposure unknown | `/etc/nftables.conf` is an old Forge placeholder with no filtering rules. Other tools may have loaded rules; the effective ruleset could not be read. NAT is not a substitute for a host exposure review. | Verify loaded rules and required remote/libvirt traffic before designing a firewall. No network changes made. |
 | Medium, active state unknown | Enabled service/socket links remain for Incus, LXCFS, and Netavark despite their removal from future repository installs. An enabled link is not proof of a running or remotely exposed service. | Review and retire unused host components later. Preserve the Incus guest agent and the current remote-access path. |
 | Medium supply-chain risk | setup-editor downloaded and executed Neovim without checking a fixed digest. HTTPS alone did not compare the asset to an independently reviewed expected value. | Fixed: pinned official v0.12.2 x86_64/arm64 SHA-256 digests; checksum failure aborts before extraction or execution. Version overrides require an explicit digest. |
@@ -39,7 +47,7 @@ The tool environment has an isolated process/network view and no privileged syst
 
 ## Validation
 
-`./scripts/check --full` covers 33 passing tests plus syntax, TOML, Lua, and six theme renders. Security regression checks include shell-command injection in runtime environment data, rejected runtime symlinks, backup permissions under umask 002, checksum failure before extraction/execution, and editor modeline behavior. Startup bootstrap network success and the pinned upstream downloads were not exercised end-to-end in this sandbox.
+At the initial audit, `./scripts/check --full` covered 33 passing tests plus syntax, TOML, Lua, and six theme renders. Security regression checks include shell-command injection in runtime environment data, rejected runtime symlinks, backup permissions under umask 002, checksum failure before extraction/execution, and editor modeline behavior. Startup bootstrap network success and the pinned upstream downloads were not exercised end-to-end in this sandbox.
 
 ## Host follow-up from an unrestricted terminal
 
@@ -75,4 +83,15 @@ could escape the destination home before the normal file path checks ran. The
 installer now validates the resolved backup parent before mkdir/chmod/copy.
 A regression asserts rejection, no outside writes and preservation of the
 original config. Malformed Sway responses now stop notes-toggle before creating
-a note. See [testing](testing.md) for the expanded 90-test suite and its limits.
+a note. The suite subsequently grew further; see [testing](testing.md) for current results and limits.
+
+## Firewall follow-up — 2026-10-07
+
+Unrestricted access subsequently allowed inspection of the actual machine. The
+old nftables config was empty and effective filtering consisted of libvirt's
+rules with accepting host input policies. Installed and enabled the dedicated
+IPv4/IPv6 host firewall and a service override preserving other tables. Live
+incoming/outgoing tests passed, DNS/HTTPS worked, and Incus agent/libvirt stayed
+active. This resolves the firewall uncertainty above; the other original audit
+findings retain their stated scope. See [firewall](firewall.md) for verification
+limits, installed files and recovery commands.

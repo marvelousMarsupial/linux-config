@@ -24,16 +24,50 @@ Run it again after editing the repo. Existing monitor profiles, Neovim plugin
 locks, and generated color files are preserved. `--home /path` installs into
 an alternate home for testing. Copies are independent of the checkout.
 
-For a fresh desktop, enable the existing user monitor service explicitly:
+After installing or changing user units, reload the user manager:
 
 ```sh
 systemctl --user daemon-reload
-systemctl --user enable kanshi.service
 ```
+
+The Sway session target pulls in kanshi automatically; no enable command is
+required. Log out of Sway and back in after changing these units. See
+[systemd setup](systemd.md) for lifecycle details and checks.
 
 Open a new terminal after installation and press Super+Shift+c to reload Sway.
 Choose zsh as your login shell with `chsh -s /bin/zsh` if desired. Sway starts
 on tty1; run `sway` manually for an initial session.
+
+## Screen brightness
+
+The brightness keys change the screen in 10 percent steps.
+Super F11 dims it. Super F12 brightens it.
+
+Debian needs `brightness-udev` and membership in the video group.
+The package is in `packages.txt`. Add your user once:
+
+```sh
+sudo usermod -aG video "$USER"
+```
+
+Reboot after setup to apply the group and device permissions.
+The user config installer does not change groups.
+
+On the XPS run these from a terminal in Sway:
+
+```sh
+brightnessctl --class=backlight --list
+~/.local/bin/brightness up
+```
+
+If the command works but the keys do not, try the keys with Fn.
+Fn Escape changes Fn lock on supported Dell keyboards.
+The backup shortcuts avoid Fn lock.
+
+A VM usually has no screen backlight control.
+If the XPS also reports no control, check its model and panel type.
+An OLED panel may need a different method. Do not change kernel settings
+until the hardware is known.
 
 ## Separately installed applications
 
@@ -50,6 +84,18 @@ these names. Optional fnm integration uses `~/.local/share/fnm`.
 Yazi requires `file`, which is in `packages.txt`. Optional preview tools include
 `poppler-utils` for PDFs, `ffmpeg` for videos and `7zip` for archives.
 See [Yazi dependencies](https://yazi-rs.github.io/docs/installation/).
+
+## Firewall
+
+See [host firewall](firewall.md) for the nftables policy and required service
+override. Review the target machine’s remote-access and VM networking needs
+before installing system rules.
+
+## Automatic updates
+
+Follow [automatic Debian updates](updates.md) to install the project policy and
+enable Debian’s APT timers. It applies stable maintenance and security updates
+without automatic reboots. The user-config installer does not activate it.
 
 ## Virtual machines
 
@@ -80,8 +126,9 @@ contains no hardware assumptions.
 
 `system/` mirrors selected `/etc` files for unattended apt updates and lid
 behavior. Review and copy individual files with sudo only when wanted.
-They are not automatically applied. Networking and remote access remain
-under your control.
+They are not automatically applied. The nftables host policy and its required
+service override also live under `system/`; follow [firewall](firewall.md) before
+applying them. Networking and remote access remain under your control.
 
 ## Updating an existing installation
 
@@ -94,3 +141,19 @@ applications as described in [appearance](appearance.md).
 The installer backs up and retires a named list of files from removed integrations.
 It does not uninstall packages, stop old system services or change active networking.
 Current security/migration follow-up lives in [TODO](TODO.md).
+
+## Debian 13 ALSA rule fix
+
+Debian alsa-utils 1.2.14-1 has a duplicate udev label.
+The project copy fixes the label and keeps sound state restore enabled.
+This fixes the warning. It does not prove XPS audio works.
+See [Debian bug 1104719](https://bugs.debian.org/1104719).
+
+For that package version only:
+
+```sh
+sudo install -Dm644 system/udev/rules.d/90-alsa-restore.rules /etc/udev/rules.d/90-alsa-restore.rules
+sudo udevadm control --reload-rules
+```
+
+Remove the local override once Debian supplies a corrected rule.

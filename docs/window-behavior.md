@@ -59,8 +59,7 @@ fullscreen/terminal approach. The default fullscreen binding remains unchanged.
 ## Preserve popups Sway already displays
 
 The helper now skips the fullscreen-exit workaround when a new window is already
-reported visible above fullscreen. It also excludes visible native dialogs from
-the existing-floater check. Tests with the helper active confirmed a transient GTK
+reported visible above fullscreen. Already-visible native dialogs are left alone. Tests with the helper active confirmed a transient GTK
 dialog stays above a genuinely fullscreen parent after focusing the parent;
 independent newly opened terminals still pass the reveal/restore tests.
 
@@ -68,3 +67,49 @@ The user reports successfully dragging a floating window over fullscreen from
 another physical monitor. A two-output headless test of IPC moves did not reproduce
 that exact behavior. Mouse-drag and physical-output validation remain pending;
 do not infer that the user's observed path is impossible from the IPC move test.
+
+## Delayed visibility and moved windows
+
+The guard rechecks pending new windows after focus/title events, including focus
+returning to the fullscreen parent, and handles floating windows moved into a
+fullscreen workspace. Startup also recovers already-hidden floating windows.
+Already-visible native dialogs retain native fullscreen behavior. Duplicate
+floating/focus events do not resize a popup repeatedly. Commands racing with a
+closing window are logged rather than terminating the service.
+
+Offline tree-snapshot tests cover reveal, delayed visibility, move/focus, startup,
+multiple popups, restoration, native visible dialogs, and hidden workspaces.
+Live validation of this revision requires the desktop session; this sandbox
+cannot connect to the compositor or user service manager.
+
+## Explicit fullscreen has priority
+
+Super+F is allowed to enter fullscreen even when older floating windows exist.
+An explicit fullscreen-enable event clears the prior popup restoration session
+and pending candidates on that workspace. Focus/title events on old floaters do
+not immediately disable fullscreen again. New windows and floating windows
+explicitly moved into the workspace still trigger reveal/restore as needed.
+Regression tests cover both fullscreen entry and popups arriving afterward.
+
+## Terminal shortcut during fullscreen
+
+Super+Enter runs `terminal`, which queries the focused workspace, exits its
+fullscreen container (or global fullscreen), and launches Foot with the
+a `fullscreen-terminal-<parent>-<mode>` app ID. A Sway rule centers and floats that terminal at
+800×550. This shortcut does not rely on the popup helper reacting after launch;
+it leaves fullscreen before opening the window. Outside fullscreen, Foot opens
+normally as a tiled terminal. Reload Sway after installing the binding and rule.
+
+The popup helper only uses the already-visible exception for floating dialogs;
+a newly opened tiled window still triggers reveal even if its initial IPC
+snapshot reports it visible.
+
+## Restore after a shortcut terminal closes or leaves
+
+The terminal app ID identifies the original fullscreen container and mode.
+The popup guard tracks that relationship even though fullscreen was exited
+before the terminal appeared. Closing the terminal or moving it to another
+workspace/output restores the original window's fullscreen, after the last
+tracked popup leaves. Moving within the same workspace does not restore it.
+Super+F still overrides automatic restoration. Reload Sway and restart the
+popup guard after installing this revision.

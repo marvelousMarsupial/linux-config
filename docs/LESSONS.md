@@ -1,6 +1,6 @@
 # Project lessons
 
-Updated: 2026-10-07. Add lessons when a change exposes a reusable rule; keep outstanding work in [TODO.md](TODO.md).
+Updated: 2026-10-08. Add lessons when a change exposes a reusable rule; keep outstanding work in [TODO.md](TODO.md).
 
 ## Configuration and UX
 
@@ -13,6 +13,8 @@ Updated: 2026-10-07. Add lessons when a change exposes a reusable rule; keep out
 - Remove an integration completely: executable, service, shortcut, aliases, status controls, theme targets, package requirement and docs. Removing the main script alone leaves broken UI.
 - Minimal default tools and optional development tooling are separate choices. Keep compilers, Node and language-server installation explicit.
 - Yazi needs `file` for type detection. Valid TOML does not establish that preview dependencies or runtime file opening work.
+
+- Starting a desktop target does not connect it to compositor exit. Track the IPC connection and bind the target to that service; ordering alone does not establish application readiness.
 
 ## Script correctness
 
@@ -32,8 +34,9 @@ Updated: 2026-10-07. Add lessons when a change exposes a reusable rule; keep out
 
 ## Security
 
+- Prefer no automatic clipboard history when reliable secret exclusion is unavailable. Removing startup capture must also stop the existing watcher; reloading Sway alone does not stop it.
 - Clipboard clearing is not history deletion. Installed pass restores/clears clipboard content later, while cliphist can retain the earlier password copy. The installed wl-clipboard cannot reliably classify all sensitive selections.
-- A suspend lock does not provide inactivity locking. Fullscreen idle inhibition also matters when considering an automatic lock policy.
+- A suspend lock does not provide inactivity locking. Avoid blanket fullscreen idle inhibition; distinguish it from application-requested inhibitors. Use swayidle `-w` with swaylock `-f` so the suspend hook waits for lock readiness (within logind’s delay limit). Changes to an `exec` watcher require logout/login; Sway reload leaves the old process running.
 - Parse runtime environment files as data, not shell code. A private directory helps, but it is not a reason to execute a file unnecessarily.
 - Verify downloaded executable assets against pinned expected digests before extraction or execution. TLS and checksum pinning address different parts of the trust chain; a checksum is not a publisher signature.
 - Pin bootstrap code too. A plugin lockfile does not help if the manager itself is first loaded from a moving branch.
@@ -52,6 +55,7 @@ Updated: 2026-10-07. Add lessons when a change exposes a reusable rule; keep out
 - Use temporary homes and command stubs for network, power and privileged actions. Passing those tests does not prove the real action works.
 - Sandbox networking/process views cannot certify the host's listening services. Enabled service links are not proof that a service is running.
 - An empty firewall file is not proof that no rules are loaded. Read the effective ruleset before changing networking, especially over a remote connection.
+- For isolated APT configuration checks, set `Dir::Etc::parts` through an `APT_CONFIG` bootstrap file. Passing it with `apt-config -o` changes the displayed setting after the normal configuration has already loaded.
 - Cached APT candidates and enabled unattended-update timers do not prove a system is current. Refresh metadata and inspect service results.
 - Secret scans need a stated scope. No matches across common patterns and reachable Git history is useful evidence, not a guarantee of no secrets.
 - Keep audit reports dated. Track unresolved findings in TODO rather than presenting all tested code as completely secure.

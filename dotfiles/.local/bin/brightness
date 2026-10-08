@@ -1,0 +1,22 @@
+#!/bin/bash
+# Change screen brightness without touching keyboard LEDs.
+set -euo pipefail
+
+case "${1:-}" in
+    up) step=+10% ;;
+    down) step=10%- ;;
+    *) printf 'Use brightness up or brightness down\n' >&2; exit 2 ;;
+esac
+
+fail() {
+    printf '%s\n' "$1" >&2
+    notify-send -a brightness 'Brightness' "$1" || true
+    exit 1
+}
+
+command -v brightnessctl >/dev/null || fail 'Install brightnessctl'
+brightnessctl --class=backlight info >/dev/null 2>&1 || fail 'No screen brightness control found'
+if ! brightnessctl --class=backlight --min-value=1 set "$step"; then
+    fail 'Could not change brightness
+Check backlight permissions'
+fi

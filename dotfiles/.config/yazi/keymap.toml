@@ -20,8 +20,8 @@ prepend_keymap = [
     # The plugin file lives at
     # ~/.config/yazi/plugins/mount.yazi/main.lua (vendored from
     # yazi-rs/plugins, see that directory's README).
-    { on = "M", run = "plugin mount", desc = "Mount picker (USB / drives)" },
+    { on = "M", run = "plugin mount", desc = "Drives" },
 
     # Personal mount location; change this path when using another account.
-    { on = ["g", "m"], run = "cd /run/media/august", desc = "Go to mounted media" },
+    { on = ["g", "m"], run = "cd /run/media/august", desc = "Open mounted drives" },
 ]

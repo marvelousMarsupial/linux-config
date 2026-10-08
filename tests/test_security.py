@@ -58,7 +58,7 @@ class SecurityAuditTests(unittest.TestCase):
             env.pop('NVIM_SHA256', None)
             result = run(str(REPO / 'scripts/setup-editor'), '--skip-apt', env=env)
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn('checksum verification', result.stderr)
+            self.assertIn('checksum failed', result.stderr)
             self.assertFalse((home / 'tar-ran').exists())
             self.assertFalse((home / '.local/nvim').exists())
 

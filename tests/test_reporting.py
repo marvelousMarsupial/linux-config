@@ -92,9 +92,9 @@ class StatusTests(unittest.TestCase):
     def test_real_nmcli_connection_types_and_escaped_names(self):
         osd = load_script('status-osd')
         cases = [(r'Cafe\:Lab:802-11-wireless', 'Cafe:Lab'),
-                 ('LAN:802-3-ethernet', 'Wired'), ('Hotspot:wifi', 'Hotspot'),
-                 ('bridge:bridge\nvpn:vpn', 'Disconnected'),
-                 ('LAN:802-3-ethernet\nHome:802-11-wireless', 'Home'), ('', 'Disconnected')]
+                 ('LAN:802-3-ethernet', 'Ethernet'), ('Hotspot:wifi', 'Hotspot'),
+                 ('bridge:bridge\nvpn:vpn', 'Offline'),
+                 ('LAN:802-3-ethernet\nHome:802-11-wireless', 'Home'), ('', 'Offline')]
         for output, expected in cases:
             with self.subTest(output=output), patch.object(osd, 'run_output', return_value=output):
                 self.assertEqual(osd.get_network(), expected)
@@ -107,14 +107,14 @@ class StatusTests(unittest.TestCase):
     def test_notification_contains_status_and_timeout(self):
         osd = load_script('status-osd')
         with patch('sys.argv', ['status-osd', '--timeout', '1234']), \
-             patch.object(osd, 'get_battery', return_value='55% +'), \
+             patch.object(osd, 'get_battery', return_value='Battery 55% charging'), \
              patch.object(osd, 'get_network', return_value='Cafe:Lab'), \
              patch.object(osd, 'get_bluetooth', return_value='Headphones'), \
              patch.object(osd.subprocess, 'run') as command:
             osd.main()
         args = command.call_args.args[0]
         self.assertEqual(args[args.index('-t')+1], '1234')
-        self.assertIn('Battery: 55% +\nNetwork: Cafe:Lab\nBluetooth: Headphones', args[-1])
+        self.assertIn('Battery 55% charging\nCafe:Lab\nBluetooth Headphones', args[-1])
 
 
 class BatteryLoopTests(unittest.TestCase):
@@ -130,7 +130,7 @@ class BatteryLoopTests(unittest.TestCase):
             battery.main()
         self.assertEqual(result.exception.code, 0)
         self.assertEqual([c.args[0] for c in notify.call_args_list],
-                         ['Battery Low', 'Battery Critical', 'Battery Low', 'Battery Critical'])
+                         ['Battery low', 'Battery critical', 'Battery low', 'Battery critical'])
         self.assertTrue(notify.call_args_list[-1].kwargs['critical'])
         self.assertEqual(sleep.call_count, 8)
 
@@ -153,25 +153,25 @@ class BatteryLoopTests(unittest.TestCase):
 class PanelTests(unittest.TestCase):
     def test_network_wifi_wired_and_offline(self):
         panel = load_script('status-panel')
-        for wifi, links, expected in (('Home', '', 'wifi: Home'),
-                                       ('x'*50, '', 'wifi: '+'x'*18+'…'),
-                                       ('', 'lo UP\nenx123 UP', 'ethernet'),
-                                       ('', 'lo UP\nwlan0 UP\nenp1 DOWN', 'offline')):
+        for wifi, links, expected in (('Home', '', 'WiFi Home'),
+                                       ('x'*50, '', 'WiFi '+'x'*19+'…'),
+                                       ('', 'lo UP\nenx123 UP', 'Ethernet'),
+                                       ('', 'lo UP\nwlan0 UP\nenp1 DOWN', 'Offline')):
             with self.subTest(wifi=wifi, links=links), patch.object(panel, 'run', side_effect=[wifi, links] if not wifi else [wifi]):
                 self.assertEqual(panel.get_network(), expected)
 
     def test_popup_is_read_only_and_has_no_application_search_label(self):
         panel = load_script('status-panel')
         with patch.object(panel, 'get_clock', return_value='clock one\nclock two'), \
-             patch.object(panel, 'get_network', return_value='wifi: Home'), \
-             patch.object(panel, 'get_power', return_value='power: 50%'), \
+             patch.object(panel, 'get_network', return_value='WiFi Home'), \
+             patch.object(panel, 'get_power', return_value='Battery 50%'), \
              patch.object(panel.subprocess, 'run') as command:
             panel.main()
         args = command.call_args.args[0]
         self.assertIn('--dmenu', args)
         self.assertIn('--prompt=', args)
-        self.assertNotIn('--placeholder=Search applications', args)
+        self.assertNotIn('--placeholder=Search apps', args)
         text = command.call_args.kwargs['input']
-        self.assertIn('wifi: Home', text)
-        self.assertIn('power: 50%', text)
+        self.assertIn('WiFi Home', text)
+        self.assertIn('Battery 50%', text)
         self.assertIn(f'--lines={len(text.splitlines())}', args)

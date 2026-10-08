@@ -23,7 +23,7 @@ case "$mode" in
         grim "$out"
         ;;
     *)
-        notify-send -u critical "Screenshot" "Unknown mode: $mode (expected select|full)"
+        notify-send -u critical "Screenshot" "Use select or full"
         exit 1
         ;;
 esac
@@ -31,4 +31,5 @@ captured=true
 
 # Keep a successful capture even if clipboard delivery fails.
 wl-copy --type image/png < "$out"
-notify-send "Screenshot" "Saved to $out — also copied to clipboard"
+notify-send "Screenshot" "Saved and copied
+$out"

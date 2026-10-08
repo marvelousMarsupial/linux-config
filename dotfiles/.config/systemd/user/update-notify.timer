@@ -1,0 +1,8 @@
+[Unit]
+Description=Check for completed package updates during Sway
+PartOf=sway-session.target
+
+[Timer]
+OnActiveSec=30s
+OnUnitActiveSec=2min
+AccuracySec=15s

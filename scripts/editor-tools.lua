@@ -16,7 +16,7 @@ local function setup()
     end
   end
   if #missing > 0 then
-    error("Missing tools: " .. table.concat(missing, ", ") .. ". Fix the installation errors and rerun setup-editor.")
+    error("Missing tools: " .. table.concat(missing, ", ") .. "\nFix the errors and run setup-editor again")
   end
   require("nvim-treesitter").install(tools.parsers):wait(300000)
   for _, language in ipairs(tools.parsers) do

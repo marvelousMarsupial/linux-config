@@ -47,26 +47,24 @@ def get_battery() -> str:
     """Get battery status."""
     bat_path = find_battery()
     if bat_path is None:
-        return "AC"
+        return "Power connected"
 
     try:
         capacity = (bat_path / "capacity").read_text().strip()
         status = (bat_path / "status").read_text().strip()
-        icons = {
-            "Charging": "+",
-            "Discharging": "-",
-            "Full": "=",
-        }
-        icon = icons.get(status, "")
-        return f"{capacity}% {icon}"
+        if status == "Charging":
+            return f"Battery {capacity}% charging"
+        if status == "Full":
+            return "Battery full"
+        return f"Battery {capacity}%"
     except IOError:
-        return "AC"
+        return "Power connected"
 
 def get_network() -> str:
     """Get network status via nmcli."""
     output = run_output(["nmcli", "-t", "-f", "NAME,TYPE", "c", "show", "--active"])
     if not output:
-        return "Disconnected"
+        return "Offline"
 
     wifi = ""
     ethernet = ""
@@ -83,8 +81,8 @@ def get_network() -> str:
     if wifi:
         return wifi
     elif ethernet:
-        return "Wired"
-    return "Disconnected"
+        return "Ethernet"
+    return "Offline"
 
 def get_bluetooth() -> str:
     """Get connected bluetooth device."""
@@ -99,21 +97,12 @@ def get_bluetooth() -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="status-osd",
-        description="Display system status as a desktop notification",
+        description="Show a status notification",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Shows a brief notification with:
-  - Current time and date
-  - Battery level and status
-  - Network connection
-  - Bluetooth device (if connected)
-
-Designed to be bound to a key in Sway for quick status checks.
-
-Requires:
-  - notify-send (for notifications)
-  - nmcli (for network status)
-  - bluetoothctl (for bluetooth, optional)
+Shows time, battery, network and Bluetooth
+Needs notify-send and nmcli
+Bluetooth needs bluetoothctl
 """
     )
     parser.add_argument(
@@ -121,7 +110,7 @@ Requires:
         type=int,
         default=2500,
         metavar="MS",
-        help="Notification timeout in milliseconds (default: 2500)"
+        help="Duration in milliseconds default 2500"
     )
     args = parser.parse_args()
 
@@ -136,12 +125,12 @@ Requires:
         time_str,
         date_str,
         "",
-        f"Battery: {battery}",
-        f"Network: {network}",
+        battery,
+        network,
     ]
 
     if bluetooth:
-        lines.append(f"Bluetooth: {bluetooth}")
+        lines.append(f"Bluetooth {bluetooth}")
 
     msg = "\n".join(lines)
 

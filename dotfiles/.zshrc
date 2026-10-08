@@ -6,7 +6,7 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/sbin:/usr/sbin:/sbin:/
 
 # Auto-start Sway on tty1
 if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" = "1" ] && command -v sway >/dev/null; then
-  exec sway
+  exec systemd-cat --identifier=sway sway
 fi
 
 # Locale for Unicode and emoji

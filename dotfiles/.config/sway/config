@@ -199,7 +199,7 @@ bindsym $mod+Shift+grave move scratchpad
 # ===========================================
 
 # Terminal
-bindsym $mod+Return exec $term
+bindsym $mod+Return exec $bin/terminal
 
 # Launcher (Space is easy to hit)
 bindsym $mod+Space exec $menu
@@ -270,10 +270,7 @@ bindsym --to-code $mod+w exec $bin/wifi-menu
 bindsym --to-code $mod+c exec virt-manager --connect qemu:///system
 
 # USB eject all
-bindsym --to-code $mod+u exec udiskie-umount -a && notify-send "USB" "All devices ejected"
-
-# Clipboard history (10 items)
-bindsym --to-code $mod+Shift+v exec cliphist list | head -10 | fuzzel --dmenu | cliphist decode | wl-copy
+bindsym --to-code $mod+u exec udiskie-umount -a && notify-send "USB" "Drives ejected"
 
 # ===========================================
 # SCREENSHOTS
@@ -298,8 +295,12 @@ bindsym Shift+Print exec $bin/screenshot full
 # MEDIA / BRIGHTNESS
 # ===========================================
 
-bindsym --locked XF86MonBrightnessUp exec brightnessctl set +10%
-bindsym --locked XF86MonBrightnessDown exec brightnessctl set 10%-
+bindsym --locked XF86MonBrightnessUp exec $bin/brightness up
+bindsym --locked XF86MonBrightnessDown exec $bin/brightness down
+
+# Backup brightness keys
+bindsym $mod+F11 exec $bin/brightness down
+bindsym $mod+F12 exec $bin/brightness up
 
 bindsym --locked XF86AudioRaiseVolume exec wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+
 bindsym --locked XF86AudioLowerVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
@@ -314,6 +315,9 @@ bindsym --locked XF86AudioPrev exec playerctl previous
 # WINDOW RULES
 # ===========================================
 
+# Terminals opened from fullscreen
+for_window [app_id="^fullscreen-terminal(-[0-9]+-[12])?$"] floating enable, resize set 800 550, move position center
+
 # Float utility windows
 for_window [app_id="blueman-manager"] floating enable
 for_window [app_id="pavucontrol"] floating enable
@@ -325,6 +329,9 @@ for_window [title="File Operation Progress"] floating enable
 # btop floating terminal (smaller window)
 for_window [app_id="btop"] floating enable, resize set 900 600
 
+# Appearance gallery popup
+for_window [app_id="org.linuxconfig.Appearance"] floating enable, move position center, border pixel 0
+
 # Keybindings help popup
 for_window [app_id="keybinds"] floating enable, resize set 760 720, border pixel 2
 
@@ -334,43 +341,22 @@ for_window [app_id="notes"] floating enable
 for_window [app_id="notes"] sticky enable
 for_window [app_id="notes"] resize set 500 400
 
-# Inhibit idle for fullscreen
-for_window [app_id=".*"] inhibit_idle fullscreen
+# Fullscreen alone does not inhibit the idle lock.
+# Applications can still request their own idle inhibitors (e.g. video playback).
 
 # ===========================================
 # AUTOSTART
 # ===========================================
 
-# Bring up the systemd user session that hosts sway-integrated
-# services. The `sway-session` script:
-#   1. exports XDG_CURRENT_DESKTOP / XDG_SESSION_TYPE / XDG_SESSION_DESKTOP
-#   2. pushes WAYLAND_DISPLAY / SWAYSOCK / DISPLAY / cursor vars into
-#      both dbus (`dbus-update-activation-environment`) and the user
-#      systemd manager (`systemctl --user import-environment`)
-#   3. starts `sway-session.target`, which `BindsTo=graphical-session.target`
-#      and pulls in everything `WantedBy=sway-session.target` (kanshi.service)
-#
-# This single line subsumes the previous standalone
-# `dbus-update-activation-environment` invocation that used to live
-# here (the script does it as part of step 2) and replaces the
-# previous `exec_always $bin/kanshi-restart` autostart — kanshi is
-# now started by systemd via the unit file at
-# ~/.config/systemd/user/kanshi.service, with proper `After=` and
-# `PartOf=` ordering against graphical-session.target so it can't
-# subscribe to wlr-output-management before sway-IPC is ready (the
-# subscribe-before-ready race was the root cause of the boot-time
-# wedge that left the launcher rendering off-screen).
-#
-# `exec` (not `exec_always`): the script already short-circuits if
-# sway-session.target is active, so re-running it on `swaymsg
-# reload` is a no-op. Keeping `exec` makes the no-op explicit and
-# avoids reload-time DBus traffic.
+# Import the compositor environment and start session services once.
+# An IPC monitor stops the target and kanshi when Sway exits. Ordering
+# controls service startup; it does not guarantee monitor discovery is done.
 exec $bin/sway-session
 
 # Prefer dark mode for desktop applications
 exec gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
 
-exec mako
+# Notifications are started by sway-session.target.
 # udiskie auto-mounts removable media (USB sticks, external drives) into
 # /run/media/$USER/<label>/ and pops a notification on plug. Flags:
 #   --no-tray : this sway setup has no system tray, so the default
@@ -382,12 +368,13 @@ exec mako
 # (mount.yazi plugin) or the `gm` jump-to-/run/media binding — see
 # dotfiles/.config/yazi/keymap.toml.
 exec udiskie --no-tray --automount --notify
-exec wl-paste --watch cliphist store -max-items 10
-exec swayidle -w before-sleep 'swaylock -f'
+# No clipboard-history watcher: copied passwords must not be stored on disk.
+# Lock after 30 minutes idle and before suspend; wait until swaylock has locked.
+exec swayidle -w timeout 1800 'swaylock -f' before-sleep 'swaylock -f'
 exec $bin/battery-monitor
 
 # Optional machine-specific outputs and bindings.
 include ~/.config/sway/local.conf
 
-# Toggle desktop and Zen glass together (restart Zen afterward).
-bindsym $mod+Ctrl+g exec $bin/glass-mode toggle
+# Appearance popup: theme and transparency selectors.
+bindsym --to-code $mod+g exec $bin/appearance-menu

@@ -90,4 +90,10 @@ output = "~/.config/gtk-4.0/gtk.css"
 [[targets]]
 name = "zen-glass"
 template = "zen-glass.css.j2"
-output = "~/.zen/*/chrome/glass-palette.css"
+output = "~/.config/zen/glass-palette.css"
+
+[[targets]]
+name = "zen-system"
+template = "zen-system.css.j2"
+output = "~/.config/zen/system-theme.css"
+hook = "/home/august/.local/bin/zen-theme-sync"

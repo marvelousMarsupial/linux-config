@@ -5,11 +5,37 @@ from command_support import CommandSandbox
 
 
 class CommandTests(CommandSandbox):
+    def test_brightness_changes_only_screen_backlights(self):
+        self.stub('brightnessctl')
+        for direction, step in (('up', '+10%'), ('down', '10%-')):
+            with self.subTest(direction=direction):
+                self.reset()
+                result = self.execute('brightness', direction)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.events()[-1]['args'],
+                                 ['--class=backlight', '--min-value=1', 'set', step])
+
+    def test_brightness_missing_backlight_never_changes_leds(self):
+        self.stub('brightnessctl')
+        result = self.execute('brightness', 'up', responses={'brightnessctl': {'code': 1}})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual([e['name'] for e in self.events()], ['brightnessctl', 'notify-send'])
+        self.assertNotIn('set', self.events()[0]['args'])
+        self.assertIn('No screen brightness control found', result.stderr)
+
+    def test_brightness_permission_failure_is_visible(self):
+        self.stub('brightnessctl')
+        result = self.execute('brightness', 'down', responses={
+            'brightnessctl --class=backlight --min-value=1 set 10%-': {'code': 1}})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.events()[-1]['name'], 'notify-send')
+        self.assertIn('Check backlight permissions', result.stderr)
+
     def test_power_actions_and_unknown_selection(self):
-        actions = {'Lock': ('swaylock', ['-f']), 'Suspend': ('systemctl', ['suspend']),
-                   'Logout': ('swaymsg', ['exit']), 'Reboot': ('systemctl', ['reboot']),
-                   'Shutdown': ('systemctl', ['poweroff'])}
-        for choice in [*actions, 'Reboot; echo injected', '']:
+        actions = {'Lock': ('swaylock', ['-f']), 'Sleep': ('systemctl', ['suspend']),
+                   'Log out': ('swaymsg', ['exit']), 'Restart': ('systemctl', ['reboot']),
+                   'Shut down': ('systemctl', ['poweroff'])}
+        for choice in [*actions, 'Restart; echo injected', '']:
             with self.subTest(choice=choice):
                 self.reset()
                 result = self.execute('power-menu', responses={'fuzzel': {'out': choice+'\n'}})
@@ -38,7 +64,7 @@ class CommandTests(CommandSandbox):
                 result = self.execute('launcher', '--width=42', XDG_DATA_DIRS=inherited)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 event = self.events()[0]
-                self.assertEqual(event['args'], ['--placeholder=Search applications', '--width=42'])
+                self.assertEqual(event['args'], ['--placeholder=Search apps', '--width=42'])
                 self.assertTrue(event['data'].startswith(inherited or '/usr/local/share:/usr/share'))
                 self.assertIn(str(self.home / '.local/share'), event['data'])
                 self.assertIn('/var/lib/flatpak/exports/share', event['data'])
@@ -49,12 +75,12 @@ class CommandTests(CommandSandbox):
             XDG_CURRENT_DESKTOP='wrong', XDG_SESSION_TYPE='x11', TOP_SECRET='never-import')
         self.assertEqual(result.returncode, 0, result.stderr)
         events = self.events()
-        self.assertEqual([e['name'] for e in events], ['systemctl', 'dbus-update-activation-environment',
+        self.assertEqual([e['name'] for e in events], ['systemctl', 'swaymsg', 'dbus-update-activation-environment',
                                                      'systemctl', 'systemctl', 'systemctl'])
         self.assertEqual(events[-1]['args'], ['--user', 'start', 'sway-session.target'])
-        self.assertEqual(events[2]['args'], ['--user', 'reset-failed'])
-        self.assertIn('WAYLAND_DISPLAY', events[3]['args'])
-        self.assertNotIn('TOP_SECRET', events[3]['args'])
+        self.assertEqual(events[3]['args'], ['--user', 'reset-failed', 'kanshi.service', 'sway-session-monitor.service'])
+        self.assertIn('WAYLAND_DISPLAY', events[4]['args'])
+        self.assertNotIn('TOP_SECRET', events[4]['args'])
         self.assertTrue(all(e['desktop'] == 'sway' and e['session'] == 'wayland' for e in events))
 
     def test_active_session_is_untouched(self):
@@ -68,7 +94,14 @@ class CommandTests(CommandSandbox):
             'systemctl --user --quiet is-active sway-session.target': {'code': 3},
             'dbus-update-activation-environment': {'code': 1}})
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(len(self.events()), 2)
+        self.assertEqual(len(self.events()), 3)
+
+    def test_unavailable_compositor_prevents_session_start(self):
+        result = self.execute('sway-session', responses={
+            'systemctl --user --quiet is-active sway-session.target': {'code': 3},
+            'swaymsg': {'code': 1}})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual([e['name'] for e in self.events()], ['systemctl', 'swaymsg'])
 
     def test_notes_focus_existing_window_without_creating_note(self):
         tree = {'nodes': [{'app_id': 'notes'}]}

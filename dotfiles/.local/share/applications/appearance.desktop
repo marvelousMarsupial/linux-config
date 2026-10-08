@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Appearance
+Comment=Choose a theme and turn transparency on or off
+Exec=/home/august/.local/bin/appearance-menu
+Icon=preferences-desktop-theme
+Type=Application
+Categories=Settings;DesktopSettings;
+Keywords=theme;transparency;glass;colors;
+Terminal=false

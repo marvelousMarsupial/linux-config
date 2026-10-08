@@ -1,43 +1,59 @@
 #!/usr/bin/env python3
 """Display sway keybindings cheatsheet."""
 
-CONTENT = """
-                          SWAY KEYBINDINGS
+CONTENT = r"""
+Sway shortcuts
 
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Windows
+Super hjkl          Focus
+Super Shift hjkl    Move
+Super Ctrl hjkl     Resize
+Super q             Close
+Super f             Fullscreen
+Super Shift Space   Float
+Super t             Change layout
+Super \             Split horizontally
+Super -             Split vertically
+Super `             Scratchpad
+Alt Tab             Next window
 
-   NAVIGATION                              SYSTEM
-   Super + hjkl        Focus window        Super + q           Kill window
-   Super + Shift hjkl  Move window         Super + x           Power menu
-   Super + Ctrl hjkl   Resize window       Super + Escape      Lock screen
-   Super + Tab         Next workspace      Super + i           Status panel
-   Super + 1-9         Workspace N         Super + Shift + i   btop
-   Super + o           Next monitor        Super + w           WiFi menu
-   Alt + Tab           Cycle windows       Super + Shift + b   Bluetooth
-                                           Super + u           Eject USB
-   LAYOUT                                  Super + Shift + v   Clipboard
-   Super + \\           Horizontal split    Super + Shift + c   Reload sway
-   Super + -           Vertical split      Super + Shift + e   Exit sway
-   Super + f           Fullscreen
-   Super + Shift Space Float toggle        SCREENSHOTS
-   Super + t           Toggle layout       Print               Region → file & clip
-   Super + `           Scratchpad          Shift + Print       Full → file & clip
+Workspaces
+Super 1 to 9        Open workspace
+Super Shift 1 to 9  Move window to workspace
+Super Tab           Next workspace
+Super o             Next monitor
+Super Shift o       Move workspace to monitor
 
-   APPS
-   Super + Enter       Terminal
-   Super + Space       Launcher
-   Super + b           Browser (Zen)
-   Super + n           New vim note
-   Super + m           Search notes
+Apps
+Super Enter         Terminal
+Super Space         Apps
+Super g             Appearance
+Super b             Browser
+Super n             New note
+Super m             Find note
+Super e             Files
+Super p             Passwords
+Super v             Editor
 
-   Super + e           Files
-   Super + p           Passwords
-   Super + v           Editor
-   Super + Shift + /   This help
+System
+Super F11           Dim screen
+Super F12           Brighten screen
+Super Escape        Lock
+Super x             Power
+Super i             Status
+Super Shift i       System monitor
+Super w             WiFi
+Super Shift b       Bluetooth
+Super u             Eject drives
+Super Shift c       Reload Sway
+Super Shift e       Exit Sway
+Super Shift /       Shortcuts
 
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Screenshots
+Print               Select area
+Shift Print         Full screen
 
-                             Press Enter to close
+Press Enter to close
 """
 
 def main():

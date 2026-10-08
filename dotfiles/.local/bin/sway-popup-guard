@@ -2,8 +2,10 @@
 """Reveal new floating windows during fullscreen and restore fullscreen on close."""
 import json
 import os
+import re
 import socket
 import struct
+import sys
 
 
 class IPC:
@@ -45,77 +47,142 @@ def fullscreen(node):
     return node['type'] in ('con', 'floating_con') and node.get('fullscreen_mode', 0)
 
 
+class PopupGuard:
+    def __init__(self, command):
+        self.command = command
+        self.suspended = {}
+        self.pending = set()
+
+    def track_terminal(self, node, by_id):
+        # The shortcut exits fullscreen before Foot maps. Its app ID carries
+        # the original container and mode so close/move restoration still works.
+        match = re.fullmatch(r'fullscreen-terminal-(\d+)-([12])', node.get('app_id') or '')
+        if not match or int(match[1]) not in by_id:
+            return False
+        parent, workspace, _ = by_id[int(match[1])]
+        popup_workspace = by_id[node['id']][1]
+        if (not workspace or not popup_workspace or workspace['id'] != popup_workspace['id']
+                or fullscreen(parent)):
+            return False
+        saved = self.suspended.get(workspace['id'])
+        if saved and saved['parent'] != parent['id']:
+            return False
+        if not saved:
+            saved = dict(parent=parent['id'], mode=int(match[2]), popups=set())
+            self.suspended[workspace['id']] = saved
+        saved['popups'].add(node['id'])
+        self.pending.discard(node['id'])
+        return True
+
+    def handle(self, event, tree):
+        change = event.get('change')
+        target = event.get('container', {}).get('id')
+        if change == 'new':
+            self.pending.add(target)
+        elif change == 'close':
+            self.pending.discard(target)
+        entries = list(walk(tree))
+        by_id = {n['id']: (n, ws, floating) for n, ws, floating in entries}
+        if change == 'close':
+            by_id.pop(target, None)
+        for ws_id, saved in list(self.suspended.items()):
+            saved['popups'] = {i for i in saved['popups'] if i in by_id and
+                               by_id[i][1] and by_id[i][1]['id'] == ws_id}
+            if saved['parent'] not in by_id:
+                del self.suspended[ws_id]
+            elif not saved['popups']:
+                del self.suspended[ws_id]
+                if not any(fullscreen(n) and n['id'] != saved['parent']
+                           for n, ws, _ in entries if ws and ws['id'] == ws_id):
+                    suffix = ' global' if saved['mode'] == 2 else ''
+                    self.command(f'[con_id={saved["parent"]}] fullscreen enable{suffix}')
+        if target not in by_id or change not in (
+                'new', 'floating', 'fullscreen_mode', 'move', 'focus', 'title', 'startup'):
+            return
+        node, ws, floating = by_id[target]
+        if not ws or ws['name'] == '__i3_scratch' or not ws.get('visible', True):
+            return
+        ws_id = ws['id']
+        if change == 'new' and self.track_terminal(node, by_id):
+            return
+        if change == 'fullscreen_mode':
+            if fullscreen(node):
+                # An explicit fullscreen action takes priority over old floaters
+                # and any earlier reveal/restore session on this workspace.
+                self.suspended.pop(ws_id, None)
+                self.pending.difference_update(n['id'] for n, w, _ in entries
+                                               if w and w['id'] == ws_id)
+            return
+        if change in ('floating', 'move') and floating:
+            self.pending.add(target)
+        if change != 'new' and target not in self.pending:
+            return
+        saved = self.suspended.get(ws_id)
+        if saved and target in saved['popups']:
+            return
+        fs = next((n for n, w, _ in entries if fullscreen(n) and n['id'] != target and
+                   (n['fullscreen_mode'] == 2 or (w and w['id'] == ws_id))), None)
+        if not saved and not fs:
+            self.pending.discard(target)
+            return
+        if fullscreen(node) or (saved and saved['parent'] == target):
+            self.pending.discard(target)
+            return
+        if floating and node.get('visible', False) and not saved:
+            # Native parented dialogs may already be above fullscreen. Preserve
+            # that stacking instead of needlessly disabling fullscreen.
+            return
+        if not saved:
+            saved = dict(parent=fs['id'], mode=fs['fullscreen_mode'], popups=set())
+            self.suspended[ws_id] = saved
+        self.pending.discard(target)
+        saved['popups'].add(target)
+        width = max(1, min(800, int(ws['rect']['width'] * 0.65)))
+        height = max(1, min(550, int(ws['rect']['height'] * 0.65)))
+        self.command(f'[con_id={saved["parent"]}] fullscreen disable; '
+                f'[con_id={target}] floating enable, resize set {width} {height}, '
+                     'move position center, focus')
+
+    def recover(self, tree, startup=False):
+        # Retry only windows arriving during fullscreen. Existing floaters must
+        # not undo an explicit fullscreen action on every focus/title event.
+        entries = list(walk(tree))
+        by_id = {n['id']: (n, ws, floating) for n, ws, floating in entries}
+        for node, workspace, floating in entries:
+            if startup and self.track_terminal(node, by_id):
+                continue
+            if (workspace and not node.get('visible', False) and not fullscreen(node)
+                    and (node.get('app_id') or node.get('window'))):
+                if startup and floating:
+                    self.pending.add(node['id'])
+                if node['id'] in self.pending:
+                    self.handle({'change': 'startup', 'container': {'id': node['id']}}, tree)
+
+
 def main():
     commands, events = IPC(), IPC()
-    events.request(2, '["window", "shutdown"]')
-    suspended = {}
+    if not events.request(2, '["window", "shutdown"]').get('success'):
+        raise RuntimeError('Unable to subscribe to Sway window events')
 
     def command(text):
         result = commands.request(0, text)
         if not all(item.get('success') for item in result):
-            raise RuntimeError(f'Sway rejected popup command: {result}')
+            # A window may close between its event and the command. Keep the
+            # guard alive so the close event can restore the fullscreen parent.
+            print(f'Sway popup command failed: {result}', file=sys.stderr)
 
+    guard = PopupGuard(command)
+    guard.recover(commands.request(4), startup=True)
     while True:
         kind, event = events.read()
         if kind == 0x80000006:
             return
-        change = event.get('change')
-        if change not in ('new', 'close', 'floating', 'fullscreen_mode', 'move'):
+        if event.get('change') not in ('new', 'close', 'floating', 'fullscreen_mode',
+                                      'move', 'focus', 'title'):
             continue
-        entries = list(walk(commands.request(4)))
-        by_id = {n['id']: (n, ws, floating) for n, ws, floating in entries}
-        target = event.get('container', {}).get('id')
-        if change == 'close':
-            by_id.pop(target, None)
-        for ws_id, saved in list(suspended.items()):
-            saved['popups'] = {i for i in saved['popups'] if i in by_id and
-                               by_id[i][1] and by_id[i][1]['id'] == ws_id}
-            if saved['parent'] not in by_id:
-                del suspended[ws_id]
-            elif not saved['popups']:
-                del suspended[ws_id]
-                if not any(fullscreen(n) and n['id'] != saved['parent']
-                           for n, ws, _ in entries if ws and ws['id'] == ws_id):
-                    suffix = ' global' if saved['mode'] == 2 else ''
-                    command(f'[con_id={saved["parent"]}] fullscreen enable{suffix}')
-        if target not in by_id or change not in ('new', 'floating', 'fullscreen_mode'):
-            continue
-        node, ws, floating = by_id[target]
-        if not ws or ws['name'] == '__i3_scratch':
-            continue
-        ws_id = ws['id']
-        if change == 'fullscreen_mode':
-            if not fullscreen(node):
-                continue
-            popups = {n['id'] for n, w, f in entries if f and w and
-                      w['id'] == ws_id and n['id'] != target and
-                      (n.get('app_id') or n.get('window')) and not n.get('visible', False)}
-            if popups:
-                suspended[ws_id] = dict(parent=target, mode=node['fullscreen_mode'], popups=popups)
-                command(f'[con_id={target}] fullscreen disable')
-            continue
-        if change == 'floating' and not floating:
-            continue
-        saved = suspended.get(ws_id)
-        fs = next((n for n, w, _ in entries if fullscreen(n) and n['id'] != target and
-                   (n['fullscreen_mode'] == 2 or (w and w['id'] == ws_id))), None)
-        if not saved and not fs:
-            continue
-        if saved and saved['parent'] == target:
-            continue
-        if not saved and node.get('visible', False):
-            # Native parented dialogs may already be above fullscreen. Preserve
-            # that stacking instead of needlessly disabling fullscreen.
-            continue
-        if not saved:
-            saved = dict(parent=fs['id'], mode=fs['fullscreen_mode'], popups=set())
-            suspended[ws_id] = saved
-        saved['popups'].add(target)
-        width = max(1, min(800, int(ws['rect']['width'] * 0.65)))
-        height = max(1, min(550, int(ws['rect']['height'] * 0.65)))
-        command(f'[con_id={saved["parent"]}] fullscreen disable; '
-                f'[con_id={target}] floating enable, resize set {width} {height}, '
-                'move position center, focus')
+        tree = commands.request(4)
+        guard.handle(event, tree)
+        guard.recover(tree)
 
 
 if __name__ == '__main__':

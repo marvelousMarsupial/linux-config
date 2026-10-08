@@ -1,0 +1,43 @@
+#!/usr/bin/python3
+"""Open Foot; leave fullscreen first and float the new terminal when needed."""
+import json
+import os
+import subprocess
+
+
+def walk(node, workspace=None):
+    if node.get('type') == 'workspace':
+        workspace = node
+    yield node, workspace
+    for child in node.get('nodes', []) + node.get('floating_nodes', []):
+        yield from walk(child, workspace)
+
+
+def fullscreen_parent(tree):
+    entries = list(walk(tree))
+    workspace = next((ws['id'] for node, ws in entries if ws and node.get('focused')), None)
+    return next((node for node, ws in entries if node.get('type') in ('con', 'floating_con')
+                 and (node.get('fullscreen_mode') == 2 or
+                      (node.get('fullscreen_mode') == 1 and ws and ws['id'] == workspace))), None)
+
+
+def main():
+    floating = False
+    try:
+        result = subprocess.run(['swaymsg', '-r', '-t', 'get_tree'],
+                                capture_output=True, text=True, timeout=3, check=True)
+        parent = fullscreen_parent(json.loads(result.stdout))
+        if parent:
+            result = subprocess.run(['swaymsg', '-r', f'[con_id={int(parent["id"])}] fullscreen disable'],
+                                    capture_output=True, text=True, timeout=3, check=True)
+            floating = all(item.get('success') for item in json.loads(result.stdout))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    command = ['foot']
+    if floating:
+        command.append(f'--app-id=fullscreen-terminal-{int(parent["id"])}-{int(parent["fullscreen_mode"])}')
+    os.execvp(command[0], command)
+
+
+if __name__ == '__main__':
+    main()

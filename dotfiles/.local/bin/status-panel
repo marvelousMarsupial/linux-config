@@ -16,29 +16,11 @@ if dbus_env.exists() and "DBUS_SESSION_BUS_ADDRESS" not in os.environ:
             os.environ["DBUS_SESSION_BUS_ADDRESS"] = addr
 
 
-# Width of the popup in monospace cells. Sized for the longest
-# possible status line:
-#
-#   "power: full, connected"      22 chars  (Full while AC attached)
-#   "power: NN% charging"         19 chars  (charging, two-digit NN)
-#
-# 22 chars + 4 cells of margin = 26. The smblock clock font runs
-# exactly 14 cells wide for any HH:MM (verified across
-# 00:00 / 88:88 / 12:34 / 09:59), so it fits with 6 cells of slack
-# on each side after centering. We briefly ran 52 cells while
-# trying bigascii12, but the resulting popup was too physically
-# large for a glanceable status display — smblock + 26 cells is
-# the right balance of "bold enough to read at a distance" and
-# "compact enough to feel like a popup, not a full window".
-#
-# Bumping the font size below also affects how many cells fit on
-# screen — keep them in sync.
+# Popup width in monospace cells.
 PANEL_WIDTH = 26
 FONT = "monospace:size=18"
-# Maximum SSID length before we truncate with an ellipsis. Computed so
-# that "wifi: <ssid>" never exceeds PANEL_WIDTH (the trailing -1 leaves
-# one cell of right-margin so the ellipsis doesn't touch the popup edge).
-SSID_MAX = PANEL_WIDTH - len("wifi: ") - 1
+# Leave one cell after the network name.
+SSID_MAX = PANEL_WIDTH - len("WiFi ") - 1
 
 
 def run(cmd: list[str]) -> str:
@@ -79,10 +61,10 @@ def get_clock() -> str:
 
 
 def get_network() -> str:
-    'Return ``wifi: <ssid>``, ``ethernet``, or ``offline``.'
+    'Return the WiFi name, Ethernet, or Offline.'
     wifi = run(["iwgetid", "-r"]).strip()
     if wifi:
-        return f"wifi: {trunc(wifi, SSID_MAX)}"
+        return f"WiFi {trunc(wifi, SSID_MAX)}"
 
     # Format from `ip -br link show`:
     #     <ifname>  <state>  <mac>  <flags>
@@ -92,38 +74,30 @@ def get_network() -> str:
         parts = line.split()
         if len(parts) >= 2 and parts[1] == "UP" and parts[0] != "lo":
             if parts[0].startswith(("en", "eth", "em")):
-                return "ethernet"
-    return "offline"
+                return "Ethernet"
+    return "Offline"
 
 
 def get_power() -> str:
     'Return a power status line.'
     bat = Path("/sys/class/power_supply/BAT0")
     if not bat.exists():
-        return "power: ac"
+        return "Power connected"
     try:
         pct = (bat / "capacity").read_text().strip()
         status = (bat / "status").read_text().strip().lower()
     except OSError:
         # sysfs read failed (battery hot-removed, permissions, etc.) —
         # better to render a placeholder than to crash the whole panel.
-        return "power: ?"
+        return "Battery unknown"
     if status == "charging":
-        return f"power: {pct}% charging"
+        return f"Battery {pct}% charging"
     if status == "full":
-        # User-picked wording for "battery Full while AC attached".
-        # The comma is load-bearing: "full" alone doesn't tell the
-        # user the laptop is still on mains, and earlier longer
-        # drafts ("full and connected to power", "full connected to
-        # power") were trimmed at the user's request. The two-word
-        # form keeps both facts visible without widening the panel.
-        # PANEL_WIDTH above was sized to fit this exact string; if
-        # you reword it, re-check the width.
-        return "power: full, connected"
+        return "Battery full on power"
     if status == "not charging":
-        return f"power: {pct}% (ac)"
+        return f"Battery {pct}% on power"
     # "discharging" or anything unexpected — show just the percentage.
-    return f"power: {pct}%"
+    return f"Battery {pct}%"
 
 
 def main() -> None:
