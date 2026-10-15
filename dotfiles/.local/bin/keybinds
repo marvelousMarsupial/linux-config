@@ -30,6 +30,7 @@ Super Space         Apps
 Super g             Appearance
 Super b             Browser
 Super n             New note
+Super Shift n       Notifications
 Super m             Find note
 Super e             Files
 Super p             KeePassXC show/hide
@@ -40,7 +41,7 @@ Super F11           Dim screen
 Super F12           Brighten screen
 Super Escape        Lock
 Super x             Power
-Super i             Status
+Super i             Toggle status
 Super Shift i       System monitor
 Super w             WiFi
 Super Shift b       Bluetooth

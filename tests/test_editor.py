@@ -11,6 +11,11 @@ from support import REPO, run
 @unittest.skipUnless(shutil.which('nvim') and (Path.home() / '.local/share/nvim/lazy/lazy.nvim').exists(),
                      'Neovim and installed plugins required')
 class NeovimTests(unittest.TestCase):
+    def test_operator_substitutions_and_toggle(self):
+        result = run('nvim', '--headless', '-u', 'NONE', '-l', str(REPO / 'tests/nvim_ligatures.lua'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('bold style and toggle passed', result.stderr)
+
     def test_filetypes_prose_saves_plugins_and_language_configs(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

@@ -12,7 +12,7 @@ Run from the repository root:
 
 The basic check validates shell/Python/Lua syntax, TOML, and all six palette renders.
 The full check also runs the offline integration suite. Latest full run on
-2026-10-08 in the restricted session: **193 tests run, 191 passed, two skipped**
+2026-10-15 in the restricted session: **206 tests run, 204 passed, two skipped**
 (GTK display routing and local IPC unavailable). Syntax, TOML, Lua and six
 palette renders passed. The editor smoke test now preserves entire prose files
 exactly while allowing code formatting. Deterministic external HTML/JSON fixtures
@@ -20,6 +20,11 @@ verify formatting on save and the resulting disk contents, even without optional
 formatters installed. This resolves the prior unchanged-HTML assertion failure.
 Tests requiring Neovim and installed plugins can be skipped on a machine without
 them; inspect the output before claiming coverage.
+The new operator tests cover JavaScript, TypeScript, TSX, C and Python; the
+notification viewer and status toggle also have focused tests. The updated
+TCP/3773 firewall policy could not be loaded or checked here because the
+sandbox blocks nftables netlink access. Validate it with `sudo nft --check`
+before installing it, then test a paired client from the allowed subnet.
 
 Remote bootstrap checks exercise piped execution, argument forwarding, setup/clone
 failure exit codes and temporary checkout cleanup without network or sudo. A

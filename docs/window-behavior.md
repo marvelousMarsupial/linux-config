@@ -52,7 +52,7 @@ and [popup condition](https://github.com/swaywm/sway/blob/1.10.1/sway/tree/conta
 ## Floating Foot opacity
 
 Standalone Foot windows use at least **60% background opacity when floating**.
-Tiling them restores the current theme alpha (8% in glass mode). Solid mode stays
+Tiling them removes the tint (0% background opacity in glass mode). Solid mode stays
 opaque. This includes upload/save pickers and terminals toggled with
 Super+Shift+Space. Text stays opaque. Foot server/client sessions are not covered.
 

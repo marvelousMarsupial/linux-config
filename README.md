@@ -24,6 +24,8 @@ See [current state](docs/state.md) for checked repository/host differences and
 Use [editor setup](docs/editor.md) for Neovim and optional language tools.
 See [shell](docs/shell.md) for prefix history, suggestions, fuzzy completion and
 the Git prompt.
+See [notifications](docs/notifications.md) and [font/operator display](docs/font-preview.md)
+for the current desktop shortcuts and typography.
 
 For a fresh Debian 13 x86_64 workstation, run as your normal
 user from the checkout:

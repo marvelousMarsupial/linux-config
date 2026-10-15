@@ -69,7 +69,20 @@ input type:touchpad {
     tap enabled
     natural_scroll disabled
     dwt enabled
+    click_method clickfinger
 }
+
+# Touchpad: focus, workspaces, status panel and application zoom.
+bindgesture swipe:3:left focus left
+bindgesture swipe:3:right focus right
+bindgesture swipe:3:up focus up
+bindgesture swipe:3:down focus down
+bindgesture swipe:4:left workspace next_on_output
+bindgesture swipe:4:right workspace prev_on_output
+bindgesture swipe:4:down exec $bin/status-panel show
+bindgesture swipe:4:up exec $bin/status-panel hide
+bindgesture pinch:4:outward exec wtype -M ctrl -k equal -m ctrl
+bindgesture pinch:4:inward exec wtype -M ctrl -k minus -m ctrl
 
 # ===========================================
 # BEHAVIOR
@@ -210,6 +223,9 @@ bindsym --to-code $mod+b exec $bin/zen
 # Notes - new vim note (foot+nvim with timestamp filename)
 bindsym $mod+n exec $bin/notes-toggle
 
+# Notification inbox (active and recently dismissed notifications)
+bindsym --to-code $mod+Shift+n exec $bin/notifications
+
 # Notes - search existing (fuzzel picker over ~/vault)
 bindsym --to-code $mod+m exec $bin/notes-picker
 
@@ -255,7 +271,7 @@ mode "passthrough" {
 }
 
 # Status OSD (time, battery, network, bluetooth)
-bindsym --to-code $mod+i exec $bin/status-panel
+bindsym --to-code $mod+i exec $bin/status-panel toggle
 
 # System monitor (btop in floating terminal)
 bindsym --to-code $mod+Shift+i exec $term --app-id=btop -e btop

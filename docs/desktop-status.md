@@ -15,10 +15,11 @@ Statements about active services are evidence from that earlier session.
   `wallpaper-texture list`, a style name, or `next` changes it. Grid/dots use a
   120×120 tile with 24-pixel spacing and stronger anchors every five cells.
   Larger displays show more cells instead of stretching the pattern.
-- **Matching surfaces:** normal Zen chrome and tiled Foot use an 8% base00 background.
+- **Matching surfaces (historical snapshot):** normal Zen chrome and tiled Foot used an 8% base00 background.
   Floating Foot uses at least 60% opacity for readability over webpages.
   Fuzzel launchers and the centered clock/network/power info panel use about 8%.
   Text stays opaque. GTK and Mako backgrounds retain their stronger 72% tint.
+  Tiled Foot is now untinted in glass mode; see [current Foot behavior](window-behavior.md#floating-foot-opacity).
 - **Zen search:** a subtle resting-field surface, clear outer container, consistent
   expanded-panel background, and softer divider. Browser overlays can blur browser
   content; standard Sway does not blur desktop backgrounds.
@@ -91,3 +92,16 @@ changed as part of this desktop work. See [the scoped review](glass-security-rev
 [Glass mode and wallpaper](transparency-trial.md) ·
 [Floating windows and fullscreen](window-behavior.md) ·
 [Appearance](appearance.md)
+
+## Touchpad and status toggle
+
+Super+I toggles the existing status popup. Four-finger swipe down shows it;
+four-finger swipe up dismisses it without opening a hidden panel. It uses
+fuzzel with on-demand keyboard focus, so it behaves like a scratchpad toggle
+but is not a Sway scratchpad window. Only this panel's process group is closed.
+
+Three-finger swipes focus windows in the swipe direction. Four-finger left/right
+switches to the next/previous workspace on the current output. Four-finger
+pinch outward/inward sends Ctrl+= / Ctrl+- using wtype. Apps decide how those
+zoom shortcuts behave. Touchpad tap, disable-while-typing and clickfinger are
+enabled; natural scrolling is disabled. Physical gesture verification is pending.

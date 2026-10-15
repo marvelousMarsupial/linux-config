@@ -24,7 +24,7 @@ and [TODO](TODO.md) for remaining decisions and verification.
 | Updates | Setup installs both APT policy files and enables Debian update timers. No automatic reboots or dependency/kernel removal. |
 | Editor | Neovim/plugins and in-editor Markdown preview; optional development tools stay explicit. Browser Markdown preview is disabled. |
 | Obsidian | Not installed by the repo. Setup does not uninstall it or perform development-VM cleanup. |
-| Scope | Setup now activates the repository firewall; required incoming exceptions remain machine-specific. Encryption, firmware/drivers, monitor adjustments, VM networking/storage, hardware unlock and backup choices remain manual. Existing Incus/data are not targeted. |
+| Scope | Setup activates the repository firewall. A TCP/3773 exception for `10.160.110.0/24` is prepared for T3 Code but has not been applied live; check that subnet before using setup on another machine. Encryption, firmware/drivers, monitor adjustments, VM networking/storage, hardware unlock and backup choices remain manual. Existing Incus/data are not targeted. |
 
 ## Verification
 

@@ -1,0 +1,10 @@
+#!/bin/bash
+# A one-window font override: no changes to Foot, Neovim or desktop defaults.
+set -euo pipefail
+family=$(fc-match -f '%{family}' 'FiraCode Nerd Font Mono')
+if [[ $family != *'FiraCode Nerd Font Mono'* ]]; then
+    printf '%s\n' 'FiraCode Nerd Font is not installed. Run scripts/setup-font-preview from the linux-config repo first.' >&2
+    exit 1
+fi
+exec foot --font='FiraCode Nerd Font Mono:size=11' --title='Fira Code font preview' \
+    "$HOME/.local/bin/nvim" -R -i NONE "$HOME/.local/share/linux-config/font-preview.js"

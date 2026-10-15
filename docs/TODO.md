@@ -1,6 +1,6 @@
 # Project TODO
 
-Updated: 2026-10-08. Keep this file current as work is completed or priorities change. Record reusable lessons in [LESSONS.md](LESSONS.md).
+Updated: 2026-10-15. Keep this file current as work is completed or priorities change. Record reusable lessons in [LESSONS.md](LESSONS.md).
 
 This list contains unfinished work only, including optional and deferred tasks.
 Hardware tasks are grouped below because their final verification cannot be done
@@ -21,6 +21,25 @@ needed on the production/replacement installation.
 Details, evidence, caveats, and commands: [security audit](security-audit.md).
 
 ## Desktop and security roadmap (optional enhancements)
+
+### Desktop vision
+
+Make Debian, Sway, foot, fuzzel, nvim, yazi and Zen feel like one deliberate
+system while staying minimal. Decisions, reference options and implementation
+ideas are recorded in the [desktop plan](desktop-plan.md).
+
+Priority order:
+
+1. [ ] Finish the visual [theme consistency review](theme-review.md). Foot now uses FiraCode Nerd Font; reconcile GTK, fuzzel, Mako and status typography, icons, borders and named nvim/Yazi themes.
+2. [ ] Try SwayFX and unify typography and geometry.
+3. [ ] Match movement and other common keys across tools.
+4. [ ] Explore the Sway features in the plan, then polish boot, login and locking. Verify the new [touchpad gestures](desktop-status.md#touchpad-and-status-toggle) on hardware.
+
+- [ ] Catch apps that ignore the theme: GTK, Qt, cursor, icons, portal dark preference and Zen.
+- [ ] Consider optional locale and personal bar modules.
+- [ ] Install and validate the scoped [T3 Code firewall rule](firewall.md#t3-code-on-the-private-network) with privileges; verify that a paired device on `10.160.110.0/24` can connect. The repository policy is updated; the live firewall is not.
+
+### Other desktop and security work
 
 - [ ] Complete shell verification after downloading fzf-tab with `./scripts/setup-shell`: Tab selection/cancellation, directory/file previews and completion-based suggestions. Prefix Up/Down is user-confirmed; interactive prefix/Ctrl+R tests pass. See [shell](shell.md#verification).
 

@@ -19,6 +19,10 @@
 | [Editor](editor.md) | Minimal Neovim setup, optional development tools and daily use. |
 | [Shell](shell.md) | Prefix history, suggestions, fuzzy Tab/Ctrl+R search, plugin installation and Git prompt. |
 | [Appearance](appearance.md) | Visual choices, shared palettes and applying colors. |
+| [Desktop plan](desktop-plan.md) | Minimal desktop vision and future features. |
+| [Theme review](theme-review.md) | Shared palette coverage and remaining visual checks. |
+| [Notifications](notifications.md) | Searchable Mako history and desktop shortcut. |
+| [Font and operators](font-preview.md) | FiraCode Nerd Font and Neovim's display-only operator symbols. |
 | [Desktop status](desktop-status.md) | Accepted glass/fullscreen behavior, validation, and unfinished work. |
 | [Transparency trial](transparency-trial.md) | Optional translucent desktop experiment and exact-file rollback. |
 | [Scripts](scripts.md) | Current command inventory and responsibilities. |

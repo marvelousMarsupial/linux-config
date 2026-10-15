@@ -2,8 +2,12 @@
 """Display a centered clock, date, network and power status popup."""
 
 import os
+import argparse
+import fcntl
 import re
+import signal
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -132,6 +136,7 @@ def main() -> None:
         [
             "fuzzel",
             "--dmenu",
+            "--keyboard-focus=on-demand",
             "--prompt=",
             f"--lines={len(lines)}",
             f"--width={PANEL_WIDTH}",
@@ -146,5 +151,53 @@ def main() -> None:
         capture_output=True,
     )
 
+def control(action: str) -> None:
+    """Keep one panel process; signal only that panel when hiding/toggling."""
+    runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
+    with (runtime / 'linux-config-status-panel.lock').open('a+') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            if action != 'show':
+                lock.seek(0)
+                try:
+                    os.kill(int(lock.read()), signal.SIGUSR1)
+                except (ValueError, ProcessLookupError):
+                    pass
+            return
+        if action == 'hide':
+            return
+        # The child owns its own process group, so closing this panel cannot
+        # terminate an unrelated fuzzel launcher or notification viewer.
+        child = None
+
+        def dismiss(_signal, _frame):
+            raise SystemExit(0)
+
+        signal.signal(signal.SIGUSR1, dismiss)
+        lock.seek(0)
+        lock.truncate()
+        lock.write(str(os.getpid()))
+        lock.flush()
+        try:
+            child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--render'],
+                                     start_new_session=True)
+            child.wait()
+        finally:
+            if child is not None:
+                try:
+                    os.killpg(child.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                child.wait()
+
+
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', nargs='?', choices=('toggle', 'show', 'hide'), default='toggle')
+    parser.add_argument('--render', action='store_true', help=argparse.SUPPRESS)
+    args = parser.parse_args()
+    if args.render:
+        main()
+    else:
+        control(args.action)

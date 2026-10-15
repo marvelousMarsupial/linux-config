@@ -4,12 +4,14 @@
 
 The workstation uses nftables with a dedicated `inet linux_config` table for
 IPv4 and IPv6. Incoming traffic is dropped unless it is loopback, a reply to
-an established/related connection, ICMP/ICMPv6, DHCP client replies, or DNS/DHCP
-requests arriving on a libvirt `virbr*` bridge. Invalid tracked packets are dropped.
+an established/related connection, ICMP/ICMPv6, DHCP client replies, DNS/DHCP
+requests arriving on a libvirt `virbr*` bridge, or T3 Code TCP/3773 from
+`10.160.110.0/24`. Invalid tracked packets are dropped.
 
 Outgoing traffic is unrestricted by this table. Guest forwarding and NAT remain
-under libvirt's control. There is no SSH, web-server, LLMNR or multicast-discovery
-exception. Deliberately sharing a service requires adding a narrowly scoped rule.
+under libvirt's control. There is no SSH, general web-server, LLMNR or
+multicast-discovery exception. Deliberately sharing a service requires adding a
+narrowly scoped rule.
 ICMP remains available for diagnostics, IPv6 discovery and path MTU handling.
 This is host protection, not an outbound application firewall or a VM isolation policy.
 
@@ -54,6 +56,29 @@ override; other daemon preferences and allow rules remain local. It can block
 outgoing traffic that this host firewall permits. The checks above predate that
 trial. See [system health](sysreport.md#opensnitch) for database and socket setup;
 the user confirmed connection collection on 2026-10-08.
+
+## T3 Code on the private network
+
+The `10.160.110.0/24` TCP/3773 exception is in the repository policy before
+the final input drop. It does not forward a router port or expose IPv6. T3 Code
+must also listen on the host's private address: enable **Network access** in
+Settings → Connections, or start a command-line server with
+`t3 serve --host <host-private-ip> --port 3773`. Use T3 Code's one-time pairing
+link for each client. See the [T3 Code remote access guide](https://github.com/pingdotgg/t3code/blob/main/docs/user/remote-access.md#pair-over-a-lan-or-private-network).
+
+After reviewing the currently installed `/etc/nftables.conf`, install and reload
+the updated repository policy from the repository root:
+
+```sh
+sudo nft --check --file system/nftables.conf
+sudo cp -a /etc/nftables.conf /etc/nftables.conf.before-t3
+sudo install -m 0644 system/nftables.conf /etc/nftables.conf
+sudo systemctl reload nftables
+sudo nft list chain inet linux_config input
+```
+
+Run the connection check from a device in `10.160.110.0/24`. Removing the rule
+from the repository and reinstalling/reloading the policy closes this access.
 
 ## Inspect and change
 

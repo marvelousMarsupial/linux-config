@@ -1,0 +1,51 @@
+#!/bin/bash
+# Browse Mako's active notifications and session history using themed fuzzel.
+set -euo pipefail
+
+message() {
+    printf '%s\n' "$1" | fuzzel --dmenu --width=70 --lines=6 \
+        --placeholder='Notifications' >/dev/null || true
+}
+
+read_notifications() {
+    busctl --user --timeout=5 --json=short call org.freedesktop.Notifications \
+        /fr/emersion/Mako fr.emersion.Mako "$1"
+}
+
+if ! active=$(read_notifications ListNotifications) ||
+   ! history=$(read_notifications ListHistory); then
+    message 'Cannot read notifications. Check that mako is running in this desktop session.'
+    exit 1
+fi
+
+# Use the D-Bus API: installed makoctl versions differ in their output format.
+# Strip control characters so notification text cannot inject menu entries/icons.
+if ! entries=$(jq -cn --argjson active "$active" --argjson history "$history" '
+    def clean: tostring | gsub("[\u0000-\u001f\u007f-\u009f]"; " ");
+    def records($state): .data[0] | map({
+        state: $state,
+        app: ((."app-name".data // "Application") | clean),
+        summary: ((.summary.data // "Notification") | clean),
+        body: ((.body.data // "") | clean)
+    });
+    ($active | records("Active")) + ($history | records("History"))'); then
+    message 'Could not read the notification history format.'
+    exit 1
+fi
+
+if [[ $(jq 'length' <<<"$entries") == 0 ]]; then
+    message 'No notifications yet. History lasts until mako exits or you log out.'
+    exit 0
+fi
+
+rows=$(jq -r '.[] | "[\(.state)] \(.app) — \(.summary) — \(.body)"' <<<"$entries")
+while choice=$(printf '%s\n' "$rows" | fuzzel --dmenu --index --width=70 --lines=15 \
+    --placeholder='Notifications · type to search · Enter to read'); do
+    [[ $choice =~ ^[0-9]+$ ]] || exit 0
+    detail=$(jq -r --argjson index "$choice" '
+        .[$index] // empty | "\(.app) · \(.state)\n\n\(.summary)\n\n\(.body)"
+    ' <<<"$entries")
+    [[ -n $detail ]] || exit 0
+    printf '%s\n' "$detail" | fold -s -w 70 | fuzzel --dmenu --width=75 --lines=20 \
+        --placeholder='Notification · Esc to return' >/dev/null || true
+done

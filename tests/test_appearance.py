@@ -98,7 +98,7 @@ class AppearanceTests(unittest.TestCase):
             self.menu.apply_settings(self.home, 'summer-dusk', True)
             self.assertEqual(self.menu.get_state(self.home), ('summer-dusk', True))
             foot = self.home / '.config/foot/colors.ini'
-            self.assertIn('alpha=0.08', foot.read_text())
+            self.assertIn('alpha=0.0\n', foot.read_text())
             self.menu.apply_settings(self.home, 'kanagawa', False)
             self.assertEqual(self.menu.get_state(self.home), ('kanagawa', False))
             self.assertIn('alpha=1.0', foot.read_text())

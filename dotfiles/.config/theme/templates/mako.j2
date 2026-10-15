@@ -19,6 +19,8 @@ default-timeout=5000
 # looks right.
 ignore-timeout=1
 max-visible=3
+max-history=100
+history=1
 anchor=top-right
 
 # Default colors
@@ -37,6 +39,7 @@ border-color=#{{ base08 }}
 
 # OSD-style status popup (centered, larger, shorter timeout)
 [app-name=status-osd]
+history=0
 anchor=center
 width=400
 height=200
@@ -49,6 +52,7 @@ border-color=#{{ base0D }}
 
 # Alias reminder (small, corner, subtle)
 [app-name=alias]
+history=0
 anchor=bottom-right
 width=200
 height=60

@@ -226,7 +226,7 @@ class FootOpacityTests(unittest.TestCase):
         self.home = Path(temporary.name)
         self.colors = self.home / '.config/foot/colors.ini'
         self.colors.parent.mkdir(parents=True)
-        self.colors.write_text('[colors]\nbackground=1e1e2e\nalpha=0.08\n')
+        self.colors.write_text('[colors]\nbackground=1e1e2e\nalpha=0.0\n')
         self.writes = []
         self.opacity = self.module.FootOpacity(
             self.home, lambda pid, data: self.writes.append((pid, data)) or True)
@@ -238,9 +238,9 @@ class FootOpacityTests(unittest.TestCase):
         self.opacity.sync(tree([self.terminal], floating=True))
         self.opacity.sync(tree([self.terminal], floating=False))
         self.assertEqual(self.writes, [
-            (123, b'\x1b]11;[8]#1e1e2e\x1b\\'),
+            (123, b'\x1b]11;[0]#1e1e2e\x1b\\'),
             (123, b'\x1b]11;[60]#1e1e2e\x1b\\'),
-            (123, b'\x1b]11;[8]#1e1e2e\x1b\\'),
+            (123, b'\x1b]11;[0]#1e1e2e\x1b\\'),
         ])
 
     def test_solid_mode_and_theme_changes(self):

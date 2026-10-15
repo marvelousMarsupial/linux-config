@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Notifications
+Comment=Browse current notifications and recent history
+Exec=/home/august/.local/bin/notifications
+Icon=preferences-system-notifications
+Terminal=false
+Categories=Utility;

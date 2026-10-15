@@ -277,6 +277,11 @@ def main():
     run('sudo', 'apt-get', 'install', '-y', *packages, dry=args.dry_run)
     firewall(args.dry_run)
     applications(home, args.dry_run)
+    # Foot's default font; the scoped helper also provides a comparison sample.
+    if args.dry_run:
+        print('Install FiraCode Nerd Font with scripts/setup-font-preview')
+    else:
+        run(REPO / 'scripts/setup-font-preview')
     run(REPO / 'scripts/setup-shell', dry=args.dry_run)
     portal(home, args.dry_run)
     editor = [str(REPO / 'scripts/setup-editor'), '--skip-apt']

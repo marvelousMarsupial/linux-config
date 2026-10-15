@@ -1,0 +1,59 @@
+#!/usr/bin/python3
+"""Install FiraCode Nerd Font and a separate Foot preview without changing defaults."""
+import argparse
+from datetime import datetime, timezone
+from pathlib import Path
+import runpy
+import subprocess
+import tempfile
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--config-only', action='store_true', help='Apply preview files without downloading the font')
+    args = parser.parse_args()
+    repo = Path(__file__).resolve().parent.parent
+    home = Path.home()
+    helpers = runpy.run_path(str(repo / 'scripts/setup'))
+    local = home / '.local'
+    local.mkdir(exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ-font-preview')
+    backup = local / 'state/linux-config/backups' / stamp
+    if not args.config_only:
+        family = subprocess.run(['fc-match', '-f', '%{family}', 'FiraCode Nerd Font Mono'],
+                                capture_output=True, text=True, check=True).stdout
+        if 'FiraCode Nerd Font Mono' not in family:
+            with tempfile.TemporaryDirectory(prefix='font-preview-', dir=local) as directory:
+                temporary = Path(directory)
+                archive = temporary / 'font.zip'
+                helpers['release_asset']('ryanoasis/nerd-fonts', 'FiraCode.zip', archive)
+                helpers['unpack'](archive, temporary / 'fonts')
+                if not list((temporary / 'fonts').rglob('*.ttf')):
+                    raise ValueError('Font archive contains no TTF files')
+                destination = local / 'share/fonts/FiraCode'
+                helpers['replace'](temporary / 'fonts', destination, backup / 'FiraCode')
+                subprocess.run(['fc-cache', '-f', str(destination)], check=True)
+    for relative in ('.local/bin/font-preview', '.local/share/linux-config/font-preview.js'):
+        source = repo / 'dotfiles' / relative
+        destination = home / relative
+        mode = 0o755 if relative.startswith('.local/bin/') else 0o644
+        if destination.is_file() and destination.read_bytes() == source.read_bytes() and destination.stat().st_mode & 0o777 == mode:
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as temporary:
+            staged = Path(temporary.name)
+        try:
+            staged.write_bytes(source.read_bytes())
+            staged.chmod(mode)
+            helpers['replace'](staged, destination, backup / relative)
+        finally:
+            staged.unlink(missing_ok=True)
+        print('Applied', relative)
+    print('Preview files ready. Once the font is installed, run ~/.local/bin/font-preview.')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        raise SystemExit(f'Font preview setup stopped: {error}')
