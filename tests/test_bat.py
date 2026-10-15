@@ -22,11 +22,11 @@ class FrameTests(unittest.TestCase):
                 '\x1b[38;5;238m   1\x1b[0m │ short\n', '   2 │ 界é\n', '─────┴' + '─' * 30 + '\n']
         lines = list(self.module.framed(grid))
         plain = self.plain(lines)
-        self.assertEqual(plain[0], '     ╭' + '─' * 30 + '╮')
-        self.assertEqual(plain[2], '     ├' + '─' * 30 + '┤')
-        self.assertEqual(plain[-1], '     ╰' + '─' * 30 + '╯')
+        self.assertEqual(plain[0], '     ╭' + '─' * 31 + '╮')
+        self.assertEqual(plain[2], '     ├' + '─' * 31 + '┤')
+        self.assertEqual(plain[-1], '     ╰' + '─' * 31 + '╯')
         self.assertTrue(all(line.endswith('│') for line in plain[1:-1] if line[5] == '│'))
-        self.assertEqual({self.module.display_width(line) for line in plain}, {37})
+        self.assertEqual({self.module.display_width(line) for line in plain}, {38})
         self.assertIn('\x1b[38;5;238m', lines[3])
         self.assertEqual(self.module.display_width('界é'), 3)
 
@@ -35,6 +35,11 @@ class FrameTests(unittest.TestCase):
         lines = list(self.module.framed(colored))
         self.assertTrue(lines[1].endswith('\x1b[38;5;238m│\x1b[0m\n'))
         self.assertEqual(list(self.module.framed(['plain\n', 'text\n'])), ['plain\n', 'text\n'])
+
+    def test_full_width_text_keeps_a_blank_cell_before_the_edge(self):
+        full = '  │ ' + 'x' * 32
+        lines = self.plain(self.module.framed(['─' * 2 + '┬' + '─' * 33 + '\n', full + '\n', '──┴' + '─' * 33 + '\n']))
+        self.assertEqual(lines[1], full + ' │')
 
     def test_overlong_line_is_not_padded_negative(self):
         lines = list(self.module.framed(['──┬──\n', '  │ ' + 'x' * 20 + '\n', '──┴──\n']))
@@ -62,7 +67,7 @@ class BatTests(unittest.TestCase):
         paths[1].write_text('x' * 300 + '\n')
         paths[2].write_text('')
         lines = self.frame(paths, width=39)
-        self.assertTrue(all(self.module.display_width(line.rstrip('\n')) == 40 for line in lines))
+        self.assertTrue(all(self.module.display_width(line.rstrip('\n')) == 41 for line in lines))
         plain = ''.join(self.module.ANSI.sub('', line) for line in lines)
         self.assertEqual(plain.count('╭'), 3)
         self.assertEqual(plain.count('╯'), 3)
@@ -107,7 +112,7 @@ sys.exit(3)
                         else:
                             self.assertEqual(data['args'][:3], ['--color=always', '--decorations=always', '--paging=never'])
                             self.assertEqual(data['args'][3:5], ['-P', 'two words.txt'])
-                            self.assertEqual(data['args'][5], '--terminal-width=79')
+                            self.assertEqual(data['args'][5], '--terminal-width=78')
                     finally:
                         os.close(master)
                         os.close(slave)

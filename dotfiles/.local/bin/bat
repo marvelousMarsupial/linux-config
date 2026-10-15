@@ -2,8 +2,9 @@
 """batcat with a rounded frame that closes on the right in interactive terminals.
 
 bat draws a left bar and horizontal rules but never a right edge. This wrapper
-runs batcat at one column less than the terminal, then turns each rule into a
-rounded top, divider or bottom and pads every content line out to a right bar.
+runs batcat two columns narrower than the terminal, then turns each rule into a
+rounded top, divider or bottom and pads every content line out to a right bar,
+leaving one blank cell between the longest text and the bar.
 Piped output, an explicit BAT_PAGER and paging flags leave batcat alone.
 """
 import os
@@ -16,6 +17,8 @@ import unicodedata
 ANSI = re.compile(r'\x1b\[[0-9;]*m')
 RULE = re.compile(r'^─+([┬┼┴])─+$')
 CORNERS = {'┬': ('╭', '╮'), '┼': ('├', '┤'), '┴': ('╰', '╯')}
+# Blank cells kept between the widest text and the right bar.
+MARGIN = 1
 
 
 def display_width(text):
@@ -36,7 +39,7 @@ def framed(lines):
         rule = RULE.fullmatch(plain)
         if rule:
             # The gutter before the junction stays blank so the frame hugs the text.
-            width = len(plain)
+            width = len(plain) + MARGIN
             color = ''.join(ANSI.findall(body[:body.index(rule[1])]))
             gutter = plain.index(rule[1])
             left, right = CORNERS[rule[1]]
@@ -56,8 +59,8 @@ def main():
     if not sys.stdout.isatty() or os.environ.get('BAT_PAGER') or any(arg.startswith('--paging') for arg in arguments):
         os.execvp('batcat', ['batcat', *arguments])
     if not any(arg.startswith('--terminal-width') for arg in arguments):
-        # Reserve one cell for the right edge before bat wraps content.
-        arguments.append(f'--terminal-width={max(20, shutil.get_terminal_size().columns - 1)}')
+        # Reserve the margin and the right edge before bat wraps content.
+        arguments.append(f'--terminal-width={max(20, shutil.get_terminal_size().columns - 1 - MARGIN)}')
     bat = subprocess.Popen(['batcat', '--color=always', '--decorations=always', '--paging=never', *arguments],
                            stdout=subprocess.PIPE, text=True)
     pager = None
