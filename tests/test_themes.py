@@ -40,7 +40,10 @@ class ThemeTests(unittest.TestCase):
                 self.assertRegex(foreground, r'^[0-9a-fA-F]{6}$')
                 self.assertEqual(background, re.search(r'^set \$base01 #(\w+)', sway, re.M)[1])
                 self.assertNotEqual(background, re.search(r'^set \$base00 #(\w+)', sway, re.M)[1])
-                tomllib.loads((self.home / '.config/yazi/theme.toml').read_text())
+                yazi = tomllib.loads((self.home / '.config/yazi/theme.toml').read_text())
+                for rule in yazi.get('filetype', {}).get('rules', []):
+                    # Yazi requires url or mime; the older name key stops it from starting.
+                    self.assertTrue({'url', 'mime'} & rule.keys(), rule)
                 if shutil.which('foot'):
                     config = self.home / '.config/foot/foot.ini'
                     config.write_text(f'include={self.home}/.config/foot/colors.ini\n')
@@ -95,3 +98,13 @@ class ThemeTests(unittest.TestCase):
         (self.root / 'glass-mode').write_text('off\n')
         self.assertEqual(self.theme('apply', 'summer-dusk').returncode, 0)
         self.assertIn('output * bg $base00 solid_color', (self.home / '.config/sway/colors').read_text())
+
+
+class YaziFlavorTests(unittest.TestCase):
+    def test_flavor_filetype_rules_use_url_or_mime(self):
+        flavors = sorted((REPO / 'dotfiles/.config/yazi/flavors').glob('*/flavor.toml'))
+        self.assertTrue(flavors)
+        for flavor in flavors:
+            with self.subTest(flavor=flavor.parent.name):
+                for rule in tomllib.loads(flavor.read_text())['filetype']['rules']:
+                    self.assertTrue({'url', 'mime'} & rule.keys(), rule)

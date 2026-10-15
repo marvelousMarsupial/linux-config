@@ -137,6 +137,7 @@ def main() -> None:
             "fuzzel",
             "--dmenu",
             "--keyboard-focus=on-demand",
+            "--no-exit-on-keyboard-focus-loss",
             "--prompt=",
             f"--lines={len(lines)}",
             f"--width={PANEL_WIDTH}",

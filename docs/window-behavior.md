@@ -67,9 +67,10 @@ fullscreen terminal would need compositor support.
 ## Touchpad gestures and status panel
 
 Super+I toggles the status panel. Four-finger swipe down shows it and swipe up
-dismisses it. The panel is a Fuzzel window with on-demand keyboard focus, so it
-behaves like a scratchpad toggle without being one; only its process group is
-closed.
+dismisses it. The panel is a Fuzzel window with on-demand keyboard focus and
+stays open when another window takes focus back, so it behaves like a
+scratchpad toggle without being one; only its process group is closed. Escape
+closes it while it has focus.
 
 Three-finger swipes focus the window in that direction. Four-finger left and
 right switch to the next or previous workspace on the current output.
