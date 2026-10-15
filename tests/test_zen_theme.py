@@ -97,6 +97,26 @@ class ZenThemeTests(unittest.TestCase):
         self.assertNotIn('@import "glass-chrome.css";', css)
         self.assertNotIn('zen.widget.linux.transparency', (self.profile / 'user.js').read_text())
 
+    def test_config_zen_profile_root_is_preferred(self):
+        # Current Zen keeps profiles beside the repo's CSS sources in ~/.config/zen.
+        root = self.home / '.config/zen'
+        (root / 'profiles.ini').write_text('[InstallFixture]\nDefault=new.profile\n')
+        profile = root / 'new.profile'
+        profile.mkdir()
+        self.render()
+        self.sync.sync(self.home)
+        self.assertTrue((profile / 'chrome/system-theme.css').exists())
+        self.assertFalse((self.profile / 'chrome').exists())
+        installed = self.home / '.local/bin'
+        installed.mkdir(parents=True)
+        shutil.copy2(self.theme, installed / 'theme')
+        env = dict(self.env, PATH=str(installed) + ':' + os.environ['PATH'])
+        result = run(str(REPO / 'dotfiles/.local/bin/glass-mode'), 'on', env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('@import "glass-chrome.css"', (profile / 'chrome/userChrome.css').read_text())
+        self.assertIn('user_pref("zen.widget.linux.transparency", true);', (profile / 'user.js').read_text())
+        self.assertFalse((self.profile / 'user.js').exists())
+
     def test_missing_browser_is_a_noop(self):
         (self.home / '.zen/profiles.ini').unlink()
         self.sync.sync(self.home)

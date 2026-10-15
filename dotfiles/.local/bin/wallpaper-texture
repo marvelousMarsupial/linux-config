@@ -116,7 +116,9 @@ if args.output:
     raise SystemExit(0)
 # Sway hides the desktop background during fullscreen. Zen can paint the
 # same local image behind its chrome in that state, leaving web pages opaque.
-for chrome in (home / '.zen').glob('*/chrome'):
+zen_root = next((r for r in (home / '.config/zen', home / '.zen') if (r / 'profiles.ini').is_file()),
+                home / '.config/zen')
+for chrome in zen_root.glob('*/chrome'):
     if chrome.parent.name != '*' and chrome.is_dir():
         shutil.copyfile(path, chrome / 'glass-wallpaper.png')
 selection.parent.mkdir(parents=True, exist_ok=True)

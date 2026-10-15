@@ -11,8 +11,16 @@ THEME_BEGIN = '/* desktop-theme:begin */'
 THEME_END = '/* desktop-theme:end */'
 
 
+def zen_root(home):
+    # Current Zen builds keep profiles under ~/.config/zen; older ones used ~/.zen.
+    for root in (home / '.config/zen', home / '.zen'):
+        if (root / 'profiles.ini').is_file():
+            return root
+    return home / '.config/zen'
+
+
 def default_profile(home):
-    root = home / '.zen'
+    root = zen_root(home)
     profiles = configparser.ConfigParser(interpolation=None)
     profiles.read(root / 'profiles.ini')
     selected = next((profiles[s]['Default'] for s in profiles.sections()

@@ -25,17 +25,20 @@ def main():
             return
         enabled = not enabled if args.action == 'toggle' else args.action == 'on'
         current = (home / '.cache/theme/current').read_text().strip()
-        profiles = configparser.ConfigParser()
-        profiles.read(home / '.zen/profiles.ini')
+        # Current Zen builds keep profiles under ~/.config/zen; older ones used ~/.zen.
+        root = next((r for r in (home / '.config/zen', home / '.zen') if (r / 'profiles.ini').is_file()),
+                    home / '.config/zen')
+        profiles = configparser.ConfigParser(interpolation=None)
+        profiles.read(root / 'profiles.ini')
         selected = next((profiles[s]['Default'] for s in profiles.sections()
                          if s.startswith('Install') and profiles[s].get('Default')), None)
         if not selected:
             selected = next((profiles[s]['Path'] for s in profiles.sections()
                              if s.startswith('Profile') and profiles[s].get('Default') == '1'), None)
-        profile = home / '.zen' / selected if selected else None
+        profile = root / selected if selected else None
         if profile:
             profile = profile.resolve()
-            if not profile.is_dir() or not profile.is_relative_to((home / '.zen').resolve()):
+            if not profile.is_dir() or not profile.is_relative_to(root.resolve()):
                 parser.error('Invalid default Zen profile')
             chrome = profile / 'chrome'
             chrome.mkdir(exist_ok=True)

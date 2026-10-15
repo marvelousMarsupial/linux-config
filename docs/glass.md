@@ -62,8 +62,10 @@ setting, so a fullscreen terminal looks solid.
 ## Implementation and rollback
 
 Theme sources live in `dotfiles/.config/theme/`; Zen CSS in
-`dotfiles/.config/zen/userChrome.css`. The switch installs a managed import in
-the default Zen profile's `userChrome.css` and sets three preferences in its
+`dotfiles/.config/zen/userChrome.css`. The default Zen profile is read from
+`profiles.ini` under `~/.config/zen`, or `~/.zen` for older Zen builds. The
+switch installs a managed import in that profile's `userChrome.css` and sets
+three preferences in its
 `user.js`: legacy stylesheet support on, Linux chrome transparency to match the
 mode, and page transparency off. Every theme apply also runs `zen-theme-sync`,
 which copies the generated palette CSS into the profile. Its import precedes
