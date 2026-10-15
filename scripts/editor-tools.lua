@@ -8,7 +8,13 @@ local function setup()
   require("lazy").load({ plugins = { "mason.nvim", "nvim-lspconfig", "nvim-treesitter" } })
   local tools = require("config.tools")
   report("Installing Mason packages: " .. table.concat(tools.mason, " "))
-  vim.cmd("MasonInstall " .. table.concat(tools.mason, " "))
+  -- --quiet keeps installer output (npm warnings) off Neovim's error channel, where a
+  -- headless command would otherwise turn it into a failure after the packages installed.
+  -- The registry check below is what decides success.
+  local installed, message = pcall(vim.cmd, "MasonInstall --quiet " .. table.concat(tools.mason, " "))
+  if not installed then
+    report("Mason reported: " .. tostring(message))
+  end
   local registry = require("mason-registry")
   local missing = {}
   for _, name in ipairs(tools.mason) do
