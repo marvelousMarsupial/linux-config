@@ -259,7 +259,7 @@ def create_application(home, palettes):
             self.busy = False
             if error:
                 try:
-                    subprocess.Popen(['notify-send', '-u', 'critical', 'Appearance', error])
+                    subprocess.Popen(['notify-send', '-a', 'Appearance', '-u', 'critical', 'Appearance', error])
                 except OSError:
                     print(error, file=sys.stderr)
             elif close:

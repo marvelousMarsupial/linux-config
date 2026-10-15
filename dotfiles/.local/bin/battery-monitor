@@ -36,7 +36,7 @@ def get_battery_status(bat_path: Path) -> str:
 
 def notify(title: str, msg: str, critical: bool = False) -> None:
     """Send desktop notification."""
-    cmd = ["notify-send"]
+    cmd = ["notify-send", "-a", "Battery"]
     if critical:
         cmd.extend(["-u", "critical"])
     else:

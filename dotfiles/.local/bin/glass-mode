@@ -70,7 +70,7 @@ def main():
         message = 'Glass mode ' + ('on' if enabled else 'off') + '. Restart Zen and reopen terminals to apply.'
         print(message)
         try:
-            subprocess.run(['notify-send', 'Glass mode', message], env=env, check=False)
+            subprocess.run(['notify-send', '-a', 'Glass mode', 'Glass mode', message], env=env, check=False)
         except OSError:
             pass  # The printed message is enough without a notification daemon.
 

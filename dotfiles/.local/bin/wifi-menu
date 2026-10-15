@@ -41,7 +41,7 @@ def notify(title: str, msg: str, critical: bool = False) -> None:
     might miss otherwise.
     """
     try:
-        cmd = ["notify-send"]
+        cmd = ["notify-send", "-a", "WiFi"]
         if critical:
             cmd.extend(["-u", "critical"])
         cmd.extend([title, msg])

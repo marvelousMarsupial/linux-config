@@ -38,14 +38,18 @@ if [[ $(jq 'length' <<<"$entries") == 0 ]]; then
     exit 0
 fi
 
-rows=$(jq -r '.[] | "[\(.state)] \(.app) — \(.summary) — \(.body)"' <<<"$entries")
-while choice=$(printf '%s\n' "$rows" | fuzzel --dmenu --index --width=70 --lines=15 \
-    --placeholder='Notifications · type to search · Enter to read'); do
+# Active notifications carry a marker; history rows stay plain. Empty bodies add nothing.
+rows=$(jq -r '.[] | (if .state == "Active" then "● " else "" end)
+    + "\(.app) · \(.summary)" + (if .body == "" then "" else " · \(.body)" end)' <<<"$entries")
+count=$(jq 'length' <<<"$entries")
+lines=$(( count < 15 ? count : 15 ))
+while choice=$(printf '%s\n' "$rows" | fuzzel --dmenu --index --width=70 --lines="$lines" \
+    --placeholder='Notifications'); do
     [[ $choice =~ ^[0-9]+$ ]] || exit 0
     detail=$(jq -r --argjson index "$choice" '
         .[$index] // empty | "\(.app) · \(.state)\n\n\(.summary)\n\n\(.body)"
     ' <<<"$entries")
     [[ -n $detail ]] || exit 0
     printf '%s\n' "$detail" | fold -s -w 70 | fuzzel --dmenu --width=75 --lines=20 \
-        --placeholder='Notification · Esc to return' >/dev/null || true
+        --placeholder='' >/dev/null || true
 done

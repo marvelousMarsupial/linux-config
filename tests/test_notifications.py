@@ -47,9 +47,18 @@ esac
         result, display = self.run_viewer([{'app-name': 'Mail', 'summary': 'Hello',
                                            'body': 'First\nSecond\x00icon\x1fTest'}])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('[History] Mail — Hello — First Second icon Test', display)
+        self.assertIn('Mail · Hello · First Second icon Test', display)
+        self.assertNotIn('[History]', display)
         self.assertIn('Mail · History\n\nHello', display)
         self.assertNotIn('\x00', display)
+
+    def test_rows_omit_empty_bodies_and_size_to_the_list(self):
+        result, display = self.run_viewer([{'app-name': 'System updates', 'summary': 'Updates installed', 'body': ''},
+                                           {'summary': 'Second'}], cancel=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('System updates · Updates installed\n', display)
+        self.assertNotIn('Updates installed ·', display)
+        self.assertIn('Application · Second', display)
 
     def test_empty_history(self):
         result, display = self.run_viewer([])
