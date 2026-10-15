@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Display sway keybindings cheatsheet."""
+"""Display the Sway shortcut sheet; `toggle` shows or hides it through the scratchpad."""
+import json
+import os
+import subprocess
+import sys
 
 CONTENT = r"""
 Sway shortcuts
@@ -60,15 +64,58 @@ Screenshots
 Print               Select area
 Shift Print         Full screen
 
-Press Enter to close
+Super Shift / hides this window; Enter closes it
 """
 
+
+def windows(node, workspace=None):
+    if node.get("type") == "workspace":
+        workspace = node.get("name")
+    yield node, workspace
+    for child in node.get("nodes", []) + node.get("floating_nodes", []):
+        yield from windows(child, workspace)
+
+
+def toggle():
+    """Launch the sheet, hide it when focused, or bring it back from the scratchpad."""
+    try:
+        result = subprocess.run(["swaymsg", "-r", "-t", "get_tree"],
+                                capture_output=True, text=True, timeout=3, check=True)
+        tree = json.loads(result.stdout)
+        if not isinstance(tree, dict) or tree.get("type") != "root":
+            raise ValueError("Invalid Sway tree")
+        matches = [(n, ws) for n, ws in windows(tree) if n.get("app_id") == "keybinds"]
+        if not matches:
+            os.execvp("foot", ["foot", "--app-id=keybinds", "-e", os.path.realpath(__file__)])
+        node, workspace = next(((n, ws) for n, ws in matches if n.get("focused")), matches[0])
+        selector = f"[con_id={int(node['id'])}]"
+        if node.get("focused"):
+            command = f"{selector} move scratchpad"
+        elif workspace == "__i3_scratch":
+            command = f"{selector} scratchpad show, focus"
+        else:
+            command = f"{selector} focus"
+        result = subprocess.run(["swaymsg", "-r", command], capture_output=True,
+                                text=True, timeout=3, check=True)
+        replies = json.loads(result.stdout)
+        if not replies or not all(item.get("success") for item in replies):
+            raise ValueError("Sway rejected the shortcut window command")
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print(f"keybinds: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main():
+    if sys.argv[1:] == ["toggle"]:
+        return toggle()
     print(CONTENT)
     try:
         input()
     except (KeyboardInterrupt, EOFError):
         pass
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

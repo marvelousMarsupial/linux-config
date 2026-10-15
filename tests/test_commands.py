@@ -132,6 +132,29 @@ class CommandTests(CommandSandbox):
         self.assertIn('Super', result.stdout)
         self.assertEqual(self.events(), [])
 
+    def test_keybind_toggle_launches_hides_and_shows(self):
+        self.stub('foot')
+        empty = {'type': 'root', 'nodes': []}
+        result = self.execute('keybinds', 'toggle', responses={'swaymsg -r -t get_tree': {'out': json.dumps(empty)}})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        launch = self.events()[-1]
+        self.assertEqual(launch['name'], 'foot')
+        self.assertEqual(launch['args'][:3], ['--app-id=keybinds', '-e', str(REPO / 'dotfiles/.local/bin/keybinds')])
+        window = {'type': 'con', 'id': 7, 'app_id': 'keybinds', 'nodes': []}
+        for focused, workspace, expected in ((True, 'main', '[con_id=7] move scratchpad'),
+                                             (False, '__i3_scratch', '[con_id=7] scratchpad show, focus'),
+                                             (False, 'main', '[con_id=7] focus')):
+            with self.subTest(expected=expected):
+                self.reset()
+                tree = {'type': 'root', 'nodes': [{'type': 'workspace', 'name': workspace,
+                                                   'nodes': [dict(window, focused=focused)]}]}
+                result = self.execute('keybinds', 'toggle', responses={
+                    'swaymsg -r -t get_tree': {'out': json.dumps(tree)},
+                    'swaymsg -r ' + expected: {'out': '[{"success": true}]'}})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.events()[-1]['args'], ['-r', expected])
+                self.assertFalse(any(e['name'] == 'foot' for e in self.events()))
+
     def test_screenshot_capture_failure_removes_partial_file(self):
         self.stub('grim', "Path(args[-1]).write_bytes(b'partial')\n")
         result = self.execute('screenshot', 'full', responses={'grim': {'code': 1}})

@@ -30,7 +30,7 @@ with executable permissions. Repository maintenance commands live in `scripts/`.
 | desktop-appearance | Publishes the dark desktop and GTK preferences at Sway start and reload. |
 | glass-mode | Switches desktop and Zen glass together, re-applies the palette, tolerates a missing notification daemon. |
 | keepass-toggle | Super+P launches KeePassXC, focuses its window or toggles it into the scratchpad. |
-| keybinds | Static shortcut help. |
+| keybinds | Static shortcut help. Super+Shift+/ launches it, hides it in the scratchpad when focused, or shows it again. |
 | launcher | Quoted argument forwarding; keeps inherited XDG data directories. |
 | motd | Read-only login summary with bounded optional commands. |
 | notes-picker, notes-toggle | Cancellation is harmless; notes stay inside the notes directory; unique private filenames. |

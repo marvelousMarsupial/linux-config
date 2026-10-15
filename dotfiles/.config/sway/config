@@ -259,8 +259,8 @@ bindsym --to-code $mod+Shift+e exec swaymsg exit
 # SYSTEM
 # ===========================================
 
-# Help (keybindings cheatsheet)
-bindsym $mod+Shift+slash exec $term --app-id=keybinds -e $bin/keybinds
+# Help (keybindings cheatsheet): launches, hides to the scratchpad, or shows again
+bindsym $mod+Shift+slash exec $bin/keybinds toggle
 
 # Lock screen
 bindsym $mod+Escape exec swaylock
