@@ -256,7 +256,7 @@ def updates(s):
 
 def performance(s):
     s.run('uptime')
-    s.run('free', '-h')
+    failed = bool(s.run('free', '-h')[0])
     try:
         memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
         total = int(memory['MemTotal'].split()[0])
@@ -265,7 +265,9 @@ def performance(s):
             s.problem('Available RAM below 10%')
     except (OSError, KeyError, ValueError):
         pass
-    s.run('df', '-hPT')
+    failed |= bool(s.run('df', '-hPT')[0])
+    # Only memory and disk usage decide the Resources tile; SMART has its own.
+    s.flags['resources_unknown'] = failed
     _, out, _ = s.command('df', '-PT')
     for line in out.splitlines()[1:]:
         fields = line.split()
@@ -468,7 +470,7 @@ def overview(sections, problems):
     resource = [p for p in problems if re.search(r'Disk usage|Available RAM', p)]
     if resource:
         state, label, detail = 'bad', 'Low space or memory', resource[0]
-    elif re.search(r'^ERROR:', s['performance'].text, re.M):
+    elif s['performance'].flags.get('resources_unknown'):
         state, label, detail = 'warn', 'Unknown', 'Could not read resource usage.'
     tiles.append(('Resources', state, label, detail))
 

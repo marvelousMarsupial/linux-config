@@ -51,6 +51,25 @@ STUB
 HOME="$temporary" "$repo/dotfiles/.local/bin/sysreport" >/dev/null
 grep -q '<article class="tile ok"><h3>Services</h3>' "$page"
 grep -q '<article class="tile warn"><h3>Backups</h3>' "$page"
+# A failed SMART query must not hide memory and disk usage.
+cat > "$temporary/.local/bin/smartctl" <<'STUB'
+#!/usr/bin/env bash
+echo 'Smartctl open device failed: Permission denied' >&2
+exit 2
+STUB
+cat > "$temporary/.local/bin/lsblk" <<'STUB'
+#!/usr/bin/env bash
+echo 'vda disk'
+STUB
+cat > "$temporary/.local/bin/df" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' 'Filesystem Type Size Used Avail Use% Mounted on' '/dev/vda ext4 100G 20G 80G 20% /'
+STUB
+chmod +x "$temporary/.local/bin/smartctl" "$temporary/.local/bin/lsblk" "$temporary/.local/bin/df"
+HOME="$temporary" "$repo/dotfiles/.local/bin/sysreport" >/dev/null
+grep -q 'ERROR: command failed (exit 2): smartctl' "$page"
+grep -q '<article class="tile ok"><h3>Resources</h3>' "$page"
+grep -q '<article class="tile warn"><h3>Disk health</h3>' "$page"
 # An OpenSnitch database is read directly and read-only.
 mkdir -p "$temporary/.config/opensnitch"
 printf '[database]\nfile=%s\n' "$temporary/opensnitch.db" > "$temporary/.config/opensnitch/settings.conf"
