@@ -31,6 +31,8 @@ for _, lang in ipairs({ 'javascript', 'typescript', 'tsx' }) do
 end
 local c = 'struct S { int x; }; int f(struct S *p,int a,int b) { return p->x <= a && a >= b && a != b; }\nchar *s="-> <= >= !="; // -> <= >= !=\n'
 query_checks('c', 'c', c, { ['->'] = '→', ['!='] = '≠', ['<='] = '≤', ['>='] = '≥' })
+local py = 'def f(a, b) -> bool: return a <= b and a >= b and a != b\ns = "-> <= >= !="  # -> <= >= !=\n'
+query_checks('python', 'python', py, { ['->'] = '→', ['!='] = '≠', ['<='] = '≤', ['>='] = '≥' })
 
 require('config.ligatures')
 assert(vim.api.nvim_get_hl(0, { name = 'OperatorLigature' }).bold, 'symbols should be bold')

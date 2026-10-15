@@ -1,5 +1,5 @@
--- Display-only operator substitutions. Tree-sitter covers JS/TS/C; Vim syntax
--- covers Python in the base setup, which does not install its parser.
+-- Display-only operator substitutions. Tree-sitter queries cover JS/TS/C/Python
+-- with --dev-tools; Vim syntax covers Python when its parser is absent.
 local supported = {
   javascript = true, javascriptreact = true, typescript = true,
   typescriptreact = true, c = true, python = true,

@@ -67,9 +67,9 @@ from changing editor options.
 ## Operator symbols
 
 Foot does not render programming ligatures, so Neovim conceals a few operators
-as single Unicode symbols. Tree-sitter handles JavaScript, TypeScript, JSX, TSX
-and C; Python uses Vim syntax conceal because the base setup does not install
-its parser.
+as single Unicode symbols. Tree-sitter queries handle JavaScript, TypeScript,
+JSX, TSX, C and Python once `--dev-tools` has installed the parsers; without
+them Python falls back to Vim syntax conceal and the others stay literal.
 
 | Languages | Displayed as |
 | --- | --- |
