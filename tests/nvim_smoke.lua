@@ -69,7 +69,11 @@ local function check()
   end
   assert(not formatters.markdown and not formatters.text, "Prose should not be reformatted")
   assert(vim.fn.exists(":EditorTools") == 2, "Missing EditorTools")
-  assert(vim.o.cmdheight == 1, "Command line must remain visible")
+  assert(vim.o.cmdheight == 0, "Command line row hidden until used")
+  vim.api.nvim_exec_autocmds("CmdlineEnter", {})
+  assert(vim.o.cmdheight == 1, "Command line row appears while typing a command")
+  vim.api.nvim_exec_autocmds("CmdlineLeave", {})
+  assert(vim.o.cmdheight == 0, "Command line row hides again")
   assert(vim.fn.maparg("j", "n", false, true).expr == 1, "Screen-line movement missing")
   assert(not require("lazy.core.config").plugins["obsidian.nvim"], "Obsidian must be retired")
   assert(not require("lazy.core.config").plugins["markdown-preview.nvim"],

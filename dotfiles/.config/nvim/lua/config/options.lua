@@ -54,7 +54,16 @@ opt.timeoutlen = 300
 opt.showmode = false
 
 -- Hide command line when not in use
-opt.cmdheight = 1
+-- No command line row until one is being typed; messages use nvim-notify.
+opt.cmdheight = 0
+vim.api.nvim_create_autocmd("CmdlineEnter", {
+  group = vim.api.nvim_create_augroup("EditorCmdline", { clear = true }),
+  callback = function() vim.o.cmdheight = 1 end,
+})
+vim.api.nvim_create_autocmd("CmdlineLeave", {
+  group = "EditorCmdline",
+  callback = function() vim.o.cmdheight = 0 end,
+})
 
 -- Hide tabline
 opt.showtabline = 0
