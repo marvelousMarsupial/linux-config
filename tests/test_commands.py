@@ -126,8 +126,8 @@ class CommandTests(CommandSandbox):
         self.assertEqual(event['wayland'], '1')
         self.assertEqual(event['portal'], '1')
 
-    def test_keybind_help_closes_on_eof(self):
-        result = run(str(REPO / 'dotfiles/.local/bin/keybinds'), input='', env=self.env)
+    def test_keybind_help_ignores_enter_and_closes_on_eof(self):
+        result = run(str(REPO / 'dotfiles/.local/bin/keybinds'), input='\n\n', env=self.env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Super', result.stdout)
         self.assertEqual(self.events(), [])

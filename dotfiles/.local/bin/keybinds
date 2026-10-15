@@ -64,7 +64,7 @@ Screenshots
 Print               Select area
 Shift Print         Full screen
 
-Super Shift / hides this window; Enter closes it
+Super Shift / hides this window; Super q closes it
 """
 
 
@@ -110,8 +110,10 @@ def main():
     if sys.argv[1:] == ["toggle"]:
         return toggle()
     print(CONTENT)
+    # Keypresses are ignored; the window lives until Sway closes it or the terminal ends.
     try:
-        input()
+        while True:
+            input()
     except (KeyboardInterrupt, EOFError):
         pass
     return 0
