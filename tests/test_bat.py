@@ -22,11 +22,13 @@ class FrameTests(unittest.TestCase):
                 '\x1b[38;5;238m   1\x1b[0m │ short\n', '   2 │ 界é\n', '─────┴' + '─' * 30 + '\n']
         lines = list(self.module.framed(grid))
         plain = self.plain(lines)
-        self.assertEqual(plain[0], '     ╭' + '─' * 31 + '╮')
-        self.assertEqual(plain[2], '     ├' + '─' * 31 + '┤')
-        self.assertEqual(plain[-1], '     ╰' + '─' * 31 + '╯')
+        # The header is the widest line at 18 cells; the frame stops one cell past it.
+        self.assertEqual(plain[0], '     ╭' + '─' * 13 + '╮')
+        self.assertEqual(plain[1], '     │ File: a.txt │')
+        self.assertEqual(plain[2], '     ├' + '─' * 13 + '┤')
+        self.assertEqual(plain[-1], '     ╰' + '─' * 13 + '╯')
         self.assertTrue(all(line.endswith('│') for line in plain[1:-1] if line[5] == '│'))
-        self.assertEqual({self.module.display_width(line) for line in plain}, {38})
+        self.assertEqual({self.module.display_width(line) for line in plain}, {20})
         self.assertIn('\x1b[38;5;238m', lines[3])
         self.assertEqual(self.module.display_width('界é'), 3)
 
@@ -40,6 +42,16 @@ class FrameTests(unittest.TestCase):
         full = '  │ ' + 'x' * 32
         lines = self.plain(self.module.framed(['─' * 2 + '┬' + '─' * 33 + '\n', full + '\n', '──┴' + '─' * 33 + '\n']))
         self.assertEqual(lines[1], full + ' │')
+        self.assertEqual(lines[0], '  ╭' + '─' * 34 + '╮')
+
+    def test_each_file_gets_its_own_frame_width(self):
+        grid = ['──┬────────────────\n', '  │ short\n', '──┴────────────────\n',
+                'between\n',
+                '──┬────────────────\n', '  │ a longer line\n', '──┴────────────────\n']
+        lines = self.plain(self.module.framed(grid))
+        self.assertEqual(lines[1], '  │ short │')
+        self.assertEqual(lines[3], 'between')
+        self.assertEqual(lines[5], '  │ a longer line │')
 
     def test_overlong_line_is_not_padded_negative(self):
         lines = list(self.module.framed(['──┬──\n', '  │ ' + 'x' * 20 + '\n', '──┴──\n']))
@@ -61,16 +73,20 @@ class BatTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return list(self.module.framed(result.stdout.splitlines(keepends=True)))
 
-    def test_frames_fill_the_terminal_width_for_long_and_multiple_files(self):
-        paths = [self.home / name for name in ['a.txt', 'long.txt', 'empty.txt']]
+    def test_wrapped_files_fill_the_terminal_and_short_files_hug_their_text(self):
+        paths = [self.home / name for name in ['a.txt', 'long.txt']]
         paths[0].write_text('a\n')
         paths[1].write_text('x' * 300 + '\n')
-        paths[2].write_text('')
         lines = self.frame(paths, width=39)
-        self.assertTrue(all(self.module.display_width(line.rstrip('\n')) == 41 for line in lines))
-        plain = ''.join(self.module.ANSI.sub('', line) for line in lines)
-        self.assertEqual(plain.count('╭'), 3)
-        self.assertEqual(plain.count('╯'), 3)
+        plain = [self.module.ANSI.sub('', line.rstrip('\n')) for line in lines]
+        tops = [i for i, line in enumerate(plain) if '╭' in line]
+        self.assertEqual(len(tops), 2)
+        self.assertEqual(sum('╯' in line for line in plain), 2)
+        widths = [self.module.display_width(line) for line in plain]
+        short, wrapped = widths[:tops[1]], widths[tops[1]:]
+        self.assertEqual(set(wrapped), {41})
+        self.assertEqual(len(set(short)), 1, short)
+        self.assertLess(short[0], 41)
 
     def test_piped_output_and_error_exit(self):
         path = self.home / 'raw.txt'

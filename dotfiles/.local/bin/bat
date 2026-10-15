@@ -3,8 +3,8 @@
 
 bat draws a left bar and horizontal rules but never a right edge. This wrapper
 runs batcat two columns narrower than the terminal, then turns each rule into a
-rounded top, divider or bottom and pads every content line out to a right bar,
-leaving one blank cell between the longest text and the bar.
+rounded top, divider or bottom and pads every content line out to a right bar
+one cell past the longest line, never wider than the terminal.
 Piped output, an explicit BAT_PAGER and paging flags leave batcat alone.
 """
 import os
@@ -30,27 +30,42 @@ def display_width(text):
 
 
 def framed(lines):
-    """Close each of bat's grids on the right with rounded corners."""
-    width = None
-    color = ''
+    """Close each of bat's grids on the right, hugging the longest line."""
+    block = []
     for line in lines:
-        body = line.rstrip('\n')
-        plain = ANSI.sub('', body)
+        plain = ANSI.sub('', line.rstrip('\n'))
         rule = RULE.fullmatch(plain)
-        if rule:
-            # The gutter before the junction stays blank so the frame hugs the text.
-            width = len(plain) + MARGIN
-            color = ''.join(ANSI.findall(body[:body.index(rule[1])]))
-            gutter = plain.index(rule[1])
-            left, right = CORNERS[rule[1]]
-            yield ' ' * gutter + color + left + '─' * (width - gutter - 1) + right + '\x1b[0m\n'
-            if rule[1] == '┴':
-                width = None
-        elif width is not None:
-            padding = max(0, width - display_width(plain))
-            yield body + ' ' * padding + color + '│\x1b[0m\n'
+        if block:
+            block.append(line)
+            if rule and rule[1] == '┴':
+                yield from close(block)
+                block = []
+        elif rule and rule[1] == '┬':
+            block = [line]
         else:
             yield line
+    yield from close(block)
+
+
+def close(block):
+    """Emit one grid with rounded corners and a right bar one cell past its widest line."""
+    plain = [ANSI.sub('', line.rstrip('\n')) for line in block]
+    rules = [RULE.fullmatch(text) for text in plain]
+    # bat's rule spans the width it wrapped to; the frame never grows past it.
+    widest = max((display_width(text) for text, rule in zip(plain, rules) if not rule), default=0)
+    width = min(len(plain[0]), widest) + MARGIN if block else 0
+    color = ''
+    for line, text, rule in zip(block, plain, rules):
+        body = line.rstrip('\n')
+        if rule:
+            # The gutter before the junction stays blank so the frame hugs the text.
+            color = ''.join(ANSI.findall(body[:body.index(rule[1])]))
+            gutter = text.index(rule[1])
+            left, right = CORNERS[rule[1]]
+            yield ' ' * gutter + color + left + '─' * max(1, width - gutter - 1) + right + '\x1b[0m\n'
+        else:
+            padding = max(0, width - display_width(text))
+            yield body + ' ' * padding + color + '│\x1b[0m\n'
 
 
 def main():
