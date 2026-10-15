@@ -303,7 +303,10 @@ def main():
     run(*editor, dry=args.dry_run)
     # setup-editor applies user files and installs/checks Neovim plugins.
     current = home / '.cache/theme/current'
-    if not current.is_file() and not colors_present:
+    if current.is_file():
+        # Re-render the selected palette so updated templates reach every target.
+        run(home / '.local/bin/theme', 'apply', current.read_text().strip(), dry=args.dry_run)
+    elif not colors_present:
         run(home / '.local/bin/theme', 'apply', 'summer-dusk', dry=args.dry_run)
     host_settings(user, args.dry_run, 'libvirt-daemon-system' in packages)
     opensnitch(args.dry_run)

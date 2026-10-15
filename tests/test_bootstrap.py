@@ -87,6 +87,19 @@ class BootstrapTests(unittest.TestCase):
         self.assertFalse((self.home / '.local').exists())
         self.assertNotIn('unexpected-sudo', result.stderr)
 
+    def test_dry_run_re_renders_the_selected_palette(self):
+        env = dict(os.environ, HOME=str(self.home), PATH='/usr/bin:/bin')
+        fresh = run(str(REPO / 'scripts/setup'), '--dry-run', env=env)
+        self.assertEqual(fresh.returncode, 0, fresh.stderr)
+        self.assertIn('theme apply summer-dusk', fresh.stdout)
+        current = self.home / '.cache/theme/current'
+        current.parent.mkdir(parents=True)
+        current.write_text('kanagawa\n')
+        rerun = run(str(REPO / 'scripts/setup'), '--dry-run', env=env)
+        self.assertEqual(rerun.returncode, 0, rerun.stderr)
+        self.assertIn('theme apply kanagawa', rerun.stdout)
+        self.assertNotIn('summer-dusk', rerun.stdout)
+
     def test_firewall_backs_up_both_files_and_reloads_without_global_flush(self):
         policy = '/etc/nftables.conf'
         override = '/etc/systemd/system/nftables.service.d/10-linux-config.conf'

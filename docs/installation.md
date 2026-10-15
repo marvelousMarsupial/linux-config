@@ -39,9 +39,10 @@ sudo or file changes. A normal run, in order:
   avoids repeating the build when that revision is present.
 - Calls `setup-editor` for Neovim and plugins, which calls `install` for user
   files. Existing applications are reused; setup is not an application updater.
-- Applies the summer-dusk palette on a fresh home. Existing theme selections,
-  generated colors and local monitor profiles are preserved. Paths are rendered
-  for the installing user.
+- Applies the summer-dusk palette on a fresh home, and re-renders the selected
+  palette on a rerun so template changes reach every target. Existing theme
+  selections, generated colors and local monitor profiles are preserved. Paths
+  are rendered for the installing user.
 - Adds the user to video, and to libvirt and kvm where the VM stack is
   installed, selects zsh as the login shell,
   generates the English UTF-8 locale if missing, installs the APT update policy
