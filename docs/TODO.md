@@ -11,11 +11,14 @@ are grouped at the end because they cannot be verified in the development VM.
 
 ## Publishing and fresh-machine verification
 
-- [ ] Test the published bootstrap on a fresh Debian 13 machine: packages,
-  themes, sudo prompts, cleanup after success and failure, and operation after
-  the checkout is gone. Repeat on the replacement laptop and on a Raspberry
-  Pi; the aarch64 path (Zen and Yazi aarch64 builds, no VM stack) has only
-  been checked offline.
+- [x] Test the published bootstrap on a fresh Debian 13 x86_64 VM: packages,
+  themes, sudo prompts, cleanup after success, reruns and operation after the
+  checkout is gone. Found and fixed the Yazi filetype key rename, the status
+  panel closing on focus loss, setup skipping template re-renders, and Zen's
+  profile move to `~/.config/zen`.
+- [ ] Repeat the bootstrap on the replacement laptop and on a Raspberry Pi,
+  and exercise cleanup after a failed step. The aarch64 path (Zen and Yazi
+  aarch64 builds, no VM stack) has only been checked offline.
   The default source now points at the GitHub repository; if the repository
   is private, the raw URL in [installation](installation.md#remote-bootstrap)
   will not work anonymously.

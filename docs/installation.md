@@ -97,7 +97,8 @@ repository is private, clone it with credentials and run `./scripts/setup`
 from the checkout instead.
 
 Offline tests cover piped execution, argument forwarding, failure exit codes
-and cleanup. A real run on a fresh machine is still pending; see [TODO](TODO.md).
+and cleanup. A real run on a fresh Debian 13 x86_64 VM passed; laptop and
+Raspberry Pi runs are listed in [TODO](TODO.md).
 
 ## Config-only installation
 
