@@ -7,8 +7,10 @@ base02: "223249"
 base03: "727169"
 base04: "c8c093"
 base05: "dcd7ba"
-base06: "938aa9"
-base07: "363646"
+# base06/base07 feed the light foreground and ANSI bright white; the earlier
+# values (springViolet1, sumiInk5) were dim and dark, so bright white went grey.
+base06: "c8c093"  # oldWhite, kanagawa's ANSI white
+base07: "dcd7ba"  # fujiWhite, kanagawa's ANSI bright white
 base08: "c34043"
 base09: "ffa066"
 base0A: "e6c384"

@@ -70,12 +70,23 @@ Sources: [KeePassXC theme setting](https://github.com/keepassxreboot/keepassxc/b
 ## Themes
 
 Press **Super+G**, or open **Appearance** from the launcher, for a compact
-picker showing palette dots and a transparency switch. **Up/Down** moves through
-palettes and the switch, **Left/Right** moves between them. **Enter** on a
-palette applies it and closes. **Enter** or **Space** on the switch toggles
-glass mode immediately and keeps the popup open. **Escape** closes without
-applying the palette being browsed. The dots show the background, two surfaces,
-text and two accents; names appear on hover. The picker uses GTK 3.
+picker with one card per palette and a transparency switch. Each card is
+drawn in its own palette: the desktop background, the scheme name in the main
+text color, and the eight accents as chips. Hovering shows the palette's
+raised surface and the selected card carries its focus accent as a border.
+**Up/Down** moves through palettes and the switch, **Left/Right** jumps between
+them. **Enter** on a palette applies it and closes. **Enter** or **Space** on
+the switch toggles glass mode immediately and keeps the popup open. **Escape**
+closes without applying the palette being browsed. The picker uses GTK 3.
+
+The six palettes were checked against their upstream definitions on
+2026-10-15. Gruvbox and OneHalf match. Catppuccin deliberately uses the
+overlay tiers for comments and subtle text, as its style guide recommends,
+because the upstream base16 export puts near-invisible surface colors there.
+TokyoNight Moon maps the editor's own colors rather than the base16 export, so
+main text is the full foreground. Kanagawa's light foreground and bright
+white slots held two dark surface colors and were corrected to oldWhite and
+fujiWhite. Summer Dusk is custom.
 
 The command-line tools:
 

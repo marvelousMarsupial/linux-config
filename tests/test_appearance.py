@@ -169,7 +169,7 @@ class AppearanceTests(unittest.TestCase):
         controller.window.close.assert_called_once_with()
         controller.apply.assert_not_called()
 
-    def test_swatches_represent_rendered_desktop_surfaces_and_accents(self):
+    def test_cards_use_each_palette_as_rendered_on_the_desktop(self):
         config = self.home / '.config/theme/config.toml'
         config.write_text(re.sub(r'^hook = .*\n', '', config.read_text(), flags=re.M))
         palettes = self.menu.load_palettes(self.home)
@@ -180,16 +180,14 @@ class AppearanceTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             sway = (self.home / '.config/sway/colors').read_text()
             fuzzel = (self.home / '.config/fuzzel/colors.ini').read_text()
-            foot = (self.home / '.config/foot/colors.ini').read_text()
-            samples = [re.search(r'^set \$base00 #(\w+)', sway, re.M)[1],
-                       re.search(r'^background=(\w+)', foot, re.M)[1],
-                       re.search(r'^selection=(\w{6})', fuzzel, re.M)[1],
-                       re.search(r'^text=(\w{6})', fuzzel, re.M)[1],
-                       re.search(r'^match=(\w{6})', fuzzel, re.M)[1],
-                       re.search(r'^set \$base0E #(\w+)', sway, re.M)[1]]
+            background = re.search(r'^set \$base00 #(\w+)', sway, re.M)[1]
+            text = re.search(r'^text=(\w{6})', fuzzel, re.M)[1]
+            accent = re.search(r'^match=(\w{6})', fuzzel, re.M)[1]
             css = self.menu.stylesheet(palettes, slug)
-            for dot, actual in enumerate(samples):
-                self.assertIn(f'#dot-{index}-{dot} {{ background: #{actual};', css)
+            self.assertIn(f'#row-{index} {{ background: #{background}; color: #{text};', css)
+            self.assertIn(f'#row-{index}:selected {{ border-color: #{accent}; }}', css)
+            for chip, key in enumerate(self.menu.ACCENT_KEYS):
+                self.assertIn(f'#chip-{index}-{chip} {{ background: #{palette[key]}; }}', css)
 
     def test_real_gtk_controller_and_toggle_activation(self):
         try:

@@ -1,14 +1,17 @@
 #!/usr/bin/python3
-"""A compact palette-dot picker with a transparency switch."""
+"""A compact palette picker with a transparency switch.
+
+Each palette is drawn as a card in its own colors: the desktop background,
+the main text and the eight accents. Hovering shows its raised surface and
+selecting it shows its focus accent, so the choice is visible before applying.
+"""
 import re
 import subprocess
 import sys
 from pathlib import Path
 from threading import Thread
 
-# Show the desktop's appearance, not the ANSI rainbow: background, surfaces,
-# text, focused-window accent and secondary accent.
-SWATCH_KEYS = ('base00', 'base01', 'base02', 'base05', 'base0D', 'base0E')
+ACCENT_KEYS = ('base08', 'base09', 'base0A', 'base0B', 'base0C', 'base0D', 'base0E', 'base0F')
 
 
 def read_state(path, default):
@@ -54,32 +57,36 @@ def apply_settings(home, scheme, transparent):
 def stylesheet(palettes, selected):
     p = palettes[selected]
     css = """
+    .appearance { font-family: "CaskaydiaCove Nerd Font", monospace; font-size: 13px; }
     window.appearance { background: #BG; color: #FG; }
     .appearance list { background: transparent; }
-    .appearance row { padding: 12px 16px; border: 1px solid transparent;
-        border-radius: 4px; margin: 2px 0; }
-    .appearance row:selected { background: #SURFACE; border-color: #ACCENT; }
-    .appearance row:hover { background: #SURFACE; }
+    .appearance row { padding: 10px 14px; border: 2px solid transparent;
+        border-radius: 8px; margin: 3px 0; }
     .appearance row:focus { outline: none; }
-    .appearance .dot { min-width: 24px; min-height: 24px; border-radius: 100%; }
+    .appearance .chip { min-width: 16px; min-height: 16px; border-radius: 100%; margin-left: 5px; }
+    .appearance .title { margin-right: 16px; }
     .appearance .glass-icon { color: #MUTED; font-size: 20px; }
-    .appearance switch { background: #SURFACE; border: 1px solid #MUTED;
+    .appearance row.toggle { background: #SURFACE; color: #FG; }
+    .appearance row.toggle:selected { border-color: #ACCENT; }
+    .appearance switch { background: #BG; border: 1px solid #MUTED;
         border-radius: 20px; min-width: 38px; }
     .appearance switch:checked { background: #ACCENT; border-color: #ACCENT; }
     .appearance switch slider { background: #FG; border: none; border-radius: 20px;
         min-width: 16px; min-height: 16px; box-shadow: none; }
-    .appearance .background-dot { min-width: 34px; min-height: 34px; }
     .appearance switch:focus { outline: none; }
-    .appearance separator { background: #SURFACE; min-height: 1px; }
     .appearance spinner { color: #ACCENT; }
     """
-    for token, key in [('BG', 'base00'), ('FG', 'base05'), ('ACCENT', 'base0D'),
-                       ('SURFACE', 'base01'), ('MUTED', 'base04')]:
+    for token, key in [('BG', 'base01'), ('FG', 'base05'), ('ACCENT', 'base0D'),
+                       ('SURFACE', 'base00'), ('MUTED', 'base04')]:
         css = css.replace('#' + token, '#' + p[key])
+    # Every card is painted in its own palette, whatever is currently applied.
     for index, palette in enumerate(palettes.values()):
-        for dot, key in enumerate(SWATCH_KEYS):
-            css += (f'.appearance #dot-{index}-{dot} {{ background: #{palette[key]}; '
-                    f'border: 1px solid #{palette["base03"]}; }}\n')
+        css += (f'.appearance #row-{index} {{ background: #{palette["base00"]}; color: #{palette["base05"]}; '
+                f'border-color: #{palette["base02"]}; }}\n'
+                f'.appearance #row-{index}:hover {{ background: #{palette["base01"]}; }}\n'
+                f'.appearance #row-{index}:selected {{ border-color: #{palette["base0D"]}; }}\n')
+        for chip, key in enumerate(ACCENT_KEYS):
+            css += f'.appearance #chip-{index}-{chip} {{ background: #{palette[key]}; }}\n'
     return css
 
 
@@ -129,23 +136,25 @@ def create_application(home, palettes):
             self.rows.connect('row-activated', lambda *_: self.activate_selection())
             for index, slug in enumerate(self.slugs):
                 row = Gtk.ListBoxRow()
+                row.set_name(f'row-{index}')
                 row.set_can_focus(True)
-                row.set_tooltip_text(palettes[slug]['title'])
                 row.get_accessible().set_name(palettes[slug]['title'])
-                dots = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-                for dot in range(len(SWATCH_KEYS)):
-                    chip = Gtk.Box()
-                    chip.set_name(f'dot-{index}-{dot}')
-                    chip.set_valign(Gtk.Align.CENTER)
-                    chip.get_style_context().add_class('dot')
-                    if dot == 0:
-                        chip.get_style_context().add_class('background-dot')
-                    dots.pack_start(chip, False, False, 0)
-                row.add(dots)
+                card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+                title = Gtk.Label(label=palettes[slug]['title'], xalign=0)
+                title.get_style_context().add_class('title')
+                card.pack_start(title, True, True, 0)
+                for chip in range(len(ACCENT_KEYS)):
+                    swatch = Gtk.Box()
+                    swatch.set_name(f'chip-{index}-{chip}')
+                    swatch.set_valign(Gtk.Align.CENTER)
+                    swatch.get_style_context().add_class('chip')
+                    card.pack_start(swatch, False, False, 0)
+                row.add(card)
                 self.rows.add(row)
             # The toggle is a normal final row. Focus belongs to its row, so
             # keyboard activation does not depend on GtkSwitch child focus.
             toggle_row = Gtk.ListBoxRow()
+            toggle_row.get_style_context().add_class('toggle')
             toggle_row.set_can_focus(True)
             toggle_row.get_accessible().set_name('Transparency')
             toggle_row.set_tooltip_text('Transparency')
