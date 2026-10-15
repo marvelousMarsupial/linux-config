@@ -40,19 +40,16 @@ Stopping nftables disables this host protection.
 
 The policy has a marked spot before the final drop for narrowly scoped
 exceptions. Add one rule per service, matching the trusted source subnet and
-the TCP or UDP port, and never trust a whole interface. For example, to let
-paired T3 Code clients on a private subnet reach port 3773, add a line with
-your own subnet in place of the documentation range:
+the TCP or UDP port, and never trust a whole interface. For example, to allow
+SSH from one private subnet, add a line with your own subnet in place of the
+documentation range:
 
 ```text
-ip saddr 192.0.2.0/24 tcp dport 3773 counter accept
+ip saddr 192.0.2.0/24 tcp dport 22 counter accept
 ```
 
-Such a rule does not forward a router port or expose IPv6. The service must
-also listen on the host's private address; T3 Code needs **Network access**
-enabled in its settings or `t3 serve --host <host-private-ip> --port 3773`, and
-its one-time pairing link per client. See the
-[T3 Code remote access guide](https://github.com/pingdotgg/t3code/blob/main/docs/user/remote-access.md#pair-over-a-lan-or-private-network).
+Such a rule does not forward a router port or expose IPv6, and the service
+must also listen on the host's private address.
 
 Keep machine-specific subnets out of the public repository: edit the installed
 `/etc/nftables.conf`, or keep a private copy of the policy, and reapply it
