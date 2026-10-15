@@ -101,6 +101,27 @@ class PanelTests(unittest.TestCase):
         self.assertIn('Battery 50%', text)
         self.assertIn(f'--lines={len(text.splitlines())}', args)
 
+    def test_popup_darkens_only_over_windows(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        panel = load_script('status-panel')
+        leaf = {'type': 'con', 'nodes': [], 'floating_nodes': [], 'app_id': 'foot'}
+        workspace = lambda nodes: {'type': 'workspace', 'focused': True, 'nodes': nodes, 'floating_nodes': []}
+        tree = lambda nodes: json.dumps({'type': 'root', 'nodes': [
+            {'type': 'output', 'nodes': [workspace(nodes)], 'floating_nodes': []}], 'floating_nodes': []})
+        with tempfile.TemporaryDirectory() as d:
+            colors = Path(d) / '.config/fuzzel/colors.ini'
+            colors.parent.mkdir(parents=True)
+            colors.write_text('[colors]\nbackground=1f1d2e14\ntext=ffffffff\n')
+            with patch.object(panel.Path, 'home', return_value=Path(d)):
+                with patch.object(panel, 'run', return_value=tree([leaf])):
+                    self.assertEqual(panel.covered_background(), ['--background=1f1d2ed9'])
+                with patch.object(panel, 'run', return_value=tree([])):
+                    self.assertEqual(panel.covered_background(), [])
+                with patch.object(panel, 'run', return_value=''):
+                    self.assertEqual(panel.covered_background(), [])
+
 
 class HealthReportTests(unittest.TestCase):
     def test_report_escaping_isolation_modes_retention_and_database(self):

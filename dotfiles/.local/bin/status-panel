@@ -4,6 +4,7 @@
 import os
 import argparse
 import fcntl
+import json
 import re
 import signal
 import subprocess
@@ -104,6 +105,48 @@ def get_power() -> str:
     return f"Battery {pct}%"
 
 
+def covered_background() -> list[str]:
+    """Return an opaque background flag when a window sits under the panel.
+
+    Glass mode gives fuzzel an almost clear background, which reads fine over
+    the wallpaper but not over a window. The focused workspace's leaf nodes
+    tell us whether anything is underneath; failures fall back to no override.
+    """
+    try:
+        tree = json.loads(run(["swaymsg", "-t", "get_tree", "-r"]))
+    except ValueError:
+        return []
+
+    def windows(node: dict) -> int:
+        children = node.get("nodes", []) + node.get("floating_nodes", [])
+        if not children:
+            return 1 if node.get("type") in ("con", "floating_con") else 0
+        return sum(windows(child) for child in children)
+
+    def focused_workspace(node: dict) -> dict | None:
+        children = node.get("nodes", []) + node.get("floating_nodes", [])
+        if node.get("type") == "workspace":
+            if node.get("focused") or any(focused_workspace(child) is not None for child in children):
+                return node
+            return None
+        for child in children:
+            found = focused_workspace(child)
+            if found is not None:
+                return found
+        return node if node.get("focused") else None
+
+    workspace = focused_workspace(tree)
+    if not workspace or workspace.get("type") != "workspace" or windows(workspace) == 0:
+        return []
+    colors = Path.home() / ".config/fuzzel/colors.ini"
+    try:
+        match = re.search(r"(?m)^background=([0-9a-fA-F]{6})", colors.read_text())
+    except OSError:
+        return []
+    # 85% opaque keeps the rounded glass look while hiding the window below.
+    return [f"--background={match[1]}d9"] if match else []
+
+
 def main() -> None:
     """Render the read-only status panel with fuzzel."""
     date_str = datetime.now().strftime("%a %b %d")
@@ -146,6 +189,7 @@ def main() -> None:
             "--selection-text-color=ffffffff",
             "--inner-pad=20",
             "--line-height=25",
+            *covered_background(),
         ],
         input="\n".join(lines),
         text=True,
