@@ -11,8 +11,8 @@ Read [installation](docs/installation.md) before applying the setup. It covers
 packages, separately installed applications, config backups and local settings.
 Finish the [manual checklist](docs/manual.md) after setup.
 
-For a fresh Debian 13 x86_64 workstation, run as your normal user from the
-checkout:
+For a fresh Debian 13 machine on x86_64 or aarch64, such as a laptop or a
+Raspberry Pi 4 or 5, run as your normal user from the checkout:
 
 ```sh
 ./scripts/setup --dry-run
@@ -40,7 +40,7 @@ plugin locks and generated colors. Run `./scripts/check --full` to verify the re
 | --- | --- |
 | `dotfiles/` | User configs, desktop commands, theme templates and assets. |
 | `scripts/` | Install, check and explicit editor/shell setup commands. |
-| `packages.txt` | Debian desktop package requirements. |
+| `packages.txt` | Debian desktop package requirements; `packages.<arch>.txt` adds the VM emulator and firmware for x86_64 or aarch64. |
 | `system/` | APT/firewall configuration applied by setup; optional lid and udev settings. |
 | `examples/` | Hardware-specific reference configurations. |
 | `tests/` | Offline integration and editor smoke checks. |

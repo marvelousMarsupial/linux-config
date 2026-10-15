@@ -1,0 +1,3 @@
+# x86_64 only: VM emulator and UEFI firmware. scripts/setup adds this list on x86_64.
+ovmf
+qemu-system-x86

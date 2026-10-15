@@ -9,7 +9,7 @@ with executable permissions. Repository maintenance commands live in `scripts/`.
 
 | Script | Responsibility |
 | --- | --- |
-| scripts/setup | Fresh Debian 13 x86_64 setup: packages, firewall, verified app releases, fzf-tab, portal build, editor, user files, initial theme, host settings, OpenSnitch socket and health timer. Dry run performs no privileged or network changes. Refuses to run as root. |
+| scripts/setup | Fresh Debian 13 setup on x86_64 or aarch64: packages, firewall, verified app releases, fzf-tab, portal build, editor, user files, initial theme, host settings, OpenSnitch socket and health timer. Dry run performs no privileged or network changes. Refuses to run as root. |
 | scripts/bootstrap | Downloads a temporary checkout, forwards `--dry-run` and `--dev-tools` to setup, and removes the checkout afterward, including on failure. HTTPS sources only. |
 | scripts/install | Atomic per-file copies with backups, a named retirement list, bytecode exclusion, symlink boundary checks, and merges of only the dark-theme key for KeePassXC and OpenSnitch. Renders the theme hook path and desktop entries for the destination user. Not a transaction across the whole home. |
 | scripts/install-receipt | Records the source commit, modified-checkout flag, completion date and install scope after a successful installation. |

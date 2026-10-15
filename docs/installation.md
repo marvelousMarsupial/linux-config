@@ -7,9 +7,10 @@ requirements before applying them. Existing software is not automatically remove
 
 ## One-command setup
 
-Use Debian 13 **x86_64** and your normal user account with sudo access. Python 3,
-git and sudo must already be available to obtain the checkout and run setup.
-From the repository root:
+Use Debian 13 on **x86_64** or **aarch64** (a Raspberry Pi 4 or 5 running
+Debian or Raspberry Pi OS based on Debian 13) with your normal user account and
+sudo access. Python 3, git and sudo must already be available to obtain the
+checkout and run setup. From the repository root:
 
 ```sh
 ./scripts/setup --dry-run
@@ -19,16 +20,19 @@ From the repository root:
 The dry run performs read-only discovery and prints a plan without downloads,
 sudo or file changes. A normal run, in order:
 
-- Installs `packages.txt` through APT. This includes IPython with NumPy,
-  Matplotlib and SciPy, Chromium, KeePassXC, OpenSnitch and its UI theme
-  library, Starship, and the portal broker with its GTK and wlr backends.
+- Installs `packages.txt` through APT, plus `packages.x86_64.txt` or
+  `packages.aarch64.txt` for the matching VM emulator and UEFI firmware. The
+  common list includes IPython with NumPy, Matplotlib and SciPy, Chromium,
+  KeePassXC, OpenSnitch and its UI theme library, Starship, and the portal
+  broker with its GTK and wlr backends.
 - Validates and installs the incoming firewall and its service override, backs
   up previous files, then enables and reloads nftables. A failed check stops
   setup. Review the [firewall policy](firewall.md) before running setup,
   especially over a remote connection.
 - Installs missing Yazi/ya, Zen and CaskaydiaCove Nerd Font from their latest
-  official GitHub releases. The published SHA-256 digest is required and checked
-  before extraction; a missing digest or mismatch stops setup.
+  official GitHub releases, choosing the x86_64 or aarch64 build to match the
+  machine. The published SHA-256 digest is required and checked before
+  extraction; a missing digest or mismatch stops setup.
 - Calls `setup-shell` to install the pinned fzf-tab plugin. See [shell](shell.md).
 - Builds termfilechooser at the pinned upstream commit from temporary sources
   and installs it into `/usr`. Build dependencies remain installed. A marker

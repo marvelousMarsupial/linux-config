@@ -18,6 +18,11 @@ import urllib.request
 import zipfile
 
 REPO = Path(__file__).resolve().parent.parent
+# Release assets per CPU architecture; packages.<machine>.txt adds the matching packages.
+ARCHITECTURES = {
+    'x86_64': {'yazi': 'yazi-x86_64-unknown-linux-musl.zip', 'zen': 'zen.linux-x86_64.tar.xz'},
+    'aarch64': {'yazi': 'yazi-aarch64-unknown-linux-musl.zip', 'zen': 'zen.linux-aarch64.tar.xz'},
+}
 PORTAL_COMMIT = 'cb8cec0b30aa6e2cc36b1b5cb34d6dc9a1face29'
 BUILD_PACKAGES = ['build-essential', 'meson', 'ninja-build', 'libinih-dev', 'libsystemd-dev', 'scdoc']
 
@@ -93,16 +98,17 @@ def replace(source, destination, backup):
         raise
 
 
-def applications(home, dry):
+def applications(home, dry, machine=None):
+    assets = ARCHITECTURES[machine or platform.machine()]
     # Temporary directory is on the same filesystem as the installed applications.
     local = home / '.local'
     if not dry:
         local.mkdir(exist_ok=True)
     wanted = []
     if not shutil.which('yazi') or not shutil.which('ya'):
-        wanted.append(('sxyazi/yazi', 'yazi-x86_64-unknown-linux-musl.zip', 'yazi'))
+        wanted.append(('sxyazi/yazi', assets['yazi'], 'yazi'))
     if not (local / 'zen/zen').is_file():
-        wanted.append(('zen-browser/desktop', 'zen.linux-x86_64.tar.xz', 'zen'))
+        wanted.append(('zen-browser/desktop', assets['zen'], 'zen'))
     fontdir = local / 'share/fonts/CaskaydiaCove'
     fonts = subprocess.run(['fc-match', '-f', '%{family}', 'CaskaydiaCove Nerd Font'],
                            capture_output=True, text=True).stdout if shutil.which('fc-match') else ''
@@ -251,6 +257,12 @@ def host_settings(user, dry):
     run('sudo', 'systemctl', 'enable', '--now', 'libvirtd.service', 'apt-daily.timer', 'apt-daily-upgrade.timer', dry=dry)
 
 
+def package_list(path):
+    if not path.is_file():
+        return []
+    return [line.strip() for line in path.read_text().splitlines() if line.strip() and not line.startswith('#')]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dry-run', action='store_true', help='Print the plan without downloads, sudo or file changes')
@@ -262,17 +274,18 @@ def main():
     release = dict(line.split('=', 1) for line in Path('/etc/os-release').read_text().splitlines() if '=' in line)
     if release.get('ID', '').strip('"') != 'debian' or release.get('VERSION_ID', '').strip('"') != '13':
         parser.error('This setup supports Debian 13')
-    if platform.machine() != 'x86_64':
-        parser.error('This workstation setup currently supports x86_64 only')
+    machine = platform.machine()
+    if machine not in ARCHITECTURES:
+        parser.error(f'This setup supports {" and ".join(ARCHITECTURES)}, not {machine}')
     home = Path.home().resolve()
     if not (home / '.local').resolve().is_relative_to(home):
         parser.error('~/.local must stay inside your home directory')
     user = pwd.getpwuid(os.getuid()).pw_name
     os.environ['PATH'] = f'{home}/.local/bin:' + os.environ['PATH']
-    packages = sorted({line.strip() for line in (REPO / 'packages.txt').read_text().splitlines()
-                       if line.strip() and not line.startswith('#')})
+    packages = set(package_list(REPO / 'packages.txt')) | set(package_list(REPO / f'packages.{machine}.txt'))
     if args.backups:
-        packages = sorted(set(packages) | {'restic'})
+        packages.add('restic')
+    packages = sorted(packages)
     run('sudo', 'apt-get', 'update', dry=args.dry_run)
     run('sudo', 'apt-get', 'install', '-y', *packages, dry=args.dry_run)
     firewall(args.dry_run)

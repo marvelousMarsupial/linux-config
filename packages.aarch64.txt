@@ -1,0 +1,3 @@
+# aarch64 only, such as a Raspberry Pi 4 or 5: VM emulator and UEFI firmware.
+qemu-efi-aarch64
+qemu-system-arm

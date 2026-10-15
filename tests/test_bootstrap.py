@@ -229,6 +229,29 @@ class BootstrapTests(unittest.TestCase):
         self.assertTrue(list((self.home / '.local/share/fonts').rglob('*.ttf')))
         self.assertEqual(list((self.home / '.local').glob('linux-config-*')), [])
 
+    def test_each_architecture_requests_its_own_release_assets(self):
+        for machine, yazi, zen in (('x86_64', 'yazi-x86_64-unknown-linux-musl.zip', 'zen.linux-x86_64.tar.xz'),
+                                   ('aarch64', 'yazi-aarch64-unknown-linux-musl.zip', 'zen.linux-aarch64.tar.xz')):
+            with self.subTest(machine=machine), patch.object(setup.shutil, 'which', return_value=None), \
+                 patch.object(setup.subprocess, 'run') as command, \
+                 patch.object(setup, 'release_asset', side_effect=OSError('offline')) as download:
+                command.return_value.stdout = ''
+                with self.assertRaises(OSError):
+                    setup.applications(self.home, False, machine=machine)
+                self.assertEqual(download.call_args.args[:2], ('sxyazi/yazi', yazi))
+            with self.assertRaises(KeyError):
+                setup.applications(self.home, True, machine='armv7l')
+        self.assertEqual(setup.ARCHITECTURES['aarch64']['zen'], 'zen.linux-aarch64.tar.xz')
+
+    def test_architecture_package_lists_add_only_their_emulator(self):
+        common = set(setup.package_list(REPO / 'packages.txt'))
+        x86 = set(setup.package_list(REPO / 'packages.x86_64.txt'))
+        arm = set(setup.package_list(REPO / 'packages.aarch64.txt'))
+        self.assertEqual(x86, {'ovmf', 'qemu-system-x86'})
+        self.assertEqual(arm, {'qemu-efi-aarch64', 'qemu-system-arm'})
+        self.assertFalse(common & (x86 | arm))
+        self.assertEqual(setup.package_list(REPO / 'packages.missing.txt'), [])
+
     def test_other_username_is_rendered_and_repeat_install_is_clean(self):
         result = run(str(REPO / 'scripts/install'), '--home', str(self.home))
         self.assertEqual(result.returncode, 0, result.stderr)

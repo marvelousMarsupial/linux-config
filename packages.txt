@@ -47,7 +47,6 @@ mate-polkit
 network-manager
 nftables
 opensnitch
-ovmf
 passt
 pipewire-pulse
 playerctl
@@ -61,7 +60,6 @@ python3-qt-material
 python3-scipy
 python3-yaml
 qemu-system-modules-spice
-qemu-system-x86
 qemu-utils
 qtwayland5
 ripgrep
