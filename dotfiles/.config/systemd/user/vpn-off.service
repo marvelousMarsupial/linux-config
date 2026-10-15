@@ -1,0 +1,8 @@
+[Unit]
+Description=Start the desktop session with every VPN disconnected
+PartOf=sway-session.target
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/vpn-menu off

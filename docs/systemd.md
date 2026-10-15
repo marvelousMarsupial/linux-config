@@ -9,7 +9,8 @@ A second active session is left untouched; this setup supports one Sway
 session per user.
 
 The target starts kanshi, Mako, the popup guard, the battery monitor, swayidle,
-udiskie, the OpenSnitch UI and `update-notify.timer`. No enable command is
+udiskie, the OpenSnitch UI, `update-notify.timer` and the one-shot `vpn-off`
+that disconnects every VPN at login. No enable command is
 needed. Mako starts only through systemd to avoid duplicate notification
 daemons. Startup resets failures only for the services this integration owns,
 preserving unrelated failure evidence.

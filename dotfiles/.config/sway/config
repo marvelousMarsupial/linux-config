@@ -283,6 +283,9 @@ bindsym --to-code $mod+Shift+b exec blueman-manager
 # WiFi menu
 bindsym --to-code $mod+w exec $bin/wifi-menu
 
+# VPN menu: WireGuard profiles and Tailscale, all off until chosen
+bindsym --to-code $mod+Shift+w exec $bin/vpn-menu
+
 # Virtual machines — managed directly with libvirt.
 bindsym --to-code $mod+c exec virt-manager --connect qemu:///system
 

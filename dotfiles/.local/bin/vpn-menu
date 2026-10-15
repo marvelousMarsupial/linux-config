@@ -1,0 +1,205 @@
+#!/usr/bin/python3
+"""Toggle WireGuard (NetworkManager) and Tailscale from a fuzzel menu.
+
+Fail-off rules: imported WireGuard profiles never autoconnect, a connection
+that fails to come up is torn down again, and `vpn-menu off` (run at session
+start) disconnects everything. Nothing here starts a VPN without a choice.
+"""
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+
+TIMEOUT = 45
+
+
+def run(cmd, timeout=TIMEOUT):
+    """Run a command; return (ok, combined output). Missing tools count as failure."""
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                                env=dict(os.environ, LC_ALL='C'))
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return False, str(error)
+    return result.returncode == 0, (result.stdout + result.stderr).strip()
+
+
+def notify(title, message, critical=False):
+    cmd = ['notify-send', '-a', 'VPN'] + (['-u', 'critical'] if critical else []) + [title, message]
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def wireguard():
+    """Return {name: active} for NetworkManager WireGuard profiles."""
+    ok, out = run(['nmcli', '-t', '-f', 'NAME,TYPE,ACTIVE', 'connection', 'show'], timeout=10)
+    profiles = {}
+    if not ok:
+        return profiles
+    for line in out.splitlines():
+        parts = re.split(r'(?<!\\):', line)
+        if len(parts) == 3 and parts[1] == 'wireguard':
+            profiles[parts[0].replace('\\:', ':')] = parts[2] == 'yes'
+    return profiles
+
+
+def tailscale():
+    """Return True/False for Tailscale running, or None when it is not installed."""
+    if not shutil.which('tailscale'):
+        return None
+    ok, out = run(['tailscale', 'status', '--json'], timeout=10)
+    if not ok:
+        return False
+    try:
+        return json.loads(out).get('BackendState') == 'Running'
+    except ValueError:
+        return False
+
+
+def wireguard_up(name):
+    ok, out = run(['nmcli', 'connection', 'up', name])
+    if ok:
+        notify('VPN on', name)
+        return 0
+    # Fail off: never leave a half-configured tunnel or routes behind.
+    run(['nmcli', 'connection', 'down', name], timeout=15)
+    notify('VPN stayed off', f'{name}: {out or "connection failed"}', critical=True)
+    return 1
+
+
+def wireguard_down(name):
+    ok, out = run(['nmcli', 'connection', 'down', name])
+    notify('VPN off' if ok else 'VPN disconnect failed', name if ok else f'{name}: {out}', critical=not ok)
+    return 0 if ok else 1
+
+
+def tailscale_up():
+    ok, out = run(['tailscale', 'up', '--timeout=30s'])
+    if ok:
+        notify('VPN on', 'Tailscale')
+        return 0
+    login = re.search(r'https://login\.tailscale\.com/\S+', out)
+    if login:
+        # First use: finish authentication in the browser, then choose Tailscale again.
+        subprocess.Popen(['xdg-open', login[0]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        notify('Tailscale login', 'Finish signing in, then turn Tailscale on again.')
+        return 1
+    run(['tailscale', 'down'], timeout=15)
+    notify('VPN stayed off', f'Tailscale: {out or "failed to start"}', critical=True)
+    return 1
+
+
+def tailscale_down():
+    ok, out = run(['tailscale', 'down'])
+    notify('VPN off' if ok else 'VPN disconnect failed', 'Tailscale' if ok else f'Tailscale: {out}', critical=not ok)
+    return 0 if ok else 1
+
+
+def config_files():
+    home = Path.home()
+    folders = (home / '.config/wireguard', home / 'Downloads')
+    return sorted(path for folder in folders if folder.is_dir() for path in folder.glob('*.conf'))
+
+
+def import_config(path):
+    """Import a WireGuard file into NetworkManager with autoconnect off, then trash it."""
+    path = Path(path)
+    if not path.is_file():
+        notify('VPN import failed', f'{path} is not a file', critical=True)
+        return 1
+    ok, out = run(['nmcli', 'connection', 'import', 'type', 'wireguard', 'file', str(path)])
+    if not ok:
+        notify('VPN import failed', out, critical=True)
+        return 1
+    match = re.search(r"Connection '(.+?)' \(", out)
+    name = match[1] if match else path.stem
+    # NetworkManager activates an imported profile and autoconnects it; undo both.
+    run(['nmcli', 'connection', 'modify', name, 'connection.autoconnect', 'no'], timeout=15)
+    run(['nmcli', 'connection', 'down', name], timeout=15)
+    # The private key now lives in NetworkManager's root-only store; keep no plain copy.
+    moved = shutil.which('trash-put') and run(['trash-put', '--', str(path)], timeout=15)[0]
+    notify('VPN profile added', f'{name}; original file {"moved to trash" if moved else "left in place"}')
+    return 0
+
+
+def off():
+    status = 0
+    for name, active in wireguard().items():
+        if active and not run(['nmcli', 'connection', 'down', name])[0]:
+            status = 1
+    if tailscale() and not run(['tailscale', 'down'])[0]:
+        status = 1
+    return status
+
+
+def status():
+    names = [name for name, active in wireguard().items() if active]
+    if tailscale():
+        names.append('Tailscale')
+    print('\n'.join(names))
+    return 0
+
+
+def choose(rows, prompt):
+    try:
+        result = subprocess.run(['fuzzel', '--dmenu', '--index', f'--prompt={prompt} ',
+                                 f'--lines={max(1, min(len(rows), 10))}', '--width=36'],
+                                input='\n'.join(rows) + '\n', capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    choice = result.stdout.strip()
+    return int(choice) if result.returncode == 0 and choice.isdigit() and int(choice) < len(rows) else None
+
+
+def menu():
+    profiles = wireguard()
+    running = tailscale()
+    files = config_files()
+    rows, actions = [], []
+    for name, active in profiles.items():
+        rows.append(f'{"●" if active else "○"} {name}  WireGuard')
+        actions.append((wireguard_down if active else wireguard_up, (name,)))
+    if running is not None:
+        rows.append(f'{"●" if running else "○"} Tailscale')
+        actions.append((tailscale_down if running else tailscale_up, ()))
+    if files:
+        rows.append('Import WireGuard config')
+        actions.append((pick_import, (files,)))
+    if any(profiles.values()) or running:
+        rows.append('Disconnect all')
+        actions.append((off, ()))
+    if not rows:
+        notify('VPN', 'No profiles. Put a WireGuard .conf in ~/.config/wireguard or install Tailscale.')
+        return 0
+    choice = choose(rows, 'VPN')
+    if choice is None:
+        return 0
+    function, arguments = actions[choice]
+    return function(*arguments)
+
+
+def pick_import(files):
+    choice = choose([path.name for path in files], 'Import')
+    return 0 if choice is None else import_config(files[choice])
+
+
+def main():
+    arguments = sys.argv[1:]
+    if not arguments:
+        return menu()
+    if arguments == ['off']:
+        return off()
+    if arguments == ['status']:
+        return status()
+    if len(arguments) == 2 and arguments[0] == 'import':
+        return import_config(arguments[1])
+    print('Usage: vpn-menu [off | status | import FILE]', file=sys.stderr)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())

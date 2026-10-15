@@ -92,8 +92,9 @@ the laptop or with the intended devices.
   verify it on the production installation.
 - [ ] Configure the Restic target and password, run a backup and restore test,
   then enable the timer. See [backups](backups.md).
-- [ ] Set up optional VPN support with a Fuzzel toggle using NetworkManager or
-  a narrow sudo rule; consider a kill switch. Preserve the active network.
+- [x] VPN: `vpn-menu` toggles WireGuard profiles through NetworkManager and
+  Tailscale, fails off, and `vpn-off.service` disconnects at login. Pending: a
+  real WireGuard peer and a Tailscale login on the laptop.
 - [ ] Rebuild dictation if needed. Its binaries, service and shortcuts were
   removed; model data is backed up.
 - [ ] Fix audio on the production XPS: check the exact model, audio devices,

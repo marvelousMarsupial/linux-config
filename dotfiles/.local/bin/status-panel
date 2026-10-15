@@ -83,6 +83,12 @@ def get_network() -> str:
     return "Offline"
 
 
+def get_vpn() -> str:
+    """Return the active VPN names, or an empty string when everything is off."""
+    names = run(["vpn-menu", "status"]).split()
+    return f"VPN {trunc(' '.join(names), SSID_MAX)}" if names else ""
+
+
 def get_power() -> str:
     'Return a power status line.'
     bat = Path("/sys/class/power_supply/BAT0")
@@ -160,6 +166,8 @@ def main() -> None:
     lines.append(date_str)
     lines.append("")
     lines.append(get_network())
+    if vpn := get_vpn():
+        lines.append(vpn)
     lines.append(get_power())
     # Center every line within PANEL_WIDTH. Done after the lines list
     # is fully built (rather than per get_*() call) so future lines

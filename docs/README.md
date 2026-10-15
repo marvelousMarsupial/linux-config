@@ -28,6 +28,7 @@ LESSONS, and dated evidence in the security audit and testing documents.
 | [Window behavior](window-behavior.md) | Fullscreen, floating dialogs, the popup guard and touchpad gestures. |
 | [Notifications](notifications.md) | Searchable Mako history and desktop shortcut. |
 | [Portals](portals.md) | Sway screen sharing and Zen file dialogs through Yazi. |
+| [VPN](vpn.md) | WireGuard and Tailscale toggle that fails off. |
 | [Passwords](passwords.md) | KeePassXC shortcut, scratchpad and Zen browser integration. |
 | [Browser](browser.md) | Zen extensions, first-launch defaults and tracked Surfingkeys settings. |
 | [Editor](editor.md) | Neovim setup, optional development tools, operator symbols and daily use. |

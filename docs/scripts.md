@@ -47,6 +47,7 @@ with executable permissions. Repository maintenance commands live in `scripts/`.
 | update-notify | Detects completed APT upgrades, baselines existing history, deduplicates and retries delivery. |
 | wallpaper-texture | Generates the palette-colored wallpaper; dots by default; solid color when glass is off. |
 | wifi-menu | Preserves saved profiles on failure; passwords go through nmcli's stdin; bounded connection timeout. |
+| vpn-menu | Super+Shift+W toggles WireGuard profiles and Tailscale; imports configs with autoconnect off; `off` runs at session start. See [VPN](vpn.md). |
 | zen, zen-theme-sync | Browser launcher; copies generated colors into the default Zen profile while preserving custom CSS and preferences. |
 
 The integration suite uses temporary homes and command stubs for disruptive

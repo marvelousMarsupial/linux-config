@@ -321,6 +321,9 @@ def main():
     elif not colors_present:
         run(home / '.local/bin/theme', 'apply', 'summer-dusk', dry=args.dry_run)
     host_settings(user, args.dry_run, 'libvirt-daemon-system' in packages)
+    if shutil.which('tailscale'):
+        # Let the desktop user toggle Tailscale without sudo; vpn-off relies on this.
+        run('sudo', 'tailscale', 'set', f'--operator={user}', dry=args.dry_run)
     opensnitch(args.dry_run)
     if args.dry_run or Path(f'/run/user/{os.getuid()}/bus').exists():
         run('systemctl', '--user', 'daemon-reload', dry=args.dry_run)

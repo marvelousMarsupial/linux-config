@@ -42,6 +42,7 @@ locales
 mako-notifier
 mate-polkit
 network-manager
+wireguard-tools
 nftables
 opensnitch
 pipewire-pulse
