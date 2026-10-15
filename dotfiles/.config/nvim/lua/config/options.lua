@@ -75,7 +75,7 @@ vim.api.nvim_create_user_command("EditorTools", function()
   for server, executable in pairs(require("config.tools").servers) do
     table.insert(lines, server .. ": " .. (vim.fn.exepath(executable) ~= "" and vim.fn.exepath(executable) or "Not installed"))
   end
-  for _, executable in ipairs({ "clang-format", "prettier", "stylua", "tree-sitter" }) do
+  for _, executable in ipairs({ "clang-format", "prettier", "stylua", "shfmt", "shellcheck", "tree-sitter" }) do
     table.insert(lines, executable .. ": " .. (vim.fn.exepath(executable) ~= "" and vim.fn.exepath(executable) or "Not installed"))
   end
   table.sort(lines)
