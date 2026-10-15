@@ -199,12 +199,16 @@ Full libvirt management access is administrative access. See the
 `~/.config/sway/local.conf` is optional and never installed by the repo. Use it
 for machine-specific bindings or output rules.
 
-Fresh installs receive the saved laptop/LG monitor profiles: curved landscape on
-the left, portrait ultrawide on the right, laptop panel off when docked.
-Existing kanshi configs are preserved. Profiles match on monitor description, so
+Fresh installs receive a kanshi config with a laptop-only profile and docked
+profiles for two external monitors: curved landscape on the left, portrait
+ultrawide on the right, laptop panel off when docked. The monitor serials in
+those profiles are placeholders, so the docked profiles match nothing until
+you replace `SERIAL1` and `SERIAL2` with your displays' serials. Find them
+with the command in the config's comments. Existing kanshi configs are
+preserved by later installs. Profiles match on monitor description, so
 connector names can change without affecting them.
-[`examples/kanshi-laptop.conf`](../examples/kanshi-laptop.conf) keeps the
-earlier physical layout as a reference.
+[`examples/kanshi-laptop.conf`](../examples/kanshi-laptop.conf) is the same
+layout with its reasoning.
 
 `system/` mirrors selected `/etc` files. Full setup applies the two APT policy
 files, the nftables policy and its service override. Lid and udev changes stay

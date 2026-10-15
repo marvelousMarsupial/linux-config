@@ -50,20 +50,22 @@ for source in sorted((repo / 'dotfiles').rglob('*')):
     content = source.read_bytes()
     # Render the few home-dependent paths for the destination user.
     if str(rel) == '.config/theme/config.toml':
-        content = content.replace(b'"/home/august/.local/bin/zen-theme-sync"',
+        content = content.replace(b'"/home/user/.local/bin/zen-theme-sync"',
                                   json.dumps(str(home / '.local/bin/zen-theme-sync')).encode())
+    elif str(rel) == '.config/yazi/keymap.toml':
+        content = content.replace(b'/run/media/user', f'/run/media/{home.name}'.encode())
     elif str(rel).startswith('.local/share/applications/') and source.suffix == '.desktop':
         rendered = []
         for line in content.decode().splitlines():
-            if line.startswith('Exec=/home/august/'):
+            if line.startswith('Exec=/home/user/'):
                 executable, *arguments = line[5:].split(' ')
-                executable = executable.replace('/home/august', str(home), 1)
+                executable = executable.replace('/home/user', str(home), 1)
                 escaped = ''.join('\\' + c if c in '\\"`$' else c for c in executable)
                 # Desktop Exec has its own escaping layer, followed by argument quoting.
                 rendered.append('Exec="' + escaped.replace('\\', '\\\\') + '"' +
                                 (' ' + ' '.join(arguments) if arguments else ''))
             else:
-                rendered.append(line.replace('/home/august', str(home)))
+                rendered.append(line.replace('/home/user', str(home)))
         content = ('\n'.join(rendered) + '\n').encode()
     mode = 0o755 if content.startswith((b'#!', b'\x7fELF')) else 0o644
     if str(rel) in managed_themes:

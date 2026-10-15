@@ -266,7 +266,7 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         for rel in ('.config/theme/config.toml', '.local/share/applications/zen.desktop'):
             content = (self.home / rel).read_text()
-            self.assertNotIn('/home/august', content)
+            self.assertNotIn('/home/user/', content)
             self.assertIn(str(self.home), content)
         # The Sway config needs no rendering: its exec commands expand a tilde.
         sway = (self.home / '.config/sway/config').read_text()

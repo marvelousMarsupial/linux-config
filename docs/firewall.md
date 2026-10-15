@@ -4,9 +4,9 @@
 
 The workstation uses nftables with a dedicated `inet linux_config` table for
 IPv4 and IPv6. Incoming traffic is dropped unless it is loopback, a reply to an
-established/related connection, ICMP/ICMPv6, a DHCP client reply, a DNS/DHCP
-request arriving on a libvirt `virbr*` bridge, or T3 Code TCP/3773 from
-`10.160.110.0/24`. Invalid tracked packets are dropped.
+established/related connection, ICMP/ICMPv6, a DHCP client reply, or a
+DNS/DHCP request arriving on a libvirt `virbr*` bridge. Invalid tracked
+packets are dropped.
 
 Outgoing traffic is unrestricted by this table. Guest forwarding and NAT remain
 under libvirt's control. There is no SSH, web-server, LLMNR or
@@ -36,29 +36,39 @@ service override replaces Debian's global `ExecStop` flush with deletion of only
 this table, preserving libvirt and other applications' rules on stop or restart.
 Stopping nftables disables this host protection.
 
-## T3 Code on the private network
+## Sharing a service on a private network
 
-The `10.160.110.0/24` TCP/3773 exception sits before the final input drop. It
-does not forward a router port or expose IPv6. T3 Code must also listen on the
-host's private address: enable **Network access** in Settings, Connections, or
-start a command-line server with `t3 serve --host <host-private-ip> --port 3773`.
-Use T3 Code's one-time pairing link for each client. See the
+The policy has a marked spot before the final drop for narrowly scoped
+exceptions. Add one rule per service, matching the trusted source subnet and
+the TCP or UDP port, and never trust a whole interface. For example, to let
+paired T3 Code clients on a private subnet reach port 3773, add a line with
+your own subnet in place of the documentation range:
+
+```text
+ip saddr 192.0.2.0/24 tcp dport 3773 counter accept
+```
+
+Such a rule does not forward a router port or expose IPv6. The service must
+also listen on the host's private address; T3 Code needs **Network access**
+enabled in its settings or `t3 serve --host <host-private-ip> --port 3773`, and
+its one-time pairing link per client. See the
 [T3 Code remote access guide](https://github.com/pingdotgg/t3code/blob/main/docs/user/remote-access.md#pair-over-a-lan-or-private-network).
 
-To apply an updated repository policy to a machine that already has the
-firewall, run from the repository root:
+Keep machine-specific subnets out of the public repository: edit the installed
+`/etc/nftables.conf`, or keep a private copy of the policy, and reapply it
+after a setup run replaces the file. To apply an updated policy to a machine
+that already has the firewall, run from the repository root:
 
 ```sh
 sudo nft --check --file system/nftables.conf
-sudo cp -a /etc/nftables.conf /etc/nftables.conf.before-t3
+sudo cp -a /etc/nftables.conf /etc/nftables.conf.before
 sudo install -m 0644 system/nftables.conf /etc/nftables.conf
 sudo systemctl reload nftables
 sudo nft list chain inet linux_config input
 ```
 
-Then run the connection check from a device in `10.160.110.0/24`. Removing the
-rule from the repository and reinstalling the policy closes this access. Check
-that the subnet matches before using setup on another machine.
+Then test the connection from a device on the allowed subnet. Removing the
+rule and reloading the policy closes the access again.
 
 ## Inspect and change
 
@@ -111,7 +121,7 @@ performed. The pre-install configuration is in
 `/var/backups/linux-config-firewall/` (root only).
 
 Still pending on the target machine: a run of setup, required access and
-guest connectivity, the T3 Code rule from the allowed subnet, and the policy
-surviving a reboot. See [TODO](TODO.md).
+guest connectivity, any local service exception, and the policy surviving a
+reboot. See [TODO](TODO.md).
 
 Reference: [Netfilter's workstation firewall example](https://wiki.nftables.org/wiki-nftables/index.php/Simple_ruleset_for_a_workstation).

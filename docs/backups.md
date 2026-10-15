@@ -75,7 +75,7 @@ restic-home restore SNAPSHOT_ID --target ~/restic-restore-test
 ```
 
 Files appear under the original path inside that target (for example
-`~/restic-restore-test/home/august/`). Check a restored file before relying on the
+`~/restic-restore-test/home/<user>/`). Check a restored file before relying on the
 backup. Use an explicit snapshot ID to avoid selecting another machine's latest
 snapshot in a shared repository. The helper forwards restore arguments to Restic;
 choose the target carefully because existing files can be overwritten.

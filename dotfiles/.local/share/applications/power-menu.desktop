@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Power
 Comment=Lock or turn off the computer
-Exec=/home/august/.local/bin/power-menu
+Exec=/home/user/.local/bin/power-menu
 Icon=system-shutdown
 Type=Application
 Categories=System;

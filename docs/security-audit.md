@@ -174,10 +174,10 @@ and avoid blanket purge/autoremove.
 No permissions, services, package settings or Incus components were changed.
 The requested privileged verification remains incomplete.
 
-- `/etc/sudoers` and `/etc/sudoers.d/august` exist with mode 0440 but cannot be
+- `/etc/sudoers` and `/etc/sudoers.d/<user>` exist with mode 0440 but cannot be
   read here. No claim about passwordless sudo or allowed commands is supported.
   Ownership appears remapped in this sandbox and cannot certify host ownership.
-- Account metadata lists `august` in `libvirt` and `kvm`. The packaged
+- Account metadata lists the desktop user in `libvirt` and `kvm`. The packaged
   `/usr/share/polkit-1/rules.d/60-libvirt.rules` grants
   `org.libvirt.unix.manage` to the libvirt group without a password prompt.
   Treat this group as administrative access, as already intended by the repo.
@@ -198,8 +198,8 @@ From an unrestricted VM terminal, complete the read-only checks:
 ```sh
 sudo visudo -c
 sudo -l
-sudo cat /etc/sudoers /etc/sudoers.d/august
-id august
+sudo cat /etc/sudoers /etc/sudoers.d/*
+id "$USER"
 sudo ls -l /run/libvirt/libvirt-sock* /dev/kvm
 sudo grep -vE '^[[:space:]]*(#|$)' /etc/libvirt/libvirtd.conf /etc/libvirt/qemu.conf
 sudo find /etc/polkit-1/rules.d -maxdepth 1 -type f -exec cat {} +
@@ -210,7 +210,7 @@ sudo journalctl -b -u apt-daily.service -u apt-daily-upgrade.service -u unattend
 sudo tail -n 50 /var/log/unattended-upgrades/unattended-upgrades.log
 ```
 
-Run the virsh query as `august`, without sudo, to check the intended management
+Run the virsh query as the desktop user, without sudo, to check the intended management
 access. Review all sudoers includes, including any referenced by the main file,
 and local Polkit rules before drawing a conclusion. Preserve failed-unit evidence;
 do not reset failures or restart services merely to make the status look clean.

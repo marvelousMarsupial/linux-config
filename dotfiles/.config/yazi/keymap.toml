@@ -23,5 +23,5 @@ prepend_keymap = [
     { on = "M", run = "plugin mount", desc = "Drives" },
 
     # Personal mount location; change this path when using another account.
-    { on = ["g", "m"], run = "cd /run/media/august", desc = "Open mounted drives" },
+    { on = ["g", "m"], run = "cd /run/media/user", desc = "Open mounted drives" },
 ]

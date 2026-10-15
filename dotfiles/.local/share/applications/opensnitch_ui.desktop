@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=OpenSnitch
-Exec=/home/august/.local/bin/opensnitch-ui
+Exec=/home/user/.local/bin/opensnitch-ui
 Icon=opensnitch-ui
 Terminal=false
 Categories=System;Security;Monitor;Network;

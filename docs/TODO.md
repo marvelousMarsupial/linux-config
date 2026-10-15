@@ -41,9 +41,10 @@ are grouped at the end because they cannot be verified in the development VM.
   [privilege review](security-audit.md#privilege-and-update-review--2026-10-08).
 - [ ] Reconcile the installed lazy.nvim revision with the repo lock during an
   intentional plugin maintenance session.
-- [ ] Install and validate the scoped
-  [T3 Code firewall rule](firewall.md#t3-code-on-the-private-network) with
-  privileges; verify that a paired device on `10.160.110.0/24` can connect.
+- [ ] Add the local
+  [service exception](firewall.md#sharing-a-service-on-a-private-network) for
+  T3 Code on the installed firewall and verify that a paired device on that
+  subnet can connect. The subnet stays out of the public repository.
 - [ ] Deferred container cleanup: keep Incus, its guest support and LXCFS
   untouched. Any later Netavark/Podman cleanup needs a privileged workload
   check; preserve data and avoid blanket purge or autoremove.
