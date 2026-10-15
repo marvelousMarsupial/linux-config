@@ -157,15 +157,13 @@ alias -g S='| sort'
 alias -g U='| sort -u'
 alias -g J='| jq'
 
-# Suffix Aliases (zsh only - open with nvim)
+# Suffix Aliases (zsh only - open with nvim). Script suffixes stay runnable.
 alias -s md='nvim'
 alias -s txt='nvim'
 alias -s json='nvim'
 alias -s yaml='nvim'
 alias -s yml='nvim'
-alias -s py='nvim'
 alias -s lua='nvim'
-alias -s sh='nvim'
 
 # Git terminal UI
 alias lg='lazygit'
