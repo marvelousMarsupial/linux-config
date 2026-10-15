@@ -15,9 +15,8 @@ if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" = "1" ] && co
   exec systemd-cat --identifier=sway sway
 fi
 
-# Locale for Unicode and emoji
+# Locale for Unicode and emoji. LANG alone leaves LC_* overrides available.
 export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
 
 export PASSWORD_STORE_DIR="$HOME/.password-store"
 

@@ -1,7 +1,9 @@
 # System health
 
+[Documentation index](README.md)
+
 The installed Bash command `~/.local/bin/sysreport` has no checkout dependency.
-Open `file:///home/august/.local/share/sysreport/latest.html` in your browser.
+Open `~/.local/share/sysreport/latest.html` in your browser.
 Reports are private (directory 0700, HTML 0600); the newest 14 dated reports remain
 alongside the atomic latest copy. No server, JavaScript, or external assets are used.
 
@@ -72,11 +74,10 @@ The report does not filter away compatibility warnings or clear logs.
 
 ## Verification
 
-Bash syntax and checks for escaping, permissions, retention, section failures,
-green service status, and demo isolation passed. ShellCheck and the live timer
-schedule still need verification outside the restricted environment. OpenSnitch
-collection was confirmed by the user. The earlier full-install version/date is
-unknown until a successful installer run writes a receipt.
+Offline checks cover escaping, permissions, retention, section failures, green
+service status and demo isolation. ShellCheck, the live timer schedule and a
+real receipt from a full install still need checking on the machine; OpenSnitch
+collection was confirmed by the user. See [TODO](TODO.md#security).
 
 Required tools: Bash, coreutils, util-linux (flock, lsblk), procps, systemd,
 iproute2, apt and jq. sqlite3 enables optional OpenSnitch file-database queries.

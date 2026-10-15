@@ -52,9 +52,6 @@ for source in sorted((repo / 'dotfiles').rglob('*')):
     if str(rel) == '.config/theme/config.toml':
         content = content.replace(b'"/home/august/.local/bin/zen-theme-sync"',
                                   json.dumps(str(home / '.local/bin/zen-theme-sync')).encode())
-    elif str(rel) == '.config/sway/config':
-        content = content.replace(b'/home/august/.local/bin',
-                                  json.dumps(str(home / '.local/bin')).encode())
     elif str(rel).startswith('.local/share/applications/') and source.suffix == '.desktop':
         rendered = []
         for line in content.decode().splitlines():
@@ -101,6 +98,7 @@ for rel in ('.config/systemd/user/sway-polkit-agent.service',
             '.config/nvim/lua/plugins/obsidian.lua', '.config/theme/templates/obsidian.css.j2',
             '.local/bin/vm-menu', '.local/bin/vpn', '.config/sway/wallpaper', '.tmux.conf', '.local/bin/tmux-keys',
             '.local/bin/dictate', '.local/bin/whisper-cli', '.local/bin/whisper-server',
+            '.local/bin/font-preview', '.local/share/linux-config/font-preview.js',
             '.config/systemd/user/whisper-server.service',
             '.config/tmux/colors.conf', '.config/theme/templates/tmux-colors.conf.j2'):
     dest = home / rel

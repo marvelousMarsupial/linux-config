@@ -1,84 +1,115 @@
 # Project TODO
 
-Updated: 2026-10-15. Keep this file current as work is completed or priorities change. Record reusable lessons in [LESSONS.md](LESSONS.md).
+[Documentation index](README.md)
 
-This list contains unfinished work only, including optional and deferred tasks.
-Hardware tasks are grouped below because their final verification cannot be done
-in this VM. Other tasks may still need an interactive session, network access or
-privileges unavailable in the current sandbox. `[target-machine]` marks checks
-needed on the production/replacement installation.
+Updated 2026-10-15. Keep this file current as work is completed or priorities
+change. Record reusable lessons in [LESSONS.md](LESSONS.md).
 
-## Security — next priorities
+Unfinished work only, including optional and deferred tasks. Hardware tasks
+are grouped at the end because they cannot be verified in the development VM.
+`[target-machine]` marks checks that need the production installation.
 
-- [ ] Finish system-health verification: warning-free ShellCheck, live daily timer schedule/automatic run, and a real installer receipt. Run the updated file picker through selection and cancellation; install UPower on the current system. See [system health](sysreport.md).
-- [ ] Verify OpenSnitch prompts and connection collection after a fresh setup and login. Setup now provisions matching daemon/UI sockets and the session UI service; offline provisioning tests pass.
+## Publishing and fresh-machine verification
 
-- [ ] Verify a real unattended-upgrade dry run and later update notification on the target machine. Setup installs the exact APT policy; both policy files matched the development VM during the latest read-only check. See [updates](updates.md).
-- [ ] Deferred container cleanup: user requested Incus be left unharmed. Keep Incus, its guest support and LXCFS dependency untouched. Any later Netavark/Podman cleanup needs a privileged workload/access check; preserve data and avoid blanket purge/autoremove.
-- [ ] Finish privileged verification of sudoers, libvirt permissions and failed update services. Partial review 2026-10-08 confirms august is in libvirt/kvm and the packaged Polkit rule grants libvirt management; live authentication, protected sudoers/local rules and system update logs remain inaccessible from the sandbox. See [review](security-audit.md#privilege-and-update-review--2026-10-08).
-- [ ] Reconcile the installed lazy.nvim revision with the repo lock during an intentional plugin maintenance session. The remaining 26 installed plugin revisions matched at audit time.
+- [ ] Test the published bootstrap on a fresh Debian 13 x86_64 machine:
+  packages, themes, sudo prompts, cleanup after success and failure, and
+  operation after the checkout is gone. Repeat on the replacement laptop.
+  The default source now points at the GitHub repository; if the repository
+  is private, the raw URL in [installation](installation.md#remote-bootstrap)
+  will not work anonymously.
+- [ ] Decide whether Yazi, Zen and the Nerd Font should be pinned to reviewed
+  release versions with recorded digests, like Neovim, instead of taking the
+  latest release and trusting the digest GitHub publishes alongside it. The
+  current check proves download integrity, not that the version was reviewed.
 
-Details, evidence, caveats, and commands: [security audit](security-audit.md).
+## Security
 
-## Desktop and security roadmap (optional enhancements)
-
-### Desktop vision
-
-Make Debian, Sway, foot, fuzzel, nvim, yazi and Zen feel like one deliberate
-system while staying minimal. Decisions, reference options and implementation
-ideas are recorded in the [desktop plan](desktop-plan.md).
-
-Priority order:
-
-1. [ ] Finish the visual [theme consistency review](theme-review.md). Foot now uses FiraCode Nerd Font; reconcile GTK, fuzzel, Mako and status typography, icons, borders and named nvim/Yazi themes.
-2. [ ] Try SwayFX and unify typography and geometry.
-3. [ ] Match movement and other common keys across tools.
-4. [ ] Explore the Sway features in the plan, then polish boot, login and locking. Verify the new [touchpad gestures](desktop-status.md#touchpad-and-status-toggle) on hardware.
-
-- [ ] Catch apps that ignore the theme: GTK, Qt, cursor, icons, portal dark preference and Zen.
-- [ ] Consider optional locale and personal bar modules.
-- [ ] Install and validate the scoped [T3 Code firewall rule](firewall.md#t3-code-on-the-private-network) with privileges; verify that a paired device on `10.160.110.0/24` can connect. The repository policy is updated; the live firewall is not.
-
-### Other desktop and security work
-
-- [ ] Complete shell verification after downloading fzf-tab with `./scripts/setup-shell`: Tab selection/cancellation, directory/file previews and completion-based suggestions. Prefix Up/Down is user-confirmed; interactive prefix/Ctrl+R tests pass. See [shell](shell.md#verification).
-
-- [ ] [target-machine] Boot with the disk passphrase only, then auto-login into Sway. Keep swaylock for idle and suspend. The boot/login flow can be developed in an encrypted VM; verify it on the production installation.
+- [ ] Finish system-health verification: warning-free ShellCheck, the live
+  daily timer run, and a real installer receipt. Run the file picker through
+  selection and cancellation. See [system health](sysreport.md).
+- [ ] Verify OpenSnitch prompts and connection collection after a fresh setup
+  and login. Setup provisions matching daemon and UI sockets.
+- [ ] Decide whether OpenSnitch should ship a default-deny daemon config.
+  Today Debian's default allows unmatched connections, so everything setup
+  downloads before the first login passes without a prompt.
+- [ ] Verify a real unattended-upgrade dry run and a later update notification
+  on the target machine. See [updates](updates.md).
+- [ ] Finish privileged verification of sudoers, libvirt permissions and failed
+  update services. See the
+  [privilege review](security-audit.md#privilege-and-update-review--2026-10-08).
+- [ ] Reconcile the installed lazy.nvim revision with the repo lock during an
+  intentional plugin maintenance session.
+- [ ] Install and validate the scoped
+  [T3 Code firewall rule](firewall.md#t3-code-on-the-private-network) with
+  privileges; verify that a paired device on `10.160.110.0/24` can connect.
+- [ ] Deferred container cleanup: keep Incus, its guest support and LXCFS
+  untouched. Any later Netavark/Podman cleanup needs a privileged workload
+  check; preserve data and avoid blanket purge or autoremove.
 - [ ] Add Healthchecks check-ins to detect missed job runs.
+
+## Desktop
+
+The vision and reference options are in the [desktop plan](desktop-plan.md).
+
+- [ ] Finish the visual consistency pass: Sway borders are 2 px while Fuzzel
+  and Mako use 1 px; GTK dialogs use Sans 10 and Adwaita icons while Fuzzel
+  requests hicolor; Qt has no theme target; named Neovim and Yazi themes can
+  drift from palette edits. Compare everything under one palette before
+  changing settings. Contrast figures are in [appearance](appearance.md).
+- [ ] Try SwayFX for rounded corners, blur and dimming, keeping the config
+  compatible.
+- [ ] Match movement and close keys across Sway, Neovim, Yazi, zsh and the
+  browser.
+- [ ] Explore the Sway features in the plan, then polish boot, login and
+  locking.
+- [ ] Verify the [touchpad gestures](window-behavior.md#touchpad-gestures-and-status-panel)
+  on hardware.
+- [ ] Complete shell verification after installing fzf-tab: Tab selection and
+  cancellation, previews and completion-based suggestions. See
+  [shell](shell.md#verification).
+- [ ] Decide whether browser Markdown preview is useful beyond Space+mr. If
+  wanted, install and verify its helper. See [editor](editor.md#markdown-view).
+- [ ] Consider optional locale and personal bar modules.
 
 ## Ongoing conventions
 
-These are implementation rules, not unfinished tasks:
+Implementation rules, not tasks:
 
-- Keep scripts in the dotfiles repo and install user commands into `~/.local/bin`. Anything run as root must live in a root-owned location.
-- Prefer Bash for glue and Bun TypeScript once a new script has real logic. Existing scripts do not require a blanket rewrite.
-- Preserve Incus, guest support and LXCFS; avoid blanket purge/autoremove.
+- Keep scripts in the dotfiles repo and install user commands into
+  `~/.local/bin`. Anything run as root must live in a root-owned location.
+- Prefer Bash for glue and Bun TypeScript once a new script has real logic.
+  Existing scripts do not need a blanket rewrite.
+- Preserve Incus, guest support and LXCFS; avoid blanket purge or autoremove.
 
 ## Hardware and later laptop setup
 
-Configuration and offline checks can be prepared in the VM; complete these checks
-on the laptop or with the intended devices.
+Configuration and offline checks can be prepared in the VM; complete these on
+the laptop or with the intended devices.
 
-Publishing and optional features below are deferred. Current work is preparation;
-do not publish the repo as part of it.
+- [ ] [target-machine] Boot with the disk passphrase only, then auto-login into
+  Sway. Keep swaylock for idle and suspend. Develop the flow in an encrypted VM;
+  verify it on the production installation.
+- [ ] Configure the Restic target and password, run a backup and restore test,
+  then enable the timer. See [backups](backups.md).
+- [ ] Set up optional VPN support with a Fuzzel toggle using NetworkManager or
+  a narrow sudo rule; consider a kill switch. Preserve the active network.
+- [ ] Rebuild dictation if needed. Its binaries, service and shortcuts were
+  removed; model data is backed up.
+- [ ] Fix audio on the production XPS: check the exact model, audio devices,
+  firmware and PipeWire logs on the laptop.
+- [ ] Verify brightness controls and keys on the XPS after a reboot with the
+  brightness permissions in place.
+- [ ] Verify volume keys, volume indication and speaker and headphone output.
+- [ ] Configure and test fingerprint enrollment and authentication with the
+  intended laptop or external reader.
+- [ ] Exercise Wi-Fi authentication with a real adapter and access point.
+- [ ] Verify locking before suspend and after resume, lid-close behavior and
+  guest connectivity after resume.
+- [ ] Recheck KeePassXC's Linux fingerprint quick unlock before choosing an
+  upgrade; stable was 2.7.12 on 2026-10-08, the Debian package is 2.7.10.
+- [ ] Evaluate a USB fingerprint reader or YubiKey for use with the lid
+  closed. If a YubiKey becomes the database's second factor, test it and
+  verify backup recovery.
 
-- [ ] Choose the final hosted repository/raw bootstrap URL, then commit and publish when ready.
-- [ ] Test the published curl installer on fresh Debian 13 x86_64: packages, themes, sudo prompts, cleanup after success/failure, and operation after deleting the checkout. Repeat on the replacement laptop before discarding the VM.
-- [ ] Set up optional VPN support with a fuzzel toggle using NetworkManager or a narrow sudo rule; consider a kill switch. Preserve the active network.
-- [ ] Rebuild dictation if needed. Its binaries, service and shortcuts were removed; model data is backed up.
-- [ ] Decide whether browser Markdown preview is useful beyond Space+mr. If wanted, install and verify its helper.
-- [ ] Configure the Restic target and password, run a backup and restore test, then enable its timer. The integration is ready; this VM has no target. See [backups](backups.md).
-
-- [ ] Fix audio on the production XPS. Check its exact model, audio devices, firmware and PipeWire logs on the laptop. The VM has no sound card and cannot verify this.
-- [ ] Verify brightness controls and brightness keys on the production XPS after installing the brightness permissions and rebooting.
-- [ ] Verify volume up/down and mute keys, volume indication and actual speaker/headphone volume on the production XPS.
-- [ ] Configure and test fingerprint enrollment and authentication with the intended laptop or external reader.
-- [ ] Exercise Wi-Fi authentication interactively with a real Wi-Fi adapter and access point. Offline tests do not verify NetworkManager's password exchange; this VM's virtual Ethernet cannot verify it.
-- [ ] Verify locking before suspend and after resume on the production laptop, including lid-close behavior and running guest connectivity after resume. VM checks cannot establish laptop sleep/wake behavior.
-- [ ] Recheck released KeePassXC support for Linux fingerprint quick unlock before choosing an upgrade; stable is 2.7.12 as of 2026-10-08, VM package is 2.7.10. Five-minute lock defaults are prepared; fingerprint enrollment and unlock require the intended reader.
-- [ ] Evaluate an optional USB fingerprint reader or YubiKey for use when the laptop lid is closed. Test the chosen device on the laptop.
-- [ ] If choosing a YubiKey as the database's second factor, configure and test it with the physical key and verify backup recovery.
-
-Use `./scripts/check --full` for the current suite. Latest results and limits are
-recorded in [testing](testing.md); installed-machine differences are in
-[current state](state.md).
+Use `./scripts/check --full` for the current suite. Results and limits are in
+[testing](testing.md).

@@ -1,5 +1,7 @@
 # Zen browser setup
 
+[Documentation index](README.md)
+
 `scripts/install` copies browser defaults and extension policies into the local
 Zen installation at `~/.local/zen`. They take effect on the next complete browser
 restart, including the first launch of a new profile. `scripts/setup` installs

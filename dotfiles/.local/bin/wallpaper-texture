@@ -20,10 +20,11 @@ if args.style == 'list':
     print('\n'.join(styles))
     raise SystemExit(0)
 home = Path.home()
+# Dots is the glass-mode default; the selection file records a different choice.
 selection = home / '.config/theme/wallpaper-style'
-style = selection.read_text().strip() if selection.exists() else 'woven'
+style = selection.read_text().strip() if selection.exists() else 'dots'
 if style not in styles:
-    style = 'woven'
+    style = 'dots'
 if args.style == 'next':
     style = styles[(styles.index(style) + 1) % len(styles)]
 elif args.style:

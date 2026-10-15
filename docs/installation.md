@@ -16,72 +16,68 @@ From the repository root:
 ./scripts/setup
 ```
 
-The same command supports this VM and a fresh installation. The dry run performs
-read-only discovery and prints a plan without downloads, sudo or file changes.
-A normal run:
+The dry run performs read-only discovery and prints a plan without downloads,
+sudo or file changes. A normal run, in order:
 
-- Installs IPython with its recommended packages and explicitly includes NumPy, Matplotlib and SciPy.
-- Installs Chromium, KeePassXC, OpenSnitch UI and its theme library; config installation sets KeePassXC and OpenSnitch to Dark while preserving other existing settings. Setup configures the OpenSnitch daemon socket for the installing user's UID and Sway starts the matching UI service.
-- Installs `packages.txt` through APT, including Starship and the portal broker,
-  GTK and wlr backends.
-- Installs missing Yazi/ya, Zen and CaskaydiaCove Nerd Font from their official
-  latest stable GitHub releases. Published SHA-256 digests are required and
-  checked before extraction; missing digests or mismatches stop setup.
-- Builds termfilechooser at the pinned upstream commit using temporary sources
-  and installs it into `/usr`. Build dependencies remain installed. A marker
-  avoids repeating the build when that revision and its files are present.
-- Calls `setup-editor` for Neovim and plugins, and `install` for user files.
-  Existing applications are reused; setup is not a general application updater.
-- Calls `setup-shell` to install the pinned fzf-tab plugin. See [shell setup](#shell-setup).
-- Applies summer-dusk on a fresh home. Existing theme selections/colors and
-  local monitor profiles are preserved. Paths are rendered for the destination
-  user rather than assuming `/home/august`.
-- Adds the user to video/libvirt/kvm, selects zsh as the login shell, generates
-  the configured English UTF-8 locale if missing, and enables libvirtd.
-- Backs up changed APT policy files under `/var/backups/linux-config/`, installs
-  the repo update policy, and enables Debian's update timers.
+- Installs `packages.txt` through APT. This includes IPython with NumPy,
+  Matplotlib and SciPy, Chromium, KeePassXC, OpenSnitch and its UI theme
+  library, Starship, and the portal broker with its GTK and wlr backends.
 - Validates and installs the incoming firewall and its service override, backs
-  up previous files, then enables and reloads nftables. Checks active/enabled
-  state and the project table before continuing. Review the [firewall policy](firewall.md)
-  and required incoming access before running setup, especially remotely.
-- Installs the Polkit authentication agent and starts it directly from Sway
-  for graphical password prompts after login. See [systemd](systemd.md#graphical-authentication).
-- Reloads the user service manager when a user bus is available.
+  up previous files, then enables and reloads nftables. A failed check stops
+  setup. Review the [firewall policy](firewall.md) before running setup,
+  especially over a remote connection.
+- Installs missing Yazi/ya, Zen and CaskaydiaCove Nerd Font from their latest
+  official GitHub releases. The published SHA-256 digest is required and checked
+  before extraction; a missing digest or mismatch stops setup.
+- Calls `setup-shell` to install the pinned fzf-tab plugin. See [shell](shell.md).
+- Builds termfilechooser at the pinned upstream commit from temporary sources
+  and installs it into `/usr`. Build dependencies remain installed. A marker
+  avoids repeating the build when that revision is present.
+- Calls `setup-editor` for Neovim and plugins, which calls `install` for user
+  files. Existing applications are reused; setup is not an application updater.
+- Applies the summer-dusk palette on a fresh home. Existing theme selections,
+  generated colors and local monitor profiles are preserved. Paths are rendered
+  for the installing user.
+- Adds the user to video, libvirt and kvm, selects zsh as the login shell,
+  generates the English UTF-8 locale if missing, installs the APT update policy
+  with backups, and enables libvirtd and Debian's update timers.
+- Configures the OpenSnitch daemon socket for the installing user and enables
+  the daemon. Sway starts the matching UI service at login.
+- Enables the daily health-report timer, or creates its enablement link when no
+  user bus is available.
+- Writes an installation receipt once every step has succeeded.
 
 Use `./scripts/setup --dev-tools` to also install optional editor development
-tools. Setup stops on failure; fix the reported step and rerun. It is repeatable,
-not transactional: completed steps stay applied. Changed user files have the
-config installer's backups, replaced local application files have dated backups,
-and no packages are purged. No running desktop or browser is restarted.
+tools, and `--backups` to include Restic. Setup stops on failure; fix the
+reported step and rerun. It is repeatable, not transactional: completed steps
+stay applied. Changed user files have the config installer's backups, replaced
+application files have dated backups, and no packages are purged. No running
+desktop or browser is restarted.
 
-Log out and back in, or reboot, then launch Zen normally. Verify file dialogs,
-screen sharing and screen locking in the live session. The script does not
-configure disk encryption, firmware, new monitor layouts, lid policy,
-VM networks/storage or hardware-specific drivers. Keep those machine decisions
-in the sections below. Incus and its data are not explicitly modified or removed.
+Log out and back in, or reboot, then launch Zen normally. The script does not
+configure disk encryption, firmware, new monitor layouts, lid policy, VM
+networks/storage or hardware-specific drivers. Those are covered below or in
+the [manual checklist](manual.md).
 
 ## Remote bootstrap
 
-Goal: host the repository on GitHub or an equivalent service, download and run
-setup with one command, and automatically discard the downloaded checkout. No
-checkout is needed afterward: installed files are copies, not links into it.
+`scripts/bootstrap` clones one branch or tag into a private directory under
+`/tmp`, runs `scripts/setup`, then deletes only that temporary directory. It
+also cleans up on failure and on interruption. A power loss or SIGKILL can
+leave temporary files behind. It never deletes an existing working checkout.
+Installed files are copies, so no checkout is needed afterward.
 
-`scripts/bootstrap` clones the selected branch/tag into a private directory under
-`/tmp`, runs `scripts/setup`, then deletes only that temporary directory. It also
-cleans up on failure and handled interruption. A power loss or SIGKILL can leave
-temporary files behind. It never deletes an existing working checkout. Completed
-installation steps and backups remain if setup fails; fix the error and rerun.
-
-Before remote use, commit and publish the current changes and choose the final
-repository and raw bootstrap URL. The current remote is
-`https://git.rat/August/linux-config.git`, branch `main`; no GitHub repository has
-been selected. Once published, substitute the real raw-file URL below:
+The default source is `https://github.com/marvelousMarsupial/linux-config.git`,
+branch `main`. From a fresh machine with Bash, curl, git, Python 3, sudo and CA
+certificates installed:
 
 ```sh
-curl -fsSL <raw-bootstrap-url> | bash
+curl -fsSL https://raw.githubusercontent.com/marvelousMarsupial/linux-config/main/scripts/bootstrap | bash
 ```
 
-To select another host or a published release tag:
+Pass `--dry-run` or `--dev-tools` after `bash` to forward them to setup. To use
+another host or a release tag, set the two environment variables; fetch the
+bootstrap from the same tag you select:
 
 ```sh
 curl -fsSL <raw-bootstrap-url> | env \
@@ -89,27 +85,17 @@ curl -fsSL <raw-bootstrap-url> | env \
   LINUX_CONFIG_REF=v1.0.0 bash
 ```
 
-These are templates, not published install URLs. The bootstrap and checkout both
-execute code from the chosen source; use a source you trust. For a release,
-fetch the bootstrap from the same tag selected by `LINUX_CONFIG_REF`.
-Run as the desktop user, with Bash, curl, git, Python 3, sudo and CA certificates
-already installed. Sudo may request your password through the terminal.
+The bootstrap and the checkout both execute code from the chosen source; use a
+source you trust. Sudo asks for your password through the terminal. If the
+repository is private, clone it with credentials and run `./scripts/setup`
+from the checkout instead.
 
-To test the bootstrap from this checkout after publishing:
-
-```sh
-./scripts/bootstrap --dry-run
-./scripts/bootstrap
-```
-
-`--dry-run` still downloads and removes a temporary checkout; the setup stage
-only prints its plan. `--dev-tools` is forwarded to setup. Offline tests cover
-cleanup and argument forwarding; a fresh-machine network/privileged installation
-remains required before calling the remote flow verified.
+Offline tests cover piped execution, argument forwarding, failure exit codes
+and cleanup. A real run on a fresh machine is still pending; see [TODO](TODO.md).
 
 ## Config-only installation
 
-For user config changes without package/system setup:
+For user config changes without package or system setup:
 
 ```sh
 ./scripts/install --dry-run
@@ -117,193 +103,139 @@ For user config changes without package/system setup:
 ```
 
 The installer copies files into your home, backs up replaced files under
-`~/.local/state/linux-config/backups/`, and skips identical files. It does
-not install packages, change services, remove software, or alter networking.
-Run it again after editing the repo. Existing monitor profiles, Neovim plugin
-locks, and generated color files are preserved. `--home /path` installs into
-an alternate home for testing. Copies are independent of the checkout.
+`~/.local/state/linux-config/backups/`, and skips identical files. It does not
+install packages, change services, remove software or alter networking. Run it
+again after editing the repo. Existing monitor profiles, Neovim plugin locks and
+generated color files are preserved. `--home /path` installs into another home
+for testing. Copies are independent of the checkout.
 
-After installing or changing user units, reload the user manager:
+The installer also retires a named list of files from removed integrations,
+with the same backups. It does not uninstall packages or stop system services.
+
+After installing or changing user units:
 
 ```sh
 systemctl --user daemon-reload
 ```
 
-The Sway session target pulls in kanshi automatically; no enable command is
-required. Log out of Sway and back in after changing these units. See
-[systemd setup](systemd.md) for lifecycle details and checks.
-
-Open a new terminal after installation and press Super+Shift+c to reload Sway.
-Choose zsh as your login shell with `chsh -s /bin/zsh` if desired. Sway starts
-on tty1; run `sway` manually for an initial session.
+Log out of Sway and back in after changing units; see [systemd](systemd.md).
+Press Super+Shift+c to reload Sway after config changes. Sway starts on tty1
+from the zsh login shell; run `sway` manually for an initial session.
 
 ## Shell setup
 
-Zsh provides prefix history on Up/Down, grey history/completion suggestions,
-fzf search on Ctrl+R, and a searchable Tab menu with directory/file previews.
-Full setup installs the pinned fzf-tab plugin. For an existing installation:
+Zsh provides prefix history on Up/Down, grey history and completion suggestions,
+fzf search on Ctrl+R, and a searchable Tab menu with previews. Full setup
+installs the pinned fzf-tab plugin. For an existing installation:
 
 ```sh
 ./scripts/setup-shell
 ./scripts/install
 ```
 
-Open a new terminal afterward. The config installer applies all project user
-configs with backups; `./scripts/install --dry-run` previews those changes.
-Plugin installation requires GitHub access. Without fzf-tab, standard Zsh
-completion remains available. See [shell](shell.md) for shortcuts, the pinned
-revision, Git prompt indicators and verification boundaries.
+Open a new terminal afterward. Plugin installation requires GitHub access.
+Without fzf-tab, standard Zsh completion remains available. See [shell](shell.md).
 
 ## Screen brightness
 
-The brightness keys change the screen in 10 percent steps.
-Super F11 dims it. Super F12 brightens it.
-
-Debian needs `brightness-udev` and membership in the video group.
-The package is in `packages.txt`. Add your user once:
-
-```sh
-sudo usermod -aG video "$USER"
-```
-
+The brightness keys change the screen in 10 percent steps. Super+F11 dims it
+and Super+F12 brightens it. Debian needs `brightness-udev` and membership in the
+video group; full setup handles both, and the config-only installer does not.
 Reboot after setup to apply the group and device permissions.
-The full setup command handles groups; the config-only installer does not.
 
-On the XPS run these from a terminal in Sway:
+On the laptop, run these from a terminal in Sway:
 
 ```sh
 brightnessctl --class=backlight --list
 ~/.local/bin/brightness up
 ```
 
-If the command works but the keys do not, try the keys with Fn.
-Fn Escape changes Fn lock on supported Dell keyboards.
-The backup shortcuts avoid Fn lock.
-
-A VM usually has no screen backlight control.
-If the XPS also reports no control, check its model and panel type.
-An OLED panel may need a different method. Do not change kernel settings
-until the hardware is known.
+If the command works but the keys do not, try the keys with Fn. Fn+Escape
+toggles Fn lock on supported Dell keyboards. The Super shortcuts avoid Fn lock.
+A VM usually has no backlight control. If the laptop also reports none, check
+its panel type before changing kernel settings.
 
 ## Separately installed applications
 
-The setup command installs Starship through APT and missing Yazi/ya, Zen and
-CaskaydiaCove Nerd Font from official releases. For config-only installs, provide
-those applications yourself. Zen's wrapper expects `~/.local/zen/zen`. The launcher includes
-separately installed Flatpak application entries. No application binaries or fonts
-are bundled by this repository.
+Setup installs missing Yazi/ya, Zen and CaskaydiaCove Nerd Font from official
+releases. For config-only installs, provide those yourself. Zen's wrapper
+expects `~/.local/zen/zen`. The launcher includes Flatpak application entries.
+No application binaries or fonts are bundled by this repository.
 
 Zen's config installer installs uBlock Origin, Dark Reader, Surfingkeys and
-KeePassXC-Browser through browser policies on the next browser startup. It also
-skips the welcome screen and sets dark defaults before the first launch. See
-[browser setup](browser.md) for verification, KeePassXC pairing and importing
-the tracked Surfingkeys settings.
+KeePassXC-Browser through browser policies on the next browser startup, skips
+the welcome screen and sets dark defaults before the first launch. See
+[browser](browser.md).
 
-Run `./scripts/setup-editor` for Neovim and its plugins; see [editor setup](editor.md)
-for the optional development tools. Complete this before using the editor config.
-Debian calls bat/fd `batcat` and `fdfind`; the local wrapper and shell aliases handle
-these names. Optional fnm integration uses `~/.local/share/fnm`.
+Run `./scripts/setup-editor` for Neovim and its plugins; see [editor](editor.md)
+for the optional development tools. Debian calls bat and fd `batcat` and
+`fdfind`; the local wrapper and shell aliases handle those names. Optional fnm
+integration uses `~/.local/share/fnm`.
 
 Yazi requires `file`, which is in `packages.txt`. Optional preview tools include
-`poppler-utils` for PDFs, `ffmpeg` for videos and `7zip` for archives.
-See [Yazi dependencies](https://yazi-rs.github.io/docs/installation/).
-
-## Desktop portals
-
-Follow [Sway portals and Yazi file dialogs](portals.md) for backend installation,
-Zen integration, activation and live verification.
-
-## Firewall
-
-Full setup installs and activates the nftables policy and required service
-override. See [host firewall](firewall.md) and review the target machine's
-remote-access and VM networking needs before running setup. There is no default
-SSH exception. A failed firewall step stops setup; config-only installation
-does not change the firewall.
-
-## Automatic updates
-
-Follow [automatic Debian updates](updates.md) to install the project policy and
-enable Debian’s APT timers. It applies stable maintenance and security updates
-without automatic reboots. The user-config installer does not activate it.
+`poppler-utils` for PDFs, `ffmpeg` for videos and `7zip` for archives. See
+[Yazi dependencies](https://yazi-rs.github.io/docs/installation/).
 
 ## Virtual machines
 
-Use virt-manager, virsh, virt-install, and virt-viewer directly. The package
-list includes the libvirt/QEMU tools, UEFI firmware, and SPICE support.
-For a local hypervisor, configure the service and your access explicitly:
+Use virt-manager, virsh, virt-install and virt-viewer directly. The package
+list includes the libvirt/QEMU tools, UEFI firmware and SPICE support. Setup
+enables libvirtd and adds the user to libvirt and kvm; log out and back in
+after group changes. Configure networks and storage through virt-manager.
+This repo does not create, start or delete guests.
 
-```sh
-sudo usermod -aG libvirt,kvm "$USER"
-sudo systemctl enable --now libvirtd
-virsh --connect qemu:///system list --all
-```
-
-Log out and back in after changing groups. Configure networks and storage
-through virt-manager as needed. Remote libvirt connections also work through
-virt-manager. This repo does not create, start, or delete guests.
-
-Only trusted administrators should have full libvirt management access. See the
-[security audit](security-audit.md) before configuring privileged access.
+Full libvirt management access is administrative access. See the
+[security audit](security-audit.md) before widening it.
 
 ## Local and system configuration
 
-`~/.config/sway/local.conf` is optional and never installed by the repo.
-Use it for machine-specific bindings or output rules. Fresh installs receive your saved laptop/LG monitor profiles: curved landscape
-on the left, portrait ultrawide on the right, vertically centered, with the laptop
-panel off when docked. Existing kanshi configs are preserved. Edit your kanshi
-profiles locally; [`examples/kanshi-laptop.conf`](../examples/kanshi-laptop.conf) preserves the previous
-physical laptop/monitor layout as a reference. The installed default is the saved layout in that example, matched by monitor
-description so connector changes do not affect the external display identities.
+`~/.config/sway/local.conf` is optional and never installed by the repo. Use it
+for machine-specific bindings or output rules.
 
-`system/` mirrors selected `/etc` files for unattended apt updates and lid
-behavior. Review and copy individual files with sudo only when wanted.
-Full setup applies the two APT policy files, the nftables host policy and its
-required service override. Lid and udev changes remain manual. Review
-[firewall](firewall.md) before setup and customize required incoming access.
+Fresh installs receive the saved laptop/LG monitor profiles: curved landscape on
+the left, portrait ultrawide on the right, laptop panel off when docked.
+Existing kanshi configs are preserved. Profiles match on monitor description, so
+connector names can change without affecting them.
+[`examples/kanshi-laptop.conf`](../examples/kanshi-laptop.conf) keeps the
+earlier physical layout as a reference.
+
+`system/` mirrors selected `/etc` files. Full setup applies the two APT policy
+files, the nftables policy and its service override. Lid and udev changes stay
+manual:
+
+- `system/systemd/logind.conf.d/lid.conf` suspends on lid close, including on
+  external power, and ignores lid close while docked. Review it for the machine,
+  then copy it into `/etc/systemd/logind.conf.d/` during a planned reboot.
+- `system/udev/rules.d/90-alsa-restore.rules` fixes a duplicate udev label in
+  Debian alsa-utils 1.2.14-1 and keeps sound state restore enabled. See
+  [Debian bug 1104719](https://bugs.debian.org/1104719). For that package
+  version only:
+
+  ```sh
+  sudo install -Dm644 system/udev/rules.d/90-alsa-restore.rules /etc/udev/rules.d/90-alsa-restore.rules
+  sudo udevadm control --reload-rules
+  ```
+
+  Remove the override once Debian ships a corrected rule.
 
 ## Updating an existing installation
 
 Edit source files under `dotfiles/`, run `./scripts/check --full`, inspect
 `./scripts/install --dry-run`, then run `./scripts/install`. Copies in your home
 are independent of the checkout; copy useful live experiments back into the repo
-before reinstalling. Render themes after editing templates. Reload Sway and reopen
-applications as described in [appearance](appearance.md).
+before reinstalling. Render themes after editing templates, then reload Sway and
+reopen applications as described in [appearance](appearance.md).
 
-The installer backs up and retires a named list of files from removed integrations.
-It does not uninstall packages, stop old system services or change active networking.
-Current security/migration follow-up lives in [TODO](TODO.md).
+## Receipts and health report
 
-## Debian 13 ALSA rule fix
-
-Debian alsa-utils 1.2.14-1 has a duplicate udev label.
-The project copy fixes the label and keeps sound state restore enabled.
-This fixes the warning. It does not prove XPS audio works.
-See [Debian bug 1104719](https://bugs.debian.org/1104719).
-
-For that package version only:
-
-```sh
-sudo install -Dm644 system/udev/rules.d/90-alsa-restore.rules /etc/udev/rules.d/90-alsa-restore.rules
-sudo udevadm control --reload-rules
-```
-
-Remove the local override once Debian supplies a corrected rule.
+Successful config installation and full setup write a receipt to
+`~/.local/state/linux-config/install-info` with the source commit, a
+modified-checkout flag, the date and the install scope. Full setup records
+completion only after every step succeeds. Setup also enables the daily
+`sysreport.timer`; a config-only install copies the files but does not activate
+the timer. See [system health](sysreport.md).
 
 ## Optional backups
 
-`./scripts/setup --backups` also installs Restic. Scheduling remains disabled
-until configured separately on each machine; see [encrypted home backups](backups.md).
-
-## System health installation
-
-Setup installs the health-report dependencies, copies `sysreport` and its user
-units, and enables the daily timer. With no user bus it creates an enablement link
-for the next login. A config-only install copies the files but does not activate
-the timer; see [system health](sysreport.md) for commands.
-
-Successful config installation and full setup write an installation receipt to
-`~/.local/state/linux-config/install-info`. Full setup records its completion only
-after all setup steps succeed. The receipt and installed copies do not depend on
-keeping the source checkout. OpenSnitch's matching daemon/UI sockets are
-provisioned by setup; optional persistent database storage is described in the report guide.
+`./scripts/setup --backups` also installs Restic. Scheduling stays disabled
+until configured on each machine; see [backups](backups.md).

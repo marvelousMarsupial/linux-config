@@ -1,5 +1,7 @@
 # Notifications
 
+[Documentation index](README.md)
+
 Open **Notifications** from the app launcher or press **Super+Shift+N**.
 The themed fuzzel viewer shows active notifications followed by recent history.
 Type to search across app, title and body; press Enter to read the selected

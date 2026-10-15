@@ -29,8 +29,11 @@ for p in [*(repo / 'dotfiles/.local/bin').iterdir(), *(repo / 'scripts').iterdir
         ast.parse(text, filename=str(p))
     elif first.startswith('#!') and ('bash' in first or first.endswith('/sh')):
         subprocess.run(['bash', '-n', str(p)], check=True)
-for name in ('.zshrc', '.zsh_aliases', '.zsh_alias_reminder'):
-    subprocess.run(['zsh', '-n', str(repo / 'dotfiles' / name)], check=True)
+if shutil.which('zsh'):
+    for name in ('.zshrc', '.zsh_aliases', '.zsh_alias_reminder'):
+        subprocess.run(['zsh', '-n', str(repo / 'dotfiles' / name)], check=True)
+else:
+    print('zsh is not installed; skipping shell syntax checks.')
 if shutil.which('nvim'):
     lua_files = [*(repo / 'dotfiles/.config/nvim').rglob('*.lua'), *(repo / 'scripts').glob('*.lua'), *(repo / 'tests').glob('*.lua')]
     import json

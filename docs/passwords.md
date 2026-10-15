@@ -1,5 +1,7 @@
 # KeePassXC and Zen
 
+[Documentation index](README.md)
+
 The intended workflow is Super+P to open/unlock KeePassXC, then use the
 KeePassXC-Browser extension in Zen to fill logins. Super+P hides a focused
 KeePassXC window in the Sway scratchpad and shows it again on the next press.

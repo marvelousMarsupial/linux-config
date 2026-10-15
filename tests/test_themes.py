@@ -82,3 +82,16 @@ class ThemeTests(unittest.TestCase):
         path.write_text(path.read_text().replace('1f1f28', 'invalid'))
         self.assertNotEqual(self.theme('apply', 'kanagawa').returncode, 0)
         self.assertFalse((self.home / '.config/sway/colors').exists())
+
+    def test_glass_wallpaper_tiles_dots_by_default(self):
+        (self.root / 'glass-mode').write_text('on\n')
+        self.assertEqual(self.theme('apply', 'summer-dusk').returncode, 0)
+        sway = (self.home / '.config/sway/colors').read_text()
+        self.assertRegex(sway, r'(?m)^output \* bg ~/.local/share/wallpapers/glass-texture.png tile ')
+        (self.root / 'wallpaper-style').write_text('frost\n')
+        self.assertEqual(self.theme('apply', 'summer-dusk').returncode, 0)
+        sway = (self.home / '.config/sway/colors').read_text()
+        self.assertRegex(sway, r'(?m)^output \* bg ~/.local/share/wallpapers/glass-texture.png fill ')
+        (self.root / 'glass-mode').write_text('off\n')
+        self.assertEqual(self.theme('apply', 'summer-dusk').returncode, 0)
+        self.assertIn('output * bg $base00 solid_color', (self.home / '.config/sway/colors').read_text())

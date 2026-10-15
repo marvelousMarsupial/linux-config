@@ -1,8 +1,13 @@
 # Project lessons
 
-Updated: 2026-10-08. Add lessons when a change exposes a reusable rule; keep outstanding work in [TODO.md](TODO.md).
+[Documentation index](README.md)
+
+Updated 2026-10-15. Add lessons when a change exposes a reusable rule; keep outstanding work in [TODO.md](TODO.md).
 
 ## Configuration and UX
+
+- Keep one font family. A comparison helper that installs a second font and sets it in one app quietly becomes a second default; compare with a one-window override and delete the helper afterward.
+- Sway `exec` lines run through `sh`, so a tilde in a path works for any user. Hardcoding a home path forces the installer to rewrite the file.
 
 - The setup script targets a fresh system and configures the desired state without manual settings edits: keep IPython's scientific stack and set KeePassXC/OpenSnitch dark through installation and app launchers. Do not add cleanup for software found only on the development VM or trim requested dependencies just because the system should stay lightweight.
 - Dark mode is a fresh-install requirement across the desktop, KeePassXC and Zen. GTK settings alone do not cover Qt apps. Keep the setup lightweight: seed independent app themes explicitly, export GTK settings before Sway starts, and import them for activated apps; avoid extra theme plugins unless an actual app needs them. See [dark defaults](appearance.md#dark-mode-is-the-default).
@@ -52,7 +57,8 @@ Updated: 2026-10-08. Add lessons when a change exposes a reusable rule; keep out
 
 ## Verification and reporting
 
-- Give each document one purpose: current guides, dated audit evidence, open tasks or reusable lessons. Replace outdated claims instead of appending corrections indefinitely.
+- Give each document one purpose: current guides, dated audit evidence, open tasks or reusable lessons. Replace outdated claims instead of appending corrections indefinitely. A "status snapshot" document ages into a list of corrections; fold its facts into the guide and its open items into TODO.
+- Keep test counts, commit hashes and "now" out of guides. They are stale by the next commit.
 
 - Save tests must follow the editor’s policy: compare whole prose files exactly, allow code formatting, and use a deterministic external formatter to verify the save hook and disk output even when optional tools are missing.
 - Use real application parsers as well as syntax checks. Yazi theme keys had drifted even though the TOML parsed correctly.

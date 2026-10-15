@@ -24,13 +24,12 @@ and enables Debian's update timers. No separate manual policy edits are required
 on a fresh installation. Both policy files matched the development VM in the
 2026-10-08 read-only check after the user ran setup.
 
-A prior isolated native `apt-config` check confirmed the intended origin and
-periodic/reboot/removal settings. A real privileged upgrade dry run, current timer
-health and delivery after a future update still require live verification. Old
-observations about missing policy files and a pending kernel reboot are superseded;
-the VM was observed running `6.12.111+deb13-amd64` after reboot.
+An isolated `apt-config` check confirmed the intended origins and the
+periodic, reboot and removal settings. A real privileged upgrade dry run,
+current timer health and delivery after a future update still need live
+verification; see [TODO](TODO.md#security).
 
-OpenSnitch is now included in setup and may prompt for outgoing update traffic.
+OpenSnitch may prompt for outgoing update traffic.
 
 ## Optional manual maintenance
 

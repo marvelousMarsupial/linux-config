@@ -2,35 +2,42 @@
 
 [Project overview](../README.md)
 
+Guides describe current behavior. Open work lives in TODO, reusable rules in
+LESSONS, and dated evidence in the security audit and testing documents.
+
+## Setup and maintenance
+
 | Document | Purpose |
 | --- | --- |
-| [Current state](state.md) | Dated comparison of project sources, installed files, active services and validation gaps. |
-| [Installation](installation.md) | Packages, user config copies, optional system settings and libvirt setup. |
+| [Installation](installation.md) | Full setup, remote bootstrap, config-only installs and machine-specific settings. |
 | [Manual checklist](manual.md) | Short list of tasks to finish yourself after setup. |
-| [Ergent befor deploy](ergent-befor-deploy.md) | Finding 3, its firewall setup fix and remaining deployment verification. |
-| [Firewall](firewall.md) | Host filtering policy, live verification and recovery. |
-| [Backups](backups.md) | Optional per-machine encrypted Restic home backups and recovery. |
+| [Firewall](firewall.md) | Host filtering policy, setup behavior, live verification and recovery. |
 | [Updates](updates.md) | Automatic Debian update policy, activation and monitoring. |
+| [Backups](backups.md) | Optional per-machine encrypted Restic home backups and recovery. |
 | [System health](sysreport.md) | Local HTML report, status tiles, daily timer and installation receipt. |
+| [Systemd](systemd.md) | Sway session lifecycle, user services, locking, logs and authentication prompts. |
+| [Scripts](scripts.md) | Command inventory and responsibilities. |
+| [Testing](testing.md) | Automated coverage, commands and what still needs live checks. |
+
+## Desktop and applications
+
+| Document | Purpose |
+| --- | --- |
+| [Appearance](appearance.md) | Palettes, typography, dark defaults and the theme picker. |
+| [Glass mode](glass.md) | Translucent desktop and Zen chrome, wallpaper styles and rollback. |
+| [Window behavior](window-behavior.md) | Fullscreen, floating dialogs, the popup guard and touchpad gestures. |
+| [Notifications](notifications.md) | Searchable Mako history and desktop shortcut. |
+| [Portals](portals.md) | Sway screen sharing and Zen file dialogs through Yazi. |
 | [Passwords](passwords.md) | KeePassXC shortcut, scratchpad and Zen browser integration. |
 | [Browser](browser.md) | Zen extensions, first-launch defaults and tracked Surfingkeys settings. |
-| [Portals](portals.md) | Sway screen sharing and Zen file dialogs through Yazi. |
-| [Systemd](systemd.md) | Sway session lifecycle, monitor service, logs and power settings. |
-| [Editor](editor.md) | Minimal Neovim setup, optional development tools and daily use. |
-| [Shell](shell.md) | Prefix history, suggestions, fuzzy Tab/Ctrl+R search, plugin installation and Git prompt. |
-| [Appearance](appearance.md) | Visual choices, shared palettes and applying colors. |
-| [Desktop plan](desktop-plan.md) | Minimal desktop vision and future features. |
-| [Theme review](theme-review.md) | Shared palette coverage and remaining visual checks. |
-| [Notifications](notifications.md) | Searchable Mako history and desktop shortcut. |
-| [Font and operators](font-preview.md) | FiraCode Nerd Font and Neovim's display-only operator symbols. |
-| [Desktop status](desktop-status.md) | Accepted glass/fullscreen behavior, validation, and unfinished work. |
-| [Transparency trial](transparency-trial.md) | Optional translucent desktop experiment and exact-file rollback. |
-| [Scripts](scripts.md) | Current command inventory and responsibilities. |
-| [Testing](testing.md) | Automated coverage, commands and manual verification boundaries. |
-| [Security audit](security-audit.md) | Dated findings, applied repairs and host checks. |
-| [TODO](TODO.md) | Unfinished work, open decisions and follow-up checks. |
-| [Lessons](LESSONS.md) | Reusable rules learned while maintaining the project. |
+| [Editor](editor.md) | Neovim setup, optional development tools, operator symbols and daily use. |
+| [Shell](shell.md) | Prefix history, suggestions, fuzzy Tab/Ctrl+R search and the Git prompt. |
 
-Keep guides about current behavior. Put new work in TODO, reusable lessons in
-LESSONS, and evidence from a dated audit in the audit document. Avoid appending
-superseded test counts or implementation histories to the guides.
+## Project tracking
+
+| Document | Purpose |
+| --- | --- |
+| [TODO](TODO.md) | Unfinished work, open decisions and follow-up checks. |
+| [Desktop plan](desktop-plan.md) | Desktop vision and ideas not yet scheduled. |
+| [Lessons](LESSONS.md) | Reusable rules learned while maintaining the project. |
+| [Security audit](security-audit.md) | Dated findings, applied repairs and host checks. |

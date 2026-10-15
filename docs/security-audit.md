@@ -2,11 +2,13 @@
 
 ## Current status
 
-This document preserves the initial restricted audit and its follow-up evidence.
-Use [current state](state.md) for the latest repository/host comparison and
-[testing](testing.md) for current test results. The firewall uncertainty was
-resolved with privileged checks and installation; the project APT policy is still
-pending. Initial sandbox limitations below describe the earlier audit session.
+[Documentation index](README.md)
+
+This document preserves the initial restricted audit and its dated follow-ups.
+It is evidence from those sessions, not a description of the host today. Use
+[testing](testing.md) for the current verification status and [TODO](TODO.md)
+for open items. Since the audit, setup installs the firewall and the APT policy
+itself; the clipboard watcher and idle-lock findings were fixed in the repo.
 
 ## Initial result and scope
 
@@ -76,6 +78,32 @@ Then install appropriate updates. A package upgrade can restart services or requ
 - [Libvirt privilege/access-control model](https://libvirt.org/aclpolkit.html)
 
 Clipboard/password behavior was additionally checked directly against the installed `/usr/bin/pass` and wl-clipboard manual, not inferred only from upstream documentation.
+
+## Glass mode review, 2026-10-07
+
+Reviewed the glass scripts, theme renderer and templates, Zen CSS and selected
+live preferences, running Zen arguments and environment, listeners,
+permissions, clipboard capture and lock configuration. A scoped review, not a
+host penetration test or dependency audit.
+
+- **Low, privacy tradeoff:** translucent surfaces can reveal terminal or
+  document content in screen shares or to someone nearby. Blur is not
+  redaction. The generated swaylock configuration stays solid.
+- **Low, corrected:** review screenshots in `/tmp` were mode 0664; they and
+  the test metadata are now 0600, and test profile directories 0700.
+- The two running Zen processes had no remote-debugging arguments or
+  sandbox-disabling environment, and no Zen TCP listener was present. These are
+  targeted checks, not proof of every runtime preference.
+- `zen-themes.json` was empty: no downloaded mod runs for glass. CSS imports
+  are local, the scripts fetch no remote code and use no shell evaluation, and
+  the switch changes only three appearance preferences, leaving web-page
+  transparency off. No sandbox, TLS or certificate preference is touched.
+- The CSS hides no identity, permission or tracking control. Local CSS must
+  stay trusted: restyling browser UI can disguise security indicators, but any
+  process running as this user could already edit these files.
+
+The clipboard and idle-lock findings noted during this review are the ones in
+the table above and were fixed on 2026-10-08.
 
 ## Test follow-up — 2026-10-07
 

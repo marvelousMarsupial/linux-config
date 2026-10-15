@@ -22,7 +22,7 @@ if dbus_env.exists() and "DBUS_SESSION_BUS_ADDRESS" not in os.environ:
 
 # Popup width in monospace cells.
 PANEL_WIDTH = 26
-FONT = "monospace:size=18"
+FONT = "CaskaydiaCove Nerd Font Mono:size=18"
 # Leave one cell after the network name.
 SSID_MAX = PANEL_WIDTH - len("WiFi ") - 1
 

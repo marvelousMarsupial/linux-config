@@ -59,8 +59,7 @@ current branch has ten local commits ahead of its configured upstream, usually
 The count reflects the locally recorded upstream state; `git fetch` refreshes it.
 
 `ga .` stages changes and `gc -m "message"` commits them through the project's
-aliases. Neither command pushes or creates a branch. Project work stays on
-`main` unless the user asks for a branch.
+aliases. Neither command pushes or creates a branch.
 
 ## Verification
 
@@ -70,6 +69,5 @@ input, multiword prefixes, empty-input browsing and Ctrl+R insertion in both
 editing modes and both arrow formats. Installer fixtures check dry runs,
 replacement backups, repeated installation and rejection of a mismatched commit.
 
-The fzf-tab download failed in the restricted session because GitHub could not
-be resolved. Live Tab selection, cancellation, previews and completion-based
-grey suggestions still need user verification after installing the plugin.
+Live Tab selection, cancellation, previews and completion-based grey
+suggestions still need user verification after the plugin is installed.

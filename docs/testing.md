@@ -10,147 +10,77 @@ Run from the repository root:
 ./scripts/install --dry-run
 ```
 
-The basic check validates shell/Python/Lua syntax, TOML, and all six palette renders.
-The full check also runs the offline integration suite. Latest full run on
-2026-10-15 in the restricted session: **206 tests run, 204 passed, two skipped**
-(GTK display routing and local IPC unavailable). Syntax, TOML, Lua and six
-palette renders passed. The editor smoke test now preserves entire prose files
-exactly while allowing code formatting. Deterministic external HTML/JSON fixtures
-verify formatting on save and the resulting disk contents, even without optional
-formatters installed. This resolves the prior unchanged-HTML assertion failure.
-Tests requiring Neovim and installed plugins can be skipped on a machine without
-them; inspect the output before claiming coverage.
-The new operator tests cover JavaScript, TypeScript, TSX, C and Python; the
-notification viewer and status toggle also have focused tests. The updated
-TCP/3773 firewall policy could not be loaded or checked here because the
-sandbox blocks nftables netlink access. Validate it with `sudo nft --check`
-before installing it, then test a paired client from the allowed subnet.
-
-Remote bootstrap checks exercise piped execution, argument forwarding, setup/clone
-failure exit codes and temporary checkout cleanup without network or sudo. A
-focused follow-up also verified fresh monitor installation and preservation of
-subsequent local edits. The published URL and real sudo prompts remain untested.
-
-## Automated coverage
-
-| Area | What is exercised |
-| --- | --- |
-| Installation | Dry runs, repeated copies, permissions, private backups, destination and backup-path symlinks, collisions, mode repairs, preserved local settings, selective dark-theme merges and named retirement. |
-| KeePassXC / app themes | First launch, focus and scratchpad show/hide; invalid IPC; launch-time dark settings preserve other app preferences and remain repeatable. |
-| Themes | Six palettes; generated Lua/TOML and native Foot/Fuzzel validation; previews and rejected templates/palettes. |
-| Neovim | Eight filetypes, Markdown/text wrapping, saves, plugins, language/formatter configuration, actual LSP fixture attachment/diagnostics/hover/definition, external formatter execution, modeline rejection, disabled unverified browser preview, retained in-buffer Markdown shortcut and removed note automation. |
-| Bat | Rounded fitted borders, ANSI colors, Unicode, width limits, multiple/empty/large files, pipelines and PTY pager selection/quoting. |
-| Desktop helpers | Menu and background commands: recorded menu actions, display layouts/escaping, status parsing, battery warning/reset loop, session startup ordering, launcher/Zen argument forwarding, screenshots, notes, screen-only brightness controls and visible brightness failures. |
-| Systemd / updates | Real swaymsg subscription and disconnect against a disposable IPC socket; session startup failure paths; completed APT upgrade detection, notification baseline, deduplication and delivery retry. |
-| Portals | Offline Foot/Yazi wrapper checks for literal filenames, single/multiple selection, cancellation and directory fallback cleanup; Zen launcher environment. The user confirmed a live single-file upload and fullscreen picker reveal; other dialog/backend paths still require live checks in [portals](portals.md). |
-| Wi-Fi | Escaped SSIDs and saved profiles, strongest 15 networks, cached credentials, authentication retry, cancellation, timeouts and exact picker selections. |
-| Shell/Yazi | Real interactive Zsh prefix history and Ctrl+R insertion, both arrow formats and editing modes; plugin installer dry runs/backups/repeats and commit rejection; remote terminfo option validation, alias reminder privacy and prefix matching, and Yazi editor argument forwarding. |
-| Desktop setup | Side-effect-free dry run, verified release download/rejection, archive traversal/link rejection, reuse of installed apps, replacement rollback and destination-user paths. Real APT/source builds and fresh-machine behavior need host testing. |
-| Setup | Default/optional branches, local verified release installation, existing-install backup, rejected version/digest/architecture, failed binary/plugin validation and temporary-file cleanup. |
-| Security | Runtime environment injection and symlinks, private backups under a shared umask, editor safeguards and download rejection. |
-
-## Working on tests
-
-Tests are grouped by behavior in `tests/test_*.py`; `support.py` and
-`command_support.py` provide shared imports and isolated command fixtures.
-To run a focused area:
+The basic check validates shell, Python and Lua syntax, TOML, and renders all
+six palettes in a temporary home. It needs `python3-jinja2` and `python3-yaml`;
+zsh and Neovim checks are skipped with a message when those are not installed.
+The full check also runs the offline integration suite. To run one area:
 
 ```sh
 python3 -B -m unittest discover -s tests -p 'test_wifi.py' -v
 ```
 
-Use temporary homes and explicit command stubs for external actions. The suite
-never intentionally changes the live power state, network, clipboard or services.
-Neovim uses installed plugins with temporary config/cache/state; its LSP server
-and JSON formatter fixtures run locally and require no development tools.
-Editor download tests generate local archives and stub curl/sudo; they exercise
-checksum, extraction and installation logic without fetching a release.
-Documentation links are checked too. No extra testing packages are required.
+Tests are grouped by behavior in `tests/test_*.py`; `support.py` and
+`command_support.py` provide shared imports and isolated command fixtures.
 
-Coverage describes observable behavior, not exhaustive branch coverage or a
-security guarantee. Native Foot/Fuzzel parsers are used when available; Neovim
-and bat checks report skips when their runtime prerequisites are missing.
+## What the suite covers
 
-A bad template fails before theme writes begin; filesystem failures can still leave
-a multi-file theme apply incomplete. Atomic replacement is per file.
+| Area | What is exercised |
+| --- | --- |
+| Installation | Dry runs, repeated copies, permissions, private backups, destination and backup-path symlinks, collisions, mode repairs, preserved local settings, selective dark-theme merges, named retirement and rendering for another username. |
+| Setup | Default and optional branches, local verified release installation, existing-install backup, rejected version, digest and architecture, failed binary or plugin validation, temporary-file cleanup. Setup refuses to run as root, so these tests need a normal user. |
+| Remote bootstrap | Piped execution, argument forwarding, setup and clone failure exit codes, temporary checkout cleanup. |
+| Themes and glass | Six palettes; generated Lua and TOML; native Foot and Fuzzel validation when installed; previews; rejected templates and palettes; Zen profile sync, import order and glass toggling. |
+| Neovim | Eight filetypes, Markdown and text wrapping, saves, plugins, LSP fixture attachment, diagnostics, hover and definition, external formatter execution, modeline rejection, disabled browser preview, operator symbol toggling. Save tests compare prose files exactly and use deterministic external fixtures. |
+| Bat | Rounded fitted borders, ANSI colors, Unicode, width limits, multiple, empty and large files, pipelines and PTY pager selection. |
+| Desktop helpers | Recorded menu actions, display layouts and escaping, status parsing, battery warning and reset loop, session startup ordering, launcher and Zen argument forwarding, screenshots, notes, brightness controls and visible brightness failures, the appearance picker, the notification viewer and the status toggle. |
+| Popup guard | Tree-snapshot tests for reveal, delayed visibility, moves and focus, startup recovery, multiple popups, restoration, native dialogs, hidden workspaces, explicit fullscreen priority and Foot opacity delivery over a PTY. |
+| Systemd and updates | Real swaymsg subscription and disconnect against a disposable IPC socket (skipped where local sockets are prohibited); session startup failure paths; APT upgrade detection, notification baseline, deduplication and delivery retry. |
+| Portals | Foot and Yazi wrapper checks for literal filenames, single and multiple selection, cancellation, directory fallback cleanup, fullscreen exit before launch and restoration sequencing; Zen launcher environment. |
+| KeePassXC | First launch, focus, scratchpad show and hide, invalid IPC, launch-time dark settings preserving other preferences. |
+| Wi-Fi | Escaped SSIDs and saved profiles, strongest 15 networks, cached credentials, authentication retry, cancellation, timeouts and exact picker selections. |
+| Shell and Yazi | Real interactive zsh prefix history and Ctrl+R insertion in both arrow formats and editing modes; fzf-tab installer dry runs, backups, repeats and commit rejection; remote terminfo helper validation; alias reminder privacy; Yazi editor argument forwarding. |
+| Backups | Isolated home and stubbed Restic: missing configuration, private credential permissions, source and exclusion arguments, local repository recursion, explicit init and restore, error status. |
+| Security | Runtime environment file injection and symlinks, private backups under a shared umask, editor safeguards, download rejection. |
+| Project | Minimal package list, retired files absent, every local documentation link resolves. |
+
+Tests use temporary homes and command stubs for network, power and privileged
+actions. The suite never changes the live power state, network, clipboard or
+services. Passing it does not prove that a real action works, that a listening
+service is absent, or that the host is secure. Atomic replacement is per file;
+a filesystem failure can still leave a multi-file theme apply incomplete.
 
 ## Manual verification
 
-- In a new terminal, verify Tab selection/cancellation, directory/file previews
-  and completion-based grey suggestions after downloading fzf-tab. Prefix
-  Up/Down is user-confirmed. See [shell verification](shell.md#verification).
+Most live checks are collected in the [manual checklist](manual.md). The
+remaining items here need an interactive session the sandbox cannot provide:
 
-- Restart `sway-popup-guard.service`, toggle Foot with Super+Shift+Space, and check
-  60% floating opacity versus the tiled theme opacity. Reopen an upload picker
-  and check its background too. Offline tests verify transitions and PTY delivery.
-- Open a new Foot window and inspect the launcher, info popup, notifications,
-  rounded bat output and the selected theme.
-- Reload Sway with Super+Shift+c and verify window focus, layouts, monitor profiles,
-  manual locking, 30-minute idle locking and locking before suspend.
-- Test Yazi preview and file opening with `file` installed; optional formats need
-  their own preview dependencies.
+- After installing fzf-tab, verify Tab selection and cancellation, previews and
+  completion-based grey suggestions. Prefix Up/Down is user-confirmed.
+- Restart the popup guard, toggle Foot with Super+Shift+Space and check 60%
+  floating opacity versus untinted tiled windows. Reopen an upload picker.
+- Reload Sway and verify focus, layouts, monitor profiles, manual locking,
+  30-minute idle locking and locking before suspend.
+- Test Yazi preview and file opening; optional formats need their own tools.
 - Test real Wi-Fi authentication and libvirt operations.
-- Test XPS audio and brightness on the laptop. The VM has no sound card or backlight.
-- Log out and back in to confirm Sway journal logging and single Mako startup.
-- Verify language-server attachment only on a machine with optional tools installed.
-- Test a clean installation with working network access and privileges.
-- Follow the host checks in [the security audit](security-audit.md).
+- Test audio, brightness and volume keys on the laptop.
+- Log out and back in to confirm Sway journal logging and a single Mako.
+- Verify language-server attachment only on a machine with `--dev-tools`.
+- Run a clean installation with network access and privileges.
+- Follow the host checks in the [security audit](security-audit.md).
 
-The automated suite does not certify live network, power or installation
-behavior. Separate host checks and the firewall network-namespace probes are
-recorded in [current state](state.md) and [firewall](firewall.md). Restricted
-sessions may skip the IPC test when local sockets are prohibited. Track
-outstanding checks in [TODO](TODO.md).
+## Verification status
 
-## Current live verification boundaries — 2026-10-08
+The user ran full setup on the development VM and rebooted. Read-only checks
+confirmed required packages, installed user files, both APT policy files, the
+shell, group memberships, locale and portal backend files. The user confirmed
+the Zen upload through Yazi, the fullscreen exit and floating picker, the
+notification viewer, the graphical authentication prompt, OpenSnitch collection
+and prefix history. Those checks predate later changes and do not establish a
+fresh-machine installation of the current revision.
 
-The user ran full setup on the development VM and rebooted. Installed package,
-config and policy checks and a working Yazi upload do not verify a fresh target
-installation of the latest revision. Automated setup tests use local release
-fixtures and mocked privilege/network actions. Sandbox sudo, D-Bus, Sway and
-local socket restrictions still limit live checks.
-
-Confirmed by the user: a Zen upload opens Yazi, and opening the picker while
-fullscreen exits fullscreen so the floating picker is visible. This behavior is
-intentional and must be preserved. Picker tests also cover exit-before-launch and
-restoration sequencing offline. Live save/overwrite, multiple/directory selection,
-fullscreen restoration after selection/cancel and screen sharing remain pending.
-
-The repo configures GTK/Zen dark preferences and KeePassXC/OpenSnitch launch-time
-dark settings, including OpenSnitch's theme dependency. App appearance, database
-pairing/autofill, idle/suspend locks, notifications and hardware behavior require
-live checks. Old dated audit results remain in [security audit](security-audit.md);
-they are not current assertions about running services.
-
-## Polkit session integration
-
-Setup includes mate-polkit. Sway launches the agent directly so its process
-belongs to the desktop login session, rather than the user manager's session.
-The old user unit is retired with a backup by config installation. On 2026-10-08 the user confirmed the graphical authentication test works after
-applying the direct Sway startup fix. See
-[systemd](systemd.md#graphical-authentication). The former user service ran on the
-VM but the user's pkexec test reported no authentication agent.
-
-Desktop service migration (2026-10-08): full offline suite passed, 175 tests,
-2 skips. Battery monitor, swayidle and udiskie now use session-scoped user units.
-Unit verification reported a sandbox SO_PASSCRED restriction; live activation
-requires logout/relogin to replace the previous directly started processes.
-
-Optional Restic integration (2026-10-08): full offline suite passed, 181 tests,
-2 skips. Backup tests use an isolated home and stubbed Restic, covering missing
-configuration, private credential permissions, source/exclusion arguments, local
-repository recursion (including symlinks), explicit init/restore and error status.
-Setup dry-run with --backups includes Restic without enabling its timer. No real
-repository backup/restore was run: this VM has no Restic binary or configured target.
-# Journal fixes — 2026-10-08
-
-The session launcher now queries failed session services before resetting them;
-unloaded services are left alone. The Yazi picker leaves an empty result on normal
-file cancellation. Terminal failures still propagate, and fullscreen restoration
-is unchanged. The 19 command tests and six portal tests passed after these changes.
-
-UPower was added to the setup package list. Installing it on the current VM and
-checking live service state require host privileges unavailable in the sandbox.
-Bluetooth availability and GTK/GNOME/Wayland compatibility messages remain visible;
-no journal filters or log deletion were added. Live file selection/cancellation
-still needs verification in the desktop session.
+Not yet verified anywhere: a real remote bootstrap run, a fresh installation of
+the current revision, live idle and suspend locking, save and overwrite through
+the picker, screen sharing, physical multi-monitor behavior, and everything in
+the hardware section of [TODO](TODO.md). Dated host findings stay in the
+[security audit](security-audit.md); they are not statements about running
+services today.

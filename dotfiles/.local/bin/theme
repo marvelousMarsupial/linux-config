@@ -48,9 +48,10 @@ def main():
     context.update(config.get('scheme_meta', {}).get(name, {}))
     mode_file = root / 'glass-mode'
     context['glass_mode'] = mode_file.exists() and mode_file.read_text().strip() == 'on'
+    # Dots is the default wallpaper style; wallpaper-texture records other choices.
     wallpaper_style = root / 'wallpaper-style'
-    context['wallpaper_tiled'] = (wallpaper_style.exists() and
-                                  wallpaper_style.read_text().strip() in ('grid', 'dots'))
+    style = wallpaper_style.read_text().strip() if wallpaper_style.exists() else 'dots'
+    context['wallpaper_tiled'] = style in ('grid', 'dots')
     env = Environment(loader=FileSystemLoader(root / 'templates'),
                       undefined=StrictUndefined, keep_trailing_newline=True)
     # Render everything before writing anything, so template errors leave files intact.

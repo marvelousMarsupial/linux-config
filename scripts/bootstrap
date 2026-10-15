@@ -4,7 +4,7 @@ set -euo pipefail
 umask 077
 
 main() {
-    local repository=${LINUX_CONFIG_REPOSITORY:-https://git.rat/August/linux-config.git}
+    local repository=${LINUX_CONFIG_REPOSITORY:-https://github.com/marvelousMarsupial/linux-config.git}
     local revision=${LINUX_CONFIG_REF:-main}
     local temporary status=0
     case "${1:-}" in

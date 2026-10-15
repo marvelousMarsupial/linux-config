@@ -232,9 +232,13 @@ class BootstrapTests(unittest.TestCase):
     def test_other_username_is_rendered_and_repeat_install_is_clean(self):
         result = run(str(REPO / 'scripts/install'), '--home', str(self.home))
         self.assertEqual(result.returncode, 0, result.stderr)
-        for rel in ('.config/sway/config', '.config/theme/config.toml', '.local/share/applications/zen.desktop'):
+        for rel in ('.config/theme/config.toml', '.local/share/applications/zen.desktop'):
             content = (self.home / rel).read_text()
             self.assertNotIn('/home/august', content)
             self.assertIn(str(self.home), content)
+        # The Sway config needs no rendering: its exec commands expand a tilde.
+        sway = (self.home / '.config/sway/config').read_text()
+        self.assertNotIn('/home/', sway)
+        self.assertIn('set $bin ~/.local/bin', sway)
         result = run(str(REPO / 'scripts/install'), '--home', str(self.home))
         self.assertIn('0 file(s) changed.', result.stdout)

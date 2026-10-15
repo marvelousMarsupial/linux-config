@@ -15,12 +15,16 @@ Super t             Change layout
 Super \             Split horizontally
 Super -             Split vertically
 Super `             Scratchpad
+Super Shift `       Send to scratchpad
+Super Shift s       Sticky
+Super a             Focus parent
 Alt Tab             Next window
 
 Workspaces
 Super 1 to 9        Open workspace
 Super Shift 1 to 9  Move window to workspace
 Super Tab           Next workspace
+Super Shift Tab     Previous workspace
 Super o             Next monitor
 Super Shift o       Move workspace to monitor
 
@@ -45,7 +49,9 @@ Super i             Toggle status
 Super Shift i       System monitor
 Super w             WiFi
 Super Shift b       Bluetooth
+Super c             Virtual machines
 Super u             Eject drives
+Super Ctrl p        Passthrough mode on/off
 Super Shift c       Reload Sway
 Super Shift e       Exit Sway
 Super Shift /       Shortcuts
