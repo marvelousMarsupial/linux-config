@@ -85,6 +85,28 @@ Periodically review the remaining updates with `sudo apt-get update` and
 Update Zen, Yazi, Neovim, plugins and other separately installed tools through
 their own installation methods. They are not covered by APT automation.
 
+## Pinned upstream releases
+
+Yazi, Zen and the Nerd Font are installed from the release tags and SHA-256
+digests recorded in `releases.toml`, so a setup run installs exactly what was
+reviewed. Check for newer upstream releases every few weeks:
+
+```sh
+./scripts/releases check
+```
+
+A non-zero exit means something is behind. Read the upstream release notes,
+then record the new tag and the digests GitHub publishes for the same assets:
+
+```sh
+./scripts/releases bump
+```
+
+Review the diff and commit it. Setup only installs these applications when
+they are missing, so an existing machine updates them by removing the old
+copy or through the application's own updater. Neovim is pinned separately in
+`scripts/setup-editor`.
+
 References: [Debian periodic updates](https://wiki.debian.org/PeriodicUpdates),
 [Debian unattended-upgrades manual](https://manpages.debian.org/trixie/unattended-upgrades/unattended-upgrades.8.en.html).
 

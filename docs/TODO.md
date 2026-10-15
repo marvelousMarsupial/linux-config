@@ -22,10 +22,9 @@ are grouped at the end because they cannot be verified in the development VM.
   The default source now points at the GitHub repository; if the repository
   is private, the raw URL in [installation](installation.md#remote-bootstrap)
   will not work anonymously.
-- [ ] Decide whether Yazi, Zen and the Nerd Font should be pinned to reviewed
-  release versions with recorded digests, like Neovim, instead of taking the
-  latest release and trusting the digest GitHub publishes alongside it. The
-  current check proves download integrity, not that the version was reviewed.
+- [x] Pin Yazi, Zen and the Nerd Font to reviewed releases with recorded
+  digests in `releases.toml`; `scripts/releases check` reports newer upstream
+  releases and `bump` records them for review.
 
 ## Security
 

@@ -1,0 +1,25 @@
+# Upstream releases installed by scripts/setup, pinned by tag and SHA-256.
+# Review release notes, then update with scripts/releases (check, bump).
+
+[yazi]
+repository = "sxyazi/yazi"
+tag = "v26.9.1"
+
+[yazi.assets]
+"yazi-x86_64-unknown-linux-musl.zip" = "9b9c39decccf8cb0ff53a7d637d38f8a79d93bbd0099f4ea9c619ef6bb392f5d"
+"yazi-aarch64-unknown-linux-musl.zip" = "dd569daecaae914185f295634109295ccd25c1b42b02eb89a74f651970024f2e"
+
+[zen]
+repository = "zen-browser/desktop"
+tag = "1.23.2b"
+
+[zen.assets]
+"zen.linux-x86_64.tar.xz" = "5e67f4fa081b1b437243c464449ea1bd2a3b15b6f932487a8aa0c25aa8514600"
+"zen.linux-aarch64.tar.xz" = "96971f099c0adeae6a2edb4e128596d0706df974ac279b5ecde2aa93b07621d8"
+
+[font]
+repository = "ryanoasis/nerd-fonts"
+tag = "v3.5.1"
+
+[font.assets]
+"CascadiaCode.zip" = "1298bf92698afa06185cf1d05e6ae05f2d8a1e8c3cb45ddf4c3035168ab342a1"

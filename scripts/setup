@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import tomllib
 import urllib.request
 import zipfile
 
@@ -25,6 +26,20 @@ ARCHITECTURES = {
     'aarch64': {'yazi': 'yazi-aarch64-unknown-linux-musl.zip', 'zen': 'zen.linux-aarch64.tar.xz'},
 }
 PORTAL_COMMIT = 'cb8cec0b30aa6e2cc36b1b5cb34d6dc9a1face29'
+
+
+def pinned_releases(path=REPO / 'releases.toml'):
+    """Load the reviewed release tags and digests; refuse malformed pins."""
+    releases = tomllib.loads(path.read_text())
+    for name, release in releases.items():
+        if not re.fullmatch(r'[\w.-]+/[\w.-]+', release.get('repository', '')):
+            raise ValueError(f'{name}: invalid repository in releases.toml')
+        if not re.fullmatch(r'[\w.+-]+', release.get('tag', '')):
+            raise ValueError(f'{name}: invalid tag in releases.toml')
+        for asset, digest in release.get('assets', {}).items():
+            if not re.fullmatch(r'[0-9a-f]{64}', digest):
+                raise ValueError(f'{name}: {asset} needs a SHA-256 digest in releases.toml')
+    return releases
 BUILD_PACKAGES = ['build-essential', 'meson', 'ninja-build', 'libinih-dev', 'libsystemd-dev', 'scdoc']
 
 
@@ -45,24 +60,17 @@ def request(url):
     return response
 
 
-def release_asset(repository, name, destination):
-    """Resolve one official release and verify its asset before extraction."""
-    with request(f'https://api.github.com/repos/{repository}/releases/latest') as response:
-        release = json.load(response)
-    asset = next((item for item in release['assets'] if item['name'] == name), None)
-    if not asset or not re.fullmatch(r'sha256:[0-9a-f]{64}', asset.get('digest') or ''):
-        raise ValueError(f'No published SHA-256 for {repository}/{name}; nothing installed')
-    url = asset['browser_download_url']
-    if not url.startswith(f'https://github.com/{repository}/releases/download/'):
-        raise ValueError('Unexpected release download URL')
+def release_asset(repository, name, destination, tag, expected):
+    """Download one pinned release asset and verify it against the reviewed digest."""
+    url = f'https://github.com/{repository}/releases/download/{tag}/{name}'
     digest = hashlib.sha256()
     with request(url) as response, destination.open('wb') as output:
         while chunk := response.read(1024 * 1024):
             digest.update(chunk)
             output.write(chunk)
-    if digest.hexdigest() != asset['digest'].split(':', 1)[1]:
-        raise ValueError('Release checksum mismatch; nothing installed')
-    print(f'Verified {repository} {release["tag_name"]}: {name}', flush=True)
+    if digest.hexdigest() != expected:
+        raise ValueError(f'Release checksum mismatch for {repository} {tag} {name}; nothing installed')
+    print(f'Verified {repository} {tag}: {name}', flush=True)
 
 
 def unpack(archive, destination):
@@ -115,14 +123,18 @@ def applications(home, dry, machine=None):
                            capture_output=True, text=True).stdout if shutil.which('fc-match') else ''
     if 'CaskaydiaCove' not in fonts or 'Nerd Font' not in fonts:
         wanted.append(('ryanoasis/nerd-fonts', 'CascadiaCode.zip', 'font'))
+    releases = pinned_releases()
     for repository, asset, kind in wanted:
-        print(f'Install missing {kind} from verified official release: {repository}/{asset}', flush=True)
+        pin = releases[kind]
+        if pin['repository'] != repository or asset not in pin['assets']:
+            raise ValueError(f'releases.toml has no digest for {repository}/{asset}')
+        print(f'Install missing {kind} from pinned release {repository} {pin["tag"]}: {asset}', flush=True)
         if dry:
             continue
         with tempfile.TemporaryDirectory(prefix='linux-config-', dir=local) as temporary:
             temporary = Path(temporary)
             archive = temporary / 'release'
-            release_asset(repository, asset, archive)
+            release_asset(repository, asset, archive, pin['tag'], pin['assets'][asset])
             unpack(archive, temporary / 'extracted')
             extracted = temporary / 'extracted'
             stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')

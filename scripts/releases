@@ -1,0 +1,83 @@
+#!/usr/bin/python3
+"""Check or bump the pinned upstream releases in releases.toml.
+
+check  compares each pin with the latest GitHub release and reports what is behind.
+bump   rewrites the pins for the named entries (default: all) to the latest release,
+       recording the SHA-256 digests GitHub publishes for the same asset names.
+Review the upstream release notes, then commit the changed file.
+"""
+import argparse
+import json
+from pathlib import Path
+import re
+import sys
+import tomllib
+import urllib.request
+
+REPO = Path(__file__).resolve().parent.parent
+PINS = REPO / 'releases.toml'
+
+
+def latest(repository):
+    url = f'https://api.github.com/repos/{repository}/releases/latest'
+    with urllib.request.urlopen(urllib.request.Request(
+            url, headers={'User-Agent': 'linux-config-releases', 'Accept': 'application/vnd.github+json'}),
+            timeout=60) as response:
+        release = json.load(response)
+    tag = release.get('tag_name', '')
+    if not re.fullmatch(r'[\w.+-]+', tag):
+        raise ValueError(f'{repository}: unexpected tag {tag!r}')
+    digests = {}
+    for asset in release.get('assets', []):
+        digest = asset.get('digest') or ''
+        if re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
+            digests[asset['name']] = digest.split(':', 1)[1]
+    return tag, digests
+
+
+def render(releases):
+    lines = ['# Upstream releases installed by scripts/setup, pinned by tag and SHA-256.',
+             '# Review release notes, then update with scripts/releases (check, bump).']
+    for name, release in releases.items():
+        lines += ['', f'[{name}]', f'repository = "{release["repository"]}"', f'tag = "{release["tag"]}"',
+                  '', f'[{name}.assets]']
+        lines += [f'"{asset}" = "{digest}"' for asset, digest in release['assets'].items()]
+    return '\n'.join(lines) + '\n'
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('command', choices=('check', 'bump'))
+    parser.add_argument('names', nargs='*', help='entries to bump (default: all)')
+    args = parser.parse_args()
+    releases = tomllib.loads(PINS.read_text())
+    unknown = set(args.names) - set(releases)
+    if unknown:
+        parser.error('Unknown entries: ' + ', '.join(sorted(unknown)))
+    behind = False
+    for name, release in releases.items():
+        if args.names and name not in args.names:
+            continue
+        tag, digests = latest(release['repository'])
+        if tag == release['tag']:
+            print(f'{name}: {tag} is current')
+            continue
+        behind = True
+        missing = [asset for asset in release['assets'] if asset not in digests]
+        if missing:
+            print(f'{name}: {release["tag"]} -> {tag} is missing published digests for {", ".join(missing)}')
+            continue
+        if args.command == 'check':
+            print(f'{name}: {release["tag"]} -> {tag} available')
+            continue
+        release['tag'] = tag
+        release['assets'] = {asset: digests[asset] for asset in release['assets']}
+        print(f'{name}: pinned {tag}')
+    if args.command == 'bump':
+        PINS.write_text(render(releases))
+        print(f'Updated {PINS.name}; review the upstream release notes and commit.')
+    return 1 if args.command == 'check' and behind else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -1,6 +1,8 @@
 """Desktop setup boundaries using local files and mocked privileged/network actions."""
 import hashlib
 import importlib.machinery
+import tomllib
+import sys
 import importlib.util
 import io
 import json
@@ -160,23 +162,36 @@ class BootstrapTests(unittest.TestCase):
                 self.assertIn(failure, commands[-1])
                 self.assertFalse(any('cp' in cmd for cmd in commands))
 
-    def test_verified_download_and_rejected_digest(self):
+    def test_pinned_download_and_rejected_digest(self):
         payload = b'release fixture'
-        asset = {'name': 'fixture.zip', 'digest': 'sha256:' + hashlib.sha256(payload).hexdigest(),
-                 'browser_download_url': 'https://github.com/example/app/releases/download/v1/fixture.zip'}
+        urls = []
+
         def response(url):
-            return io.BytesIO(json.dumps({'tag_name': 'v1', 'assets': [asset]}).encode()
-                              if 'api.github.com' in url else payload)
+            urls.append(url)
+            return io.BytesIO(payload)
         destination = self.home / 'download'
         with patch.object(setup, 'request', side_effect=response):
-            setup.release_asset('example/app', 'fixture.zip', destination)
+            setup.release_asset('example/app', 'fixture.zip', destination, 'v1', hashlib.sha256(payload).hexdigest())
             self.assertEqual(destination.read_bytes(), payload)
-            asset['digest'] = 'sha256:' + '0' * 64
+            self.assertEqual(urls, ['https://github.com/example/app/releases/download/v1/fixture.zip'])
             with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
-                setup.release_asset('example/app', 'fixture.zip', destination)
-            asset['digest'] = None
-            with self.assertRaisesRegex(ValueError, 'No published SHA-256'):
-                setup.release_asset('example/app', 'fixture.zip', destination)
+                setup.release_asset('example/app', 'fixture.zip', destination, 'v1', '0' * 64)
+
+    def test_pins_cover_every_architecture_and_reject_bad_entries(self):
+        releases = setup.pinned_releases()
+        for assets in setup.ARCHITECTURES.values():
+            self.assertIn(assets['yazi'], releases['yazi']['assets'])
+            self.assertIn(assets['zen'], releases['zen']['assets'])
+        self.assertIn('CascadiaCode.zip', releases['font']['assets'])
+        self.assertEqual(releases['zen']['repository'], 'zen-browser/desktop')
+        bad = self.home / 'releases.toml'
+        for text, message in (('[yazi]\nrepository = "x"\ntag = "v1"\n', 'invalid repository'),
+                              ('[yazi]\nrepository = "a/b"\ntag = "../x"\n', 'invalid tag'),
+                              ('[yazi]\nrepository = "a/b"\ntag = "v1"\n[yazi.assets]\n"a.zip" = "short"\n',
+                               'SHA-256')):
+            bad.write_text(text)
+            with self.assertRaisesRegex(ValueError, message):
+                setup.pinned_releases(bad)
 
     def test_archive_traversal_and_symlinks_rejected_before_extraction(self):
         archive = self.home / 'archive'
@@ -215,7 +230,8 @@ class BootstrapTests(unittest.TestCase):
         self.assertFalse(backup.exists())
 
     def test_fresh_home_installs_all_missing_applications(self):
-        def download(repository, name, destination):
+        def download(repository, name, destination, tag, digest):
+            self.assertRegex(digest, r'^[0-9a-f]{64}$')
             if repository == 'zen-browser/desktop':
                 with tarfile.open(destination, 'w') as archive:
                     item = tarfile.TarInfo('zen/zen')
@@ -255,6 +271,30 @@ class BootstrapTests(unittest.TestCase):
             with self.assertRaises(KeyError):
                 setup.applications(self.home, True, machine='armv7l')
         self.assertEqual(setup.ARCHITECTURES['aarch64']['zen'], 'zen.linux-aarch64.tar.xz')
+
+    def test_release_helper_checks_and_bumps_pins(self):
+        helper = importlib.machinery.SourceFileLoader('releases', str(REPO / 'scripts/releases')).load_module()
+        pins = self.home / 'releases.toml'
+        pins.write_text((REPO / 'releases.toml').read_text())
+        current = tomllib.loads(pins.read_text())
+        newer = {name: ('v99', {asset: 'f' * 64 for asset in release['assets']})
+                 for name, release in current.items()}
+        newer['zen'] = (current['zen']['tag'], {})
+        with patch.object(helper, 'PINS', pins), patch.object(helper, 'latest', side_effect=lambda r: next(
+                newer[n] for n, rel in current.items() if rel['repository'] == r)), \
+                patch.object(sys, 'argv', ['releases', 'check']):
+            self.assertEqual(helper.main(), 1)
+            self.assertEqual(pins.read_text(), (REPO / 'releases.toml').read_text())
+        with patch.object(helper, 'PINS', pins), patch.object(helper, 'latest', side_effect=lambda r: next(
+                newer[n] for n, rel in current.items() if rel['repository'] == r)), \
+                patch.object(sys, 'argv', ['releases', 'bump', 'yazi']):
+            self.assertEqual(helper.main(), 0)
+        bumped = tomllib.loads(pins.read_text())
+        self.assertEqual(bumped['yazi']['tag'], 'v99')
+        self.assertEqual(set(bumped['yazi']['assets'].values()), {'f' * 64})
+        self.assertEqual(bumped['font'], current['font'])
+        self.assertEqual(bumped['zen'], current['zen'])
+        setup.pinned_releases(pins)
 
     def test_vm_packages_are_x86_only_and_host_settings_follow_them(self):
         common = set(setup.package_list(REPO / 'packages.txt'))

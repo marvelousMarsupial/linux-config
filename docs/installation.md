@@ -29,10 +29,11 @@ sudo or file changes. A normal run, in order:
   up previous files, then enables and reloads nftables. A failed check stops
   setup. Review the [firewall policy](firewall.md) before running setup,
   especially over a remote connection.
-- Installs missing Yazi/ya, Zen and CaskaydiaCove Nerd Font from their latest
-  official GitHub releases, choosing the x86_64 or aarch64 build to match the
-  machine. The published SHA-256 digest is required and checked before
-  extraction; a missing digest or mismatch stops setup.
+- Installs missing Yazi/ya, Zen and CaskaydiaCove Nerd Font from the GitHub
+  releases pinned in `releases.toml`, choosing the x86_64 or aarch64 build to
+  match the machine. Each download is checked against the recorded SHA-256
+  before extraction; a mismatch stops setup. See [updates](updates.md) for
+  bumping the pins.
 - Calls `setup-shell` to install the pinned fzf-tab plugin. See [shell](shell.md).
 - Builds termfilechooser at the pinned upstream commit from temporary sources
   and installs it into `/usr`. Build dependencies remain installed. A marker

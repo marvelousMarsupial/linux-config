@@ -135,3 +135,14 @@ if [[ -o interactive && "$TERM" == foot* ]]; then
   add-zsh-hook precmd _foot_out_end
   add-zsh-hook preexec _foot_out_start
 fi
+
+# Ctrl+L and clear also drop the terminal scrollback, so nothing above survives.
+clear-screen-and-scrollback() {
+  printf '\e[2J\e[3J\e[H'
+  zle redisplay
+}
+zle -N clear-screen-and-scrollback
+bindkey -M emacs '^L' clear-screen-and-scrollback
+bindkey -M viins '^L' clear-screen-and-scrollback
+bindkey -M vicmd '^L' clear-screen-and-scrollback
+clear() { command clear; printf '\e[3J'; }
