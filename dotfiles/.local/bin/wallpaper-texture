@@ -81,7 +81,7 @@ for y in range(height):
             # Small, sharply defined points; stronger five-cell anchors.
             dot = x % 24 in (0, 1) and y % 24 in (0, 1)
             anchor = x % 120 in (0, 1) and y % 120 in (0, 1)
-            texture = 32 if anchor else 18 if dot else 0
+            texture = 52 if anchor else 30 if dot else 0
         elif style == 'woven':
             texture = (5 if x % 12 == 0 else 0) + (4 if y % 12 == 0 else 0)
             texture += 3 if (x + y) % 96 == 0 else 0
