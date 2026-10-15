@@ -10,7 +10,7 @@ local function setup()
       table.insert(missing, name)
     end
   end
-  for _, executable in ipairs({ "clangd", "clang-format", "node", "npm", "cc", "make" }) do
+  for _, executable in ipairs({ "clangd", "clang-format", "node", "npm", "cc", "make", "shellcheck" }) do
     if vim.fn.executable(executable) == 0 then
       table.insert(missing, executable)
     end

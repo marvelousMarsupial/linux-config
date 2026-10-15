@@ -12,7 +12,7 @@ for argument in "$@"; do
         --help)
             echo 'Usage: scripts/setup-editor [--dev-tools] [--skip-apt]'
             echo 'Installs Neovim, plugins, IPython, jq and bat'
-            echo '--dev-tools adds compilers, Node, language servers, formatters and parsers'
+            echo '--dev-tools adds compilers, Node, shellcheck, language servers, formatters and parsers'
             exit 0 ;;
         *) echo "Unknown option: $argument" >&2; exit 1 ;;
     esac
@@ -21,7 +21,7 @@ if ! "$skip_apt"; then
     sudo apt-get update
     sudo apt-get install -y ipython3 jq bat git curl unzip ca-certificates python3 python3-jinja2 python3-yaml
     if "$dev_tools"; then
-        sudo apt-get install -y build-essential clangd clang-format nodejs npm
+        sudo apt-get install -y build-essential clangd clang-format nodejs npm shellcheck
     fi
 fi
 export PATH="$HOME/.local/bin:$PATH"

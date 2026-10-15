@@ -28,6 +28,8 @@ return {
         },
       })
       vim.lsp.config("jsonls", { settings = { json = { validate = { enable = true } } } })
+      -- pyright owns hover and completion; ruff lints and formats.
+      vim.lsp.config("ruff", { on_attach = function(client) client.server_capabilities.hoverProvider = false end })
       vim.lsp.config("yamlls", {
         settings = { yaml = { validate = true, keyOrdering = false, format = { enable = false } } },
       })

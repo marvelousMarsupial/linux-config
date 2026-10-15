@@ -7,13 +7,17 @@ return {
     jsonls = "vscode-json-language-server",
     yamlls = "yaml-language-server",
     lua_ls = "lua-language-server",
+    pyright = "pyright-langserver",
+    ruff = "ruff",
+    bashls = "bash-language-server",
   },
   mason = {
     "typescript-language-server", "html-lsp", "json-lsp", "yaml-language-server",
     "lua-language-server", "prettier", "stylua", "tree-sitter-cli",
+    "pyright", "ruff", "bash-language-server", "shfmt",
   },
   parsers = {
     "c", "cpp", "typescript", "tsx", "javascript", "html", "css", "json",
-    "yaml", "lua", "markdown", "markdown_inline", "bash", "vim", "vimdoc", "query",
+    "yaml", "lua", "python", "markdown", "markdown_inline", "bash", "vim", "vimdoc", "query",
   },
 }

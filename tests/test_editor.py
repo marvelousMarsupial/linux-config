@@ -30,7 +30,7 @@ class NeovimTests(unittest.TestCase):
                          f'lua dofile({json.dumps(str(REPO / "tests/nvim_smoke.lua"))})', '+qa', env=env)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertNotIn('Error', result.stderr)
-            self.assertIn('eight filetypes', result.stderr)
+            self.assertIn('ten filetypes', result.stderr)
 
 
 class SetupTests(unittest.TestCase):
@@ -51,6 +51,6 @@ class SetupTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 commands = log.read_text()
                 self.assertIn('ipython3 jq bat', commands)
-                self.assertEqual('apt-get install -y build-essential clangd clang-format nodejs npm' in commands, development)
+                self.assertEqual('apt-get install -y build-essential clangd clang-format nodejs npm shellcheck' in commands, development)
                 self.assertEqual('dofile(vim.env.LINUX_CONFIG_EDITOR_SETUP)' in commands, development)
                 self.assertTrue((home / '.config/nvim/init.lua').exists())

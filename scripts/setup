@@ -297,7 +297,7 @@ def main():
     editor = [str(REPO / 'scripts/setup-editor'), '--skip-apt']
     if args.dev_tools:
         # setup-editor skips its APT stage when called here.
-        run('sudo', 'apt-get', 'install', '-y', 'build-essential', 'clangd', 'clang-format', 'nodejs', 'npm', dry=args.dry_run)
+        run('sudo', 'apt-get', 'install', '-y', 'build-essential', 'clangd', 'clang-format', 'nodejs', 'npm', 'shellcheck', dry=args.dry_run)
         editor.append('--dev-tools')
     colors_present = (home / '.config/sway/colors').is_file()
     run(*editor, dry=args.dry_run)

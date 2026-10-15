@@ -35,6 +35,8 @@ local function check()
     { "sample.json", "json", false, '{"value": 1}' },
     { "sample.yaml", "yaml", false, "value: 1" },
     { "sample.lua", "lua", false, "local value = 1" },
+    { "sample.py", "python", false, "value = 1" },
+    { "sample.sh", "sh", false, "#!/bin/sh\necho ok" },
   }
   for _, sample in ipairs(samples) do
     local file = root .. "/" .. sample[1]
@@ -58,11 +60,11 @@ local function check()
     end
   end
   require("lazy").load({ plugins = { "nvim-lspconfig", "conform.nvim", "telescope.nvim", "nvim-cmp" } })
-  for _, server in ipairs({ "clangd", "ts_ls", "html", "jsonls", "yamlls", "lua_ls" }) do
+  for _, server in ipairs({ "clangd", "ts_ls", "html", "jsonls", "yamlls", "lua_ls", "pyright", "ruff", "bashls" }) do
     assert(vim.lsp.config[server], server .. ": missing config")
   end
   local formatters = require("conform").formatters_by_ft
-  for _, filetype in ipairs({ "c", "typescript", "html", "json", "yaml", "lua" }) do
+  for _, filetype in ipairs({ "c", "typescript", "html", "json", "yaml", "lua", "python", "sh" }) do
     assert(formatters[filetype], filetype .. ": missing formatter mapping")
   end
   assert(not formatters.markdown and not formatters.text, "Prose should not be reformatted")
@@ -119,7 +121,7 @@ local function check()
   client:stop()
   assert(vim.wait(2000, function() return client:is_stopped() end, 20), "LSP fixture did not stop")
   assert(#captured == 0, table.concat(captured, "\n"))
-  print("Neovim: eight filetypes, prose wrapping, saves, plugins, LSP configs, and formatter mappings passed")
+  print("Neovim: ten filetypes, prose wrapping, saves, plugins, LSP configs, and formatter mappings passed")
 end
 local ok, err = pcall(check)
 if not ok then

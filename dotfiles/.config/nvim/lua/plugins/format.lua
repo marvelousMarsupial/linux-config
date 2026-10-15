@@ -23,7 +23,14 @@ return {
       jsonc = { "prettier" },
       yaml = { "prettier" },
       lua = { "stylua" },
+      python = { "ruff_organize_imports", "ruff_format" },
+      sh = { "shfmt" },
+      bash = { "shfmt" },
       -- Prose stays soft-wrapped; formatting won't rewrite paragraphs on save.
+    },
+    formatters = {
+      -- Match the repo's shell scripts: four-space indent, no tabs.
+      shfmt = { prepend_args = { "-i", "4" } },
     },
     format_on_save = { timeout_ms = 1500, lsp_format = "fallback" },
   },

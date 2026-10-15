@@ -19,7 +19,8 @@ language servers, formatters or Treesitter parsers.
 ./scripts/setup-editor --dev-tools
 ```
 
-That adds C build tools, Node/npm, language servers, formatters and parsers.
+That adds C build tools, Node/npm, shellcheck, language servers, formatters
+and parsers.
 The desktop package list excludes these. `--skip-apt` skips the privileged
 package step; full setup uses it. Existing tools are never uninstalled.
 
@@ -37,7 +38,10 @@ stay unchanged and
 ## Languages and tools
 
 Configured languages: C/C++, TypeScript/JavaScript/TSX, HTML/CSS, JSON/JSONC,
-YAML and Lua, including the Neovim config. clangd uses your project's
+YAML, Lua (including the Neovim config), Python and shell. Python uses pyright
+for completion and ruff for linting, import sorting and formatting. Shell
+scripts use bash-language-server with shellcheck and format with shfmt at four
+spaces. clangd uses your project's
 `compile_commands.json`; with CMake, configure with
 `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`. For other build systems, provide a compile
 database or a `.clangd` file. TypeScript projects need their normal
