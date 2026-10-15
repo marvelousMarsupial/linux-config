@@ -49,6 +49,8 @@ dependencies and `tsconfig.json`.
 
 `:EditorTools` shows installed and missing executables, `:Mason` manages tools,
 `:ConformInfo` explains formatting, and `:checkhealth vim.lsp` checks LSP health.
+The command line row stays hidden until you type a command; messages arrive as
+popups. Code actions open as a numbered list: type the number and press Enter.
 With development tools installed, `gd` goes to a definition, `K` shows docs,
 Space+rn renames, Space+ca lists code actions and Space+cf formats. Code
 formats on save when its formatter or language server is installed. Plain text

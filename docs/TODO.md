@@ -31,13 +31,16 @@ are grouped at the end because they cannot be verified in the development VM.
 - [ ] Finish system-health verification: the live daily timer run and a real
   installer receipt. Run the file picker through selection and cancellation.
   See [system health](sysreport.md).
-- [ ] Verify OpenSnitch prompts and connection collection after a fresh setup
-  and login. Setup provisions matching daemon and UI sockets.
-- [ ] Decide whether OpenSnitch should ship a default-deny daemon config.
-  Today Debian's default allows unmatched connections, so everything setup
-  downloads before the first login passes without a prompt.
-- [ ] Verify a real unattended-upgrade dry run and a later update notification
-  on the target machine. See [updates](updates.md).
+- [x] Verify OpenSnitch prompts after a fresh setup and login: prompts appear
+  on the VM. Connection history stays off because the daemon has no database
+  path, which the health report shows as "History off".
+- [ ] Decide whether OpenSnitch should ship a default-deny daemon config and a
+  database path for connection history. Today Debian's default allows
+  unmatched connections, so everything setup downloads before the first login
+  passes without a prompt.
+- [x] Verify a real unattended-upgrade dry run and an update notification: the
+  dry run passed on the VM and the notifier announced the dev-tools install.
+  A notification for a real unattended upgrade is still to be seen.
 - [ ] Finish privileged verification of sudoers, libvirt permissions and failed
   update services. See the
   [privilege review](security-audit.md#privilege-and-update-review--2026-10-08).

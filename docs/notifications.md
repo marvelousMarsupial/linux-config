@@ -3,9 +3,11 @@
 [Documentation index](README.md)
 
 Open **Notifications** from the app launcher or press **Super+Shift+N**.
-The themed fuzzel viewer shows active notifications followed by recent history.
-Type to search across app, title and body; press Enter to read the selected
-message. Escape returns from the detail view, and Escape again closes the list.
+The themed fuzzel viewer lists active notifications, marked with a dot, followed
+by recent history. Each row reads app, title and body separated by dots, and
+the list sizes itself to its entries. Type to search; press Enter to read the
+selected message. Escape returns from the detail view, and Escape again closes
+the list.
 Reopen the viewer to refresh its snapshot. Notification markup is shown as text;
 the viewer does not invoke actions or dismiss messages.
 

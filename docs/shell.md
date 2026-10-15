@@ -51,6 +51,13 @@ Without the plugin, standard Zsh completion remains available. Ctrl+R depends on
 the Debian fzf key-binding script; file previews require the Debian `bat` package.
 Completion initializes before fzf-tab, autosuggestions and syntax highlighting.
 
+## Clearing and opening files
+
+`clear` and Ctrl+L wipe the scrollback as well as the screen, so scrolling up
+afterward shows nothing. Typing a Markdown, text, JSON, YAML or Lua file name as
+a command opens it in Neovim through a suffix alias; `.sh` and `.py` files run
+instead, so scripts stay executable from the prompt.
+
 ## Git prompt
 
 The prompt shows the current branch and working-tree status. `⇡10` means the

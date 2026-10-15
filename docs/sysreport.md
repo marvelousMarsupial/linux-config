@@ -18,7 +18,9 @@ health, journal, network, and OpenSnitch. Green means confirmed success, red a
 failure or resource alert, and amber attention or unknown data. Update checks must
 have a successful service completion within 48 hours to turn green; pending
 packages, stale metadata, and reboot markers keep them amber. Backup success must
-be confirmed within 26 hours. Command output and issue lists are collapsed into
+be confirmed within 26 hours. The resources tile reads only memory and disk
+usage; SMART results belong to the disk health tile, which stays amber on
+virtual disks and without root access to the device. Command output and issue lists are collapsed into
 native HTML details panels, which work without JavaScript.
 
 Run `sysreport --demo` to write `~/.local/share/sysreport/demo.html` with eight
