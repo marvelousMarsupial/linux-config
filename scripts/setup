@@ -18,7 +18,8 @@ import urllib.request
 import zipfile
 
 REPO = Path(__file__).resolve().parent.parent
-# Release assets per CPU architecture; packages.<machine>.txt adds the matching packages.
+# Release assets per CPU architecture. packages.<machine>.txt adds packages for
+# that machine only; today that is the VM stack, which stays off the Raspberry Pi.
 ARCHITECTURES = {
     'x86_64': {'yazi': 'yazi-x86_64-unknown-linux-musl.zip', 'zen': 'zen.linux-x86_64.tar.xz'},
     'aarch64': {'yazi': 'yazi-aarch64-unknown-linux-musl.zip', 'zen': 'zen.linux-aarch64.tar.xz'},
@@ -233,8 +234,8 @@ def firewall(dry):
     run('sudo', 'nft', 'list', 'table', 'inet', 'linux_config', dry=dry)
 
 
-def host_settings(user, dry):
-    run('sudo', 'usermod', '-aG', 'video,libvirt,kvm', user, dry=dry)
+def host_settings(user, dry, virtualization):
+    run('sudo', 'usermod', '-aG', 'video,libvirt,kvm' if virtualization else 'video', user, dry=dry)
     run('sudo', 'usermod', '-s', '/bin/zsh', user, dry=dry)
     locales = subprocess.run(['locale', '-a'], capture_output=True, text=True, check=True).stdout.lower()
     if 'en_us.utf8' not in locales:
@@ -254,7 +255,8 @@ def host_settings(user, dry):
                 run('sudo', 'install', '-d', '-m', '0700', backup.parent)
                 run('sudo', 'cp', '-a', dest, backup)
             run('sudo', 'install', '-Dm644', source, dest)
-    run('sudo', 'systemctl', 'enable', '--now', 'libvirtd.service', 'apt-daily.timer', 'apt-daily-upgrade.timer', dry=dry)
+    services = ['libvirtd.service'] if virtualization else []
+    run('sudo', 'systemctl', 'enable', '--now', *services, 'apt-daily.timer', 'apt-daily-upgrade.timer', dry=dry)
 
 
 def package_list(path):
@@ -303,7 +305,7 @@ def main():
     current = home / '.cache/theme/current'
     if not current.is_file() and not colors_present:
         run(home / '.local/bin/theme', 'apply', 'summer-dusk', dry=args.dry_run)
-    host_settings(user, args.dry_run)
+    host_settings(user, args.dry_run, 'libvirt-daemon-system' in packages)
     opensnitch(args.dry_run)
     if args.dry_run or Path(f'/run/user/{os.getuid()}/bus').exists():
         run('systemctl', '--user', 'daemon-reload', dry=args.dry_run)

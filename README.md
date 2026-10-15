@@ -2,7 +2,7 @@
 
 Personal Debian 13 workstation configs and small scripts: Sway, Foot, Fuzzel,
 Neovim, Yazi, zsh and six shared Base16 palettes. One font everywhere,
-CaskaydiaCove Nerd Font. VM management uses libvirt directly. The default
+CaskaydiaCove Nerd Font. VM management uses libvirt directly on x86_64. The default
 package list keeps development tools minimal.
 
 ## Start here
@@ -40,7 +40,7 @@ plugin locks and generated colors. Run `./scripts/check --full` to verify the re
 | --- | --- |
 | `dotfiles/` | User configs, desktop commands, theme templates and assets. |
 | `scripts/` | Install, check and explicit editor/shell setup commands. |
-| `packages.txt` | Debian desktop package requirements; `packages.<arch>.txt` adds the VM emulator and firmware for x86_64 or aarch64. |
+| `packages.txt` | Debian desktop package requirements; `packages.x86_64.txt` adds the VM stack, which the Raspberry Pi skips. |
 | `system/` | APT/firewall configuration applied by setup; optional lid and udev settings. |
 | `examples/` | Hardware-specific reference configurations. |
 | `tests/` | Offline integration and editor smoke checks. |

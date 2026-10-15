@@ -8,7 +8,7 @@ class ProjectTests(unittest.TestCase):
     def test_minimal_packages_and_retired_integrations(self):
         packages = {line for line in (REPO / 'packages.txt').read_text().splitlines()
                     if line and not line.startswith('#')}
-        self.assertTrue({'ipython3', 'jq', 'bat', 'libvirt-clients', 'virt-manager'} <= packages)
+        self.assertTrue({'ipython3', 'jq', 'bat', 'chromium'} <= packages)
         self.assertFalse(packages & {'podman', 'docker.io', 'incus', 'lxc', 'build-essential',
                                      'clangd', 'clang-format', 'nodejs', 'npm', 'tmux', 'wireguard-tools'})
         self.assertFalse((REPO / 'dotfiles/.config/nvim/lua/plugins/obsidian.lua').exists())

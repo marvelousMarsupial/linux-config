@@ -1,3 +1,14 @@
-# x86_64 only: VM emulator and UEFI firmware. scripts/setup adds this list on x86_64.
+# x86_64 only: virtual machines with libvirt, QEMU, UEFI firmware and SPICE.
+# The Raspberry Pi installation skips VM tooling; scripts/setup then also
+# skips the libvirt group and service.
+gir1.2-spiceclientgtk-3.0
+libvirt-clients
+libvirt-daemon-system
 ovmf
+passt
+qemu-system-modules-spice
 qemu-system-x86
+qemu-utils
+virt-manager
+virt-viewer
+virtinst

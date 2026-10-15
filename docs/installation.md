@@ -20,8 +20,8 @@ checkout and run setup. From the repository root:
 The dry run performs read-only discovery and prints a plan without downloads,
 sudo or file changes. A normal run, in order:
 
-- Installs `packages.txt` through APT, plus `packages.x86_64.txt` or
-  `packages.aarch64.txt` for the matching VM emulator and UEFI firmware. The
+- Installs `packages.txt` through APT, plus `packages.x86_64.txt` on x86_64,
+  which holds the whole VM stack. A Raspberry Pi gets no VM tooling. The
   common list includes IPython with NumPy, Matplotlib and SciPy, Chromium,
   KeePassXC, OpenSnitch and its UI theme library, Starship, and the portal
   broker with its GTK and wlr backends.
@@ -42,9 +42,10 @@ sudo or file changes. A normal run, in order:
 - Applies the summer-dusk palette on a fresh home. Existing theme selections,
   generated colors and local monitor profiles are preserved. Paths are rendered
   for the installing user.
-- Adds the user to video, libvirt and kvm, selects zsh as the login shell,
+- Adds the user to video, and to libvirt and kvm where the VM stack is
+  installed, selects zsh as the login shell,
   generates the English UTF-8 locale if missing, installs the APT update policy
-  with backups, and enables libvirtd and Debian's update timers.
+  with backups, and enables Debian's update timers and, on x86_64, libvirtd.
 - Configures the OpenSnitch daemon socket for the installing user and enables
   the daemon. Sway starts the matching UI service at login.
 - Enables the daily health-report timer, or creates its enablement link when no
@@ -183,10 +184,11 @@ Yazi requires `file`, which is in `packages.txt`. Optional preview tools include
 
 ## Virtual machines
 
-Use virt-manager, virsh, virt-install and virt-viewer directly. The package
-list includes the libvirt/QEMU tools, UEFI firmware and SPICE support. Setup
-enables libvirtd and adds the user to libvirt and kvm; log out and back in
-after group changes. Configure networks and storage through virt-manager.
+On x86_64, use virt-manager, virsh, virt-install and virt-viewer directly.
+`packages.x86_64.txt` holds the libvirt/QEMU tools, UEFI firmware and SPICE
+support. Setup enables libvirtd and adds the user to libvirt and kvm; log out
+and back in after group changes. The Raspberry Pi installation skips all of
+this, and its Super+C binding then has nothing to launch. Configure networks and storage through virt-manager.
 This repo does not create, start or delete guests.
 
 Full libvirt management access is administrative access. See the

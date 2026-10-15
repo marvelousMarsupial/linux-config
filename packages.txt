@@ -21,7 +21,6 @@ foot
 fuzzel
 fzf
 gir1.2-gtk-3.0
-gir1.2-spiceclientgtk-3.0
 git
 grim
 hicolor-icon-theme
@@ -38,8 +37,6 @@ libdbus-glib-1-2
 libgtk-3-0t64
 libnotify-bin
 libspa-0.2-bluetooth
-libvirt-clients
-libvirt-daemon-system
 libxt6t64
 locales
 mako-notifier
@@ -47,7 +44,6 @@ mate-polkit
 network-manager
 nftables
 opensnitch
-passt
 pipewire-pulse
 playerctl
 python3
@@ -59,8 +55,6 @@ python3-opensnitch-ui
 python3-qt-material
 python3-scipy
 python3-yaml
-qemu-system-modules-spice
-qemu-utils
 qtwayland5
 ripgrep
 rtkit
@@ -75,9 +69,6 @@ udiskie
 upower
 unattended-upgrades
 unzip
-virt-manager
-virt-viewer
-virtinst
 wireplumber
 wl-clipboard
 wtype

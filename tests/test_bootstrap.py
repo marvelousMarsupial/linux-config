@@ -243,14 +243,23 @@ class BootstrapTests(unittest.TestCase):
                 setup.applications(self.home, True, machine='armv7l')
         self.assertEqual(setup.ARCHITECTURES['aarch64']['zen'], 'zen.linux-aarch64.tar.xz')
 
-    def test_architecture_package_lists_add_only_their_emulator(self):
+    def test_vm_packages_are_x86_only_and_host_settings_follow_them(self):
         common = set(setup.package_list(REPO / 'packages.txt'))
         x86 = set(setup.package_list(REPO / 'packages.x86_64.txt'))
-        arm = set(setup.package_list(REPO / 'packages.aarch64.txt'))
-        self.assertEqual(x86, {'ovmf', 'qemu-system-x86'})
-        self.assertEqual(arm, {'qemu-efi-aarch64', 'qemu-system-arm'})
-        self.assertFalse(common & (x86 | arm))
-        self.assertEqual(setup.package_list(REPO / 'packages.missing.txt'), [])
+        self.assertTrue({'ovmf', 'qemu-system-x86', 'libvirt-daemon-system', 'virt-manager'} <= x86)
+        self.assertFalse(common & x86)
+        self.assertFalse(any('virt' in name or 'qemu' in name for name in common))
+        self.assertEqual(setup.package_list(REPO / 'packages.aarch64.txt'), [])
+        for virtualization in (True, False):
+            with self.subTest(virtualization=virtualization), patch.object(setup, 'run') as run, \
+                 patch.object(setup.subprocess, 'run') as command:
+                command.return_value.stdout = 'en_us.utf8'
+                command.return_value.returncode = 0
+                setup.host_settings('someone', True, virtualization)
+                calls = [call.args for call in run.call_args_list]
+                self.assertIn(('sudo', 'usermod', '-aG', 'video,libvirt,kvm' if virtualization else 'video', 'someone'), calls)
+                enabled = next(call for call in calls if call[:3] == ('sudo', 'systemctl', 'enable'))
+                self.assertEqual('libvirtd.service' in enabled, virtualization)
 
     def test_other_username_is_rendered_and_repeat_install_is_clean(self):
         result = run(str(REPO / 'scripts/install'), '--home', str(self.home))

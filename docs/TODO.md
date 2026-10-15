@@ -14,8 +14,8 @@ are grouped at the end because they cannot be verified in the development VM.
 - [ ] Test the published bootstrap on a fresh Debian 13 machine: packages,
   themes, sudo prompts, cleanup after success and failure, and operation after
   the checkout is gone. Repeat on the replacement laptop and on a Raspberry
-  Pi; the aarch64 path (Zen and Yazi aarch64 builds, qemu-system-arm and
-  qemu-efi-aarch64) has only been checked offline.
+  Pi; the aarch64 path (Zen and Yazi aarch64 builds, no VM stack) has only
+  been checked offline.
   The default source now points at the GitHub repository; if the repository
   is private, the raw URL in [installation](installation.md#remote-bootstrap)
   will not work anonymously.
