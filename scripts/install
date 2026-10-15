@@ -99,6 +99,7 @@ for rel in ('.config/systemd/user/sway-polkit-agent.service',
             '.local/bin/vm-menu', '.local/bin/vpn', '.config/sway/wallpaper', '.tmux.conf', '.local/bin/tmux-keys',
             '.local/bin/dictate', '.local/bin/whisper-cli', '.local/bin/whisper-server',
             '.local/bin/font-preview', '.local/share/linux-config/font-preview.js',
+            '.local/bin/status-osd', '.local/bin/pass-picker', '.local/bin/transparency-trial', '.local/bin/monitor-info',
             '.config/systemd/user/whisper-server.service',
             '.config/tmux/colors.conf', '.config/theme/templates/tmux-colors.conf.j2'):
     dest = home / rel

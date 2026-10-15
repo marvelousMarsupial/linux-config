@@ -10,58 +10,9 @@ from unittest.mock import patch
 from support import load_script
 
 
-class MonitorTests(unittest.TestCase):
-    def setUp(self):
-        self.monitor = load_script('monitor-info')
-
-    def render(self, outputs):
-        text = io.StringIO()
-        with patch.object(self.monitor, 'get_outputs', return_value=outputs), contextlib.redirect_stdout(text):
-            self.monitor.main()
-        return text.getvalue()
-
-    def test_docked_layout_disabled_output_and_escaping(self):
-        text = self.render([
-            {'name': 'eDP-1'},
-            {'name': 'DP-1', 'make': 'A"B', 'model': 'Panel\\One\nTwo', 'serial': 'Unknown',
-             'current_mode': {'width': 1920, 'height': 1080, 'refresh': 59950}},
-            {'name': 'HDMI-A-1', 'current_mode': None,
-             'modes': [{'width': 2560, 'height': 1440, 'refresh': 60000}]}])
-        self.assertIn('output eDP-1 disable', text)
-        self.assertIn('A\\"B Panel\\\\One Two', text)
-        self.assertIn('position 0,0 mode 1920x1080@59.95Hz scale 1', text)
-        self.assertIn('output "HDMI-A-1" enable position 1920,0 mode 2560x1440@60Hz', text)
-        self.assertEqual(text.count('\n'), 6)
-
-    def test_laptop_only_has_no_profile(self):
-        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as result:
-            self.render([{'name': 'eDP-1'}])
-        self.assertEqual(result.exception.code, 0)
-
-    def test_ipc_failure_and_invalid_json_fail_cleanly(self):
-        for response in ('garbage', '{}', 'null'):
-            with self.subTest(response=response), patch.object(self.monitor.subprocess, 'run',
-                    return_value=subprocess.CompletedProcess([], 0, response, '')):
-                with self.assertRaises(SystemExit):
-                    self.monitor.get_outputs()
-        for error in (FileNotFoundError(), subprocess.TimeoutExpired('swaymsg', 5),
-                      subprocess.CalledProcessError(1, 'swaymsg')):
-            with self.subTest(error=error), patch.object(self.monitor.subprocess, 'run', side_effect=error), \
-                 contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
-                self.monitor.get_outputs()
-
-    def test_missing_mode_does_not_emit_partial_profile(self):
-        text = io.StringIO()
-        with patch.object(self.monitor, 'get_outputs', return_value=[{'name': 'DP-1'}]), \
-             contextlib.redirect_stdout(text), self.assertRaises(SystemExit):
-            self.monitor.main()
-        self.assertEqual(text.getvalue(), '')
-
-
 class StatusTests(unittest.TestCase):
     def test_read_commands_are_bounded_and_tolerate_failures(self):
-        for name, helper in (('motd', 'run_output'), ('status-osd', 'run_output'),
-                             ('status-panel', 'run'), ('wifi-menu', 'run_output')):
+        for name, helper in (('motd', 'run_output'), ('status-panel', 'run'), ('wifi-menu', 'run_output')):
             module = load_script(name)
             for error in (FileNotFoundError(), subprocess.TimeoutExpired('tool', 10)):
                 with self.subTest(name=name, error=error), patch.object(module.subprocess, 'run', side_effect=error) as cmd:
@@ -89,32 +40,6 @@ class StatusTests(unittest.TestCase):
         self.assertIn('fixture-host', output.getvalue())
         self.assertNotIn('\x1b', output.getvalue())
 
-    def test_real_nmcli_connection_types_and_escaped_names(self):
-        osd = load_script('status-osd')
-        cases = [(r'Cafe\:Lab:802-11-wireless', 'Cafe:Lab'),
-                 ('LAN:802-3-ethernet', 'Ethernet'), ('Hotspot:wifi', 'Hotspot'),
-                 ('bridge:bridge\nvpn:vpn', 'Offline'),
-                 ('LAN:802-3-ethernet\nHome:802-11-wireless', 'Home'), ('', 'Offline')]
-        for output, expected in cases:
-            with self.subTest(output=output), patch.object(osd, 'run_output', return_value=output):
-                self.assertEqual(osd.get_network(), expected)
-
-    def test_bluetooth_reports_one_device_not_embedded_lines(self):
-        osd = load_script('status-osd')
-        with patch.object(osd, 'run_output', return_value='Device AA:BB Headphones\nDevice CC:DD Keyboard'):
-            self.assertEqual(osd.get_bluetooth(), 'Headphones')
-
-    def test_notification_contains_status_and_timeout(self):
-        osd = load_script('status-osd')
-        with patch('sys.argv', ['status-osd', '--timeout', '1234']), \
-             patch.object(osd, 'get_battery', return_value='Battery 55% charging'), \
-             patch.object(osd, 'get_network', return_value='Cafe:Lab'), \
-             patch.object(osd, 'get_bluetooth', return_value='Headphones'), \
-             patch.object(osd.subprocess, 'run') as command:
-            osd.main()
-        args = command.call_args.args[0]
-        self.assertEqual(args[args.index('-t')+1], '1234')
-        self.assertIn('Battery 55% charging\nCafe:Lab\nBluetooth Headphones', args[-1])
 
 
 class BatteryLoopTests(unittest.TestCase):
@@ -175,3 +100,10 @@ class PanelTests(unittest.TestCase):
         self.assertIn('WiFi Home', text)
         self.assertIn('Battery 50%', text)
         self.assertIn(f'--lines={len(text.splitlines())}', args)
+
+
+class HealthReportTests(unittest.TestCase):
+    def test_report_escaping_isolation_modes_retention_and_database(self):
+        from support import REPO
+        result = subprocess.run(['bash', str(REPO / 'tests/test_sysreport.sh')], capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

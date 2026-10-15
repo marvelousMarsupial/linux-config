@@ -15,7 +15,6 @@ dbus-user-session
 eza
 fd-find
 file
-flatpak
 fontconfig
 fonts-noto-color-emoji
 foot
@@ -34,15 +33,10 @@ keepassxc
 lazygit
 less
 smartmontools
-sqlite3
-shellcheck
 libasound2t64
 libdbus-glib-1-2
-libgomp1
 libgtk-3-0t64
-libgtk-3-bin
 libnotify-bin
-libopenblas0
 libspa-0.2-bluetooth
 libvirt-clients
 libvirt-daemon-system
@@ -50,7 +44,6 @@ libxt6t64
 locales
 mako-notifier
 mate-polkit
-ncurses-term
 network-manager
 nftables
 opensnitch
@@ -58,7 +51,6 @@ ovmf
 passt
 pipewire-pulse
 playerctl
-power-profiles-daemon
 python3
 python3-gi
 python3-jinja2
@@ -88,7 +80,6 @@ unzip
 virt-manager
 virt-viewer
 virtinst
-wireless-tools
 wireplumber
 wl-clipboard
 wtype

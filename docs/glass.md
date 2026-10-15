@@ -70,10 +70,9 @@ which copies the generated palette CSS into the profile. Its import precedes
 the glass import so glass wins for translucency. Other CSS and preferences are
 preserved.
 
-`transparency-trial` is an older exact-file snapshot rollback tool, not the
-routine switch. Its backups are in
-`~/.local/state/linux-config/transparency-trial`; later edits can conflict
-with those snapshots. Use `glass-mode off` for normal use.
+`glass-mode off` is the rollback. The older snapshot tool from the first
+transparency trial is retired; any backups it left live in
+`~/.local/state/linux-config/transparency-trial`.
 
 Privacy: translucent surfaces can reveal what is behind them during screen
 sharing or to someone nearby. Blur is not redaction. The security notes are in

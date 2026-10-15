@@ -2,7 +2,7 @@
 
 [Documentation index](README.md)
 
-The installed Bash command `~/.local/bin/sysreport` has no checkout dependency.
+The installed Python command `~/.local/bin/sysreport` has no checkout dependency.
 Open `~/.local/share/sysreport/latest.html` in your browser.
 Reports are private (directory 0700, HTML 0600); the newest 14 dated reports remain
 alongside the atomic latest copy. No server, JavaScript, or external assets are used.
@@ -75,13 +75,15 @@ The report does not filter away compatibility warnings or clear logs.
 ## Verification
 
 Offline checks cover escaping, permissions, retention, section failures, green
-service status and demo isolation. ShellCheck, the live timer schedule and a
-real receipt from a full install still need checking on the machine; OpenSnitch
-collection was confirmed by the user. See [TODO](TODO.md#security).
+service status, demo isolation and a read-only OpenSnitch database query. The
+live timer schedule and a real receipt from a full install still need checking
+on the machine; OpenSnitch collection was confirmed by the user. See
+[TODO](TODO.md#security).
 
-Required tools: Bash, coreutils, util-linux (flock, lsblk), procps, systemd,
-iproute2, apt and jq. sqlite3 enables optional OpenSnitch file-database queries.
-smartmontools enables optional SMART health inspection, with no disk self-tests.
+Required tools: Python 3, coreutils, util-linux (lsblk), procps, systemd,
+iproute2 and apt. The OpenSnitch database is read with Python's own sqlite3
+module. smartmontools enables optional SMART health inspection, with no disk
+self-tests.
 
 No machine-specific report configuration is required. OpenSnitch preferences are
 read, never changed. SQLite is opened read-only with query_only and zero busy wait;

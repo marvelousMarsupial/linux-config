@@ -14,10 +14,7 @@
 #
 # To find an output's description, plug it in and run:
 #
-#     monitor-info        # custom helper, see ~/.local/bin/monitor-info
-#
-# It prints a ready-to-paste `output "..." enable position ... mode ...`
-# line for every connected display.
+#     swaymsg -t get_outputs | jq -r '.[] | "\(.name): \(.make) \(.model) \(.serial)"'
 #
 # ─────────────────────────────────────────────────────────────────────
 # Profile selection rules:

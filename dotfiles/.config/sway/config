@@ -346,8 +346,6 @@ for_window [class="^KeePassXC$"] floating enable, resize set 1000 700, move posi
 for_window [app_id="blueman-manager"] floating enable
 for_window [app_id="pavucontrol"] floating enable
 for_window [app_id="nm-connection-editor"] floating enable
-# pass-picker terminal popup
-for_window [app_id="pass-prompt"] floating enable, resize set 720 350
 for_window [title="File Operation Progress"] floating enable
 
 # btop floating terminal (smaller window)

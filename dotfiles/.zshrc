@@ -18,9 +18,6 @@ fi
 # Locale for Unicode and emoji. LANG alone leaves LC_* overrides available.
 export LANG=en_US.UTF-8
 
-export PASSWORD_STORE_DIR="$HOME/.password-store"
-
-export PASSWORD_STORE_CLIP_CMD="wl-copy"
 export GPG_TTY=$(tty)
 
 # XDG runtime dir for desktop services

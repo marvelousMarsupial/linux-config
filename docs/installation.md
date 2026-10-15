@@ -159,8 +159,9 @@ its panel type before changing kernel settings.
 
 Setup installs missing Yazi/ya, Zen and CaskaydiaCove Nerd Font from official
 releases. For config-only installs, provide those yourself. Zen's wrapper
-expects `~/.local/zen/zen`. The launcher includes Flatpak application entries.
-No application binaries or fonts are bundled by this repository.
+expects `~/.local/zen/zen`. Flatpak is not installed by the package list; if
+you add it yourself, the launcher already lists its applications. No
+application binaries or fonts are bundled by this repository.
 
 Zen's config installer installs uBlock Origin, Dark Reader, Surfingkeys and
 KeePassXC-Browser through browser policies on the next browser startup, skips

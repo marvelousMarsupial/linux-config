@@ -24,7 +24,7 @@ with executable permissions. Repository maintenance commands live in `scripts/`.
 | --- | --- |
 | app-dark-mode, keepassxc, opensnitch-ui | Apply the dark-theme key before launching the packaged app. The OpenSnitch wrapper uses the user service's runtime socket by default. |
 | appearance-menu | Compact GTK palette-dot picker with a glass switch; Super+G. |
-| bat | Rounded frame in interactive terminals; piped output untouched; arguments forwarded without a shell. |
+| bat | Runs batcat one column narrower and closes its grid on the right with rounded corners; piped output, an explicit pager and paging flags go straight to batcat. |
 | battery-monitor | Validates thresholds and polling interval; tolerates notification failures; no repeated warnings after a critical one. |
 | brightness | Changes screen backlights in 10 percent steps; shows failures; never falls back to keyboard LEDs. |
 | desktop-appearance | Publishes the dark desktop and GTK preferences at Sway start and reload. |
@@ -32,21 +32,18 @@ with executable permissions. Repository maintenance commands live in `scripts/`.
 | keepass-toggle | Super+P launches KeePassXC, focuses its window or toggles it into the scratchpad. |
 | keybinds | Static shortcut help. |
 | launcher | Quoted argument forwarding; keeps inherited XDG data directories. |
-| monitor-info | Bounded Sway query; prints escaped kanshi-style output configuration only. |
 | motd | Read-only login summary with bounded optional commands. |
 | notes-picker, notes-toggle | Cancellation is harmless; notes stay inside the notes directory; unique private filenames. |
 | notifications | Searchable Mako history through busctl, jq and Fuzzel. |
-| pass-picker (legacy, unbound) | Opens pass entries without a shell; rejects traversal. |
 | power-menu | Only listed actions run; cancelled menus do nothing. |
 | restic-home | Optional encrypted home backup with private per-machine config and explicit init. |
 | screenshot | Unique private names; cancellation creates no file; failed captures are cleaned up. |
-| status-osd, status-panel | Read-only information with bounded queries; no controls. |
+| status-panel | Read-only clock, network and power popup with bounded queries; no controls. |
 | sway-popup-guard | Reveals popups during fullscreen, restores fullscreen on close, adjusts Foot opacity on floating changes. |
 | sway-session | Explicit environment import, active-session guard, starts the session target. |
-| sysreport | Private static HTML health report with eight tiles and 14-report retention; runs from a daily timer. |
+| sysreport | Python health report: private static HTML with eight tiles, folded command output and 14-report retention; reads the OpenSnitch database directly and read-only; runs from a daily timer. |
 | terminal | Super+Enter: leaves fullscreen, opens a centered floating Foot; a normal terminal otherwise. |
 | theme | Validates palettes, renders everything before writing, replaces files atomically, runs hooks without a shell. |
-| transparency-trial | Older exact-file snapshot rollback for the glass experiment. |
 | update-notify | Detects completed APT upgrades, baselines existing history, deduplicates and retries delivery. |
 | wallpaper-texture | Generates the palette-colored wallpaper; dots by default; solid color when glass is off. |
 | wifi-menu | Preserves saved profiles on failure; passwords go through nmcli's stdin; bounded connection timeout. |

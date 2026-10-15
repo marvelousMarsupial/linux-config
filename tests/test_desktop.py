@@ -142,22 +142,19 @@ class ScriptSafetyTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(str(notes[0]), log.read_text())
 
-    def test_cancelled_power_and_password_menus_do_nothing(self):
+    def test_cancelled_power_menu_does_nothing(self):
         with tempfile.TemporaryDirectory() as d:
             home = Path(d)
             tools = home / 'bin'
             tools.mkdir()
-            (home / '.password-store').mkdir()
-            (home / '.password-store/example.gpg').write_text('encrypted')
             for name in ('fuzzel', 'systemctl', 'swaymsg', 'swaylock', 'foot'):
                 p = tools / name
                 p.write_text('#!/bin/sh\n' + ('cat >/dev/null; echo Reboot; exit 1\n' if name == 'fuzzel' else 'echo action >> "$HOME/actions"\n'))
                 p.chmod(0o755)
             env = dict(os.environ, HOME=d, PATH=f'{tools}:/usr/bin:/bin')
-            for script in ('power-menu', 'pass-picker'):
-                result = run(str(REPO / 'dotfiles/.local/bin' / script), env=env)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertFalse((home / 'actions').exists())
+            result = run(str(REPO / 'dotfiles/.local/bin/power-menu'), env=env)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((home / 'actions').exists())
 
     def test_battery_rejects_invalid_thresholds_and_levels(self):
         result = run(str(REPO / 'dotfiles/.local/bin/battery-monitor'), '--interval', '0')

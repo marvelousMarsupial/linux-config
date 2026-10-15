@@ -1,17 +1,21 @@
 #!/usr/bin/python3
-"""batcat with a complete rounded frame in interactive terminals."""
+"""batcat with a rounded frame that closes on the right in interactive terminals.
+
+bat draws a left bar and horizontal rules but never a right edge. This wrapper
+runs batcat at one column less than the terminal, then turns each rule into a
+rounded top, divider or bottom and pads every content line out to a right bar.
+Piped output, an explicit BAT_PAGER and paging flags leave batcat alone.
+"""
 import os
-from pathlib import Path
 import re
-import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
 import unicodedata
 
 ANSI = re.compile(r'\x1b\[[0-9;]*m')
-BORDER = re.compile(r'^─+([┬┼┴])─+$')
+RULE = re.compile(r'^─+([┬┼┴])─+$')
+CORNERS = {'┬': ('╭', '╮'), '┼': ('├', '┤'), '┴': ('╰', '╯')}
 
 
 def display_width(text):
@@ -22,96 +26,60 @@ def display_width(text):
                for char in text)
 
 
-class RoundedFrame:
-    """Follow bat's file boundaries and close each frame on the right."""
-    def __init__(self, limit=None):
-        self.width = None
-        self.limit = limit
-
-    def render(self, line):
-        plain = ANSI.sub('', line).rstrip('\n')
-        match = BORDER.fullmatch(plain)
-        if match:
-            self.width = min(len(plain), self.limit or len(plain))
-            left, right = {'┬': ('╭', '╮'), '┼': ('├', '┤'), '┴': ('╰', '╯')}[match[1]]
-            position = line.index(match[1])
-            body = line[:position].replace('─', ' ') + left + line[position + 1:].rstrip('\n')
-            old_length = len(plain) - plain.index(match[1]) - 1
-            new_length = max(1, self.width - plain.index(match[1]) - 1)
-            body = body.replace('─' * old_length, '─' * new_length, 1)
-            result = body + right + '\n'
-            if match[1] == '┴':
-                self.width = None
-            return result
-        if self.width is not None:
-            body = line.rstrip('\n')
-            padding = max(0, self.width - display_width(body))
-            return body + ' ' * padding + '│\n'
-        return line
-
-
-def fitted_frames(lines):
-    """Measure each file's displayed text, spilling large files to disk."""
-    with tempfile.SpooledTemporaryFile(mode='w+', max_size=1024 * 1024) as pending:
-        maximum = 0
-        buffering = False
-        for line in lines:
-            plain = ANSI.sub('', line).rstrip('\n')
-            border = BORDER.fullmatch(plain)
-            if not buffering and not border:
-                yield line
-                continue
-            buffering = True
-            pending.write(line)
-            if not border:
-                maximum = max(maximum, display_width(plain))
-            if border and border[1] == '┴':
-                frame = RoundedFrame(maximum + 1)
-                pending.seek(0)
-                for buffered in pending:
-                    yield frame.render(buffered)
-                pending.seek(0)
-                pending.truncate()
-                maximum = 0
-                buffering = False
-        # Preserve incomplete output if bat ends before drawing a footer.
-        pending.seek(0)
-        frame = RoundedFrame(maximum + 1)
-        for buffered in pending:
-            yield frame.render(buffered)
+def framed(lines):
+    """Close each of bat's grids on the right with rounded corners."""
+    width = None
+    color = ''
+    for line in lines:
+        body = line.rstrip('\n')
+        plain = ANSI.sub('', body)
+        rule = RULE.fullmatch(plain)
+        if rule:
+            # The gutter before the junction stays blank so the frame hugs the text.
+            width = len(plain)
+            color = ''.join(ANSI.findall(body[:body.index(rule[1])]))
+            gutter = plain.index(rule[1])
+            left, right = CORNERS[rule[1]]
+            yield ' ' * gutter + color + left + '─' * (width - gutter - 1) + right + '\x1b[0m\n'
+            if rule[1] == '┴':
+                width = None
+        elif width is not None:
+            padding = max(0, width - display_width(plain))
+            yield body + ' ' * padding + color + '│\x1b[0m\n'
+        else:
+            yield line
 
 
 def main():
-    if sys.argv[1:] == ['--rounded-pager']:
-        if shutil.which('less'):
-            pager = subprocess.Popen(['less', '-RF'], stdin=subprocess.PIPE, text=True)
-            output = pager.stdin
-        else:
-            pager = None
-            output = sys.stdout
-        try:
-            for line in fitted_frames(sys.stdin):
-                output.write(line)
-        except BrokenPipeError:
-            pass
-        finally:
-            if pager:
-                try:
-                    output.close()
-                except BrokenPipeError:
-                    pass
-                pager.wait()
-        return
-    env = dict(os.environ)
-    # Plain output and explicit pager/paging flags retain batcat's behavior.
-    if sys.stdout.isatty() and not env.get('BAT_PAGER'):
-        env['BAT_PAGER'] = shlex.join([sys.executable, str(Path(__file__).resolve()), '--rounded-pager'])
-        env.setdefault('BAT_PAGING', 'always')
-        # Reserve a terminal cell for the right edge before bat wraps content.
-        if not any(arg.startswith('--terminal-width') for arg in sys.argv[1:]):
-            width = max(20, shutil.get_terminal_size().columns - 1)
-            sys.argv.append(f'--terminal-width={width}')
-    os.execvpe('batcat', ['batcat', *sys.argv[1:]], env)
+    arguments = sys.argv[1:]
+    paging_off = any(arg in ('-P', '--paging=never') for arg in arguments)
+    if not sys.stdout.isatty() or os.environ.get('BAT_PAGER') or any(arg.startswith('--paging') for arg in arguments):
+        os.execvp('batcat', ['batcat', *arguments])
+    if not any(arg.startswith('--terminal-width') for arg in arguments):
+        # Reserve one cell for the right edge before bat wraps content.
+        arguments.append(f'--terminal-width={max(20, shutil.get_terminal_size().columns - 1)}')
+    bat = subprocess.Popen(['batcat', '--color=always', '--decorations=always', '--paging=never', *arguments],
+                           stdout=subprocess.PIPE, text=True)
+    pager = None
+    output = sys.stdout
+    if not paging_off and shutil.which('less'):
+        pager = subprocess.Popen(['less', '-RF'], stdin=subprocess.PIPE, text=True)
+        output = pager.stdin
+    try:
+        for line in framed(bat.stdout):
+            output.write(line)
+        output.flush()
+    except BrokenPipeError:
+        pass
+    finally:
+        bat.stdout.close()
+        if pager:
+            try:
+                output.close()
+            except BrokenPipeError:
+                pass
+            pager.wait()
+    sys.exit(bat.wait())
 
 
 if __name__ == '__main__':

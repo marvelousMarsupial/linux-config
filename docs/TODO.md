@@ -24,9 +24,9 @@ are grouped at the end because they cannot be verified in the development VM.
 
 ## Security
 
-- [ ] Finish system-health verification: warning-free ShellCheck, the live
-  daily timer run, and a real installer receipt. Run the file picker through
-  selection and cancellation. See [system health](sysreport.md).
+- [ ] Finish system-health verification: the live daily timer run and a real
+  installer receipt. Run the file picker through selection and cancellation.
+  See [system health](sysreport.md).
 - [ ] Verify OpenSnitch prompts and connection collection after a fresh setup
   and login. Setup provisions matching daemon and UI sockets.
 - [ ] Decide whether OpenSnitch should ship a default-deny daemon config.

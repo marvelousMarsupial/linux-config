@@ -43,20 +43,6 @@ class CommandTests(CommandSandbox):
                 actions_seen = [(e['name'], e['args']) for e in self.events()[1:]]
                 self.assertEqual(actions_seen, [actions[choice]] if choice in actions else [])
 
-    def test_password_selection_preserves_argument_boundaries(self):
-        store = self.home / '.password-store/accounts'
-        store.mkdir(parents=True)
-        (store / 'name & spaces.gpg').write_text('encrypted fixture')
-        for choice in ('accounts/name & spaces', '../escape', '/absolute', '-option', 'missing'):
-            with self.subTest(choice=choice):
-                self.reset()
-                result = self.execute('pass-picker', responses={'fuzzel': {'out': choice+'\n'}})
-                self.assertEqual(result.returncode, 0, result.stderr)
-                calls = [e for e in self.events() if e['name'] == 'foot']
-                self.assertEqual(len(calls), int(choice.startswith('accounts/')))
-                if calls:
-                    self.assertEqual(calls[0]['args'], ['--app-id=pass-prompt', '-e', 'pass', '-c', '--', choice])
-
     def test_launcher_search_and_data_paths(self):
         for inherited in ('', '/custom/share'):
             with self.subTest(inherited=inherited):
