@@ -19,8 +19,8 @@ are grouped at the end because they cannot be verified in the development VM.
 - [ ] Repeat the bootstrap on the replacement laptop and on a Raspberry Pi,
   and exercise cleanup after a failed step. The aarch64 path (Yazi aarch64
   build, no VM stack) has only been checked offline.
-- [ ] First real setup run with the firefoxconfig package: confirm `dpkg -i`,
-  the startup cache clear and the Yazi picker from Firefox on the laptop.
+- [x] First real setup run with the firefoxconfig package on a VM: `dpkg -i`,
+  the startup cache clear and the Yazi picker from Firefox all worked.
 - [ ] When the firefoxconfig `.deb` moves off GitHub releases, add `url` to its
   `releases.toml` entry; `scripts/releases` check and bump still read GitHub.
   The default source now points at the GitHub repository; if the repository
@@ -64,8 +64,9 @@ The vision and reference options are in the [desktop plan](desktop-plan.md).
   requests hicolor; Qt has no theme target; named Neovim and Yazi themes can
   drift from palette edits. Compare everything under one palette before
   changing settings. Contrast figures are in [appearance](appearance.md).
-- [ ] Try SwayFX for rounded corners, blur and dimming, keeping the config
-  compatible.
+- [ ] SwayFX is on hold: it is a fork outside Debian that trails Sway
+  releases and would need a source build, and blur costs battery. Revisit only
+  if the visual pass finds something tinting cannot do.
 - [ ] Match movement and close keys across Sway, Neovim, Yazi, zsh and the
   browser.
 - [ ] Explore the Sway features in the plan, then polish boot, login and
@@ -95,8 +96,8 @@ Configuration and offline checks can be prepared in the VM; complete these on
 the laptop or with the intended devices.
 
 - [ ] [target-machine] Boot with the disk passphrase only, then auto-login into
-  Sway. Keep swaylock for idle and suspend. Develop the flow in an encrypted VM;
-  verify it on the production installation.
+  Sway. `setup --autologin` does the login half and works on the VM; verify it
+  with the encrypted production installation, including swaylock after suspend.
 - [ ] Configure the Restic target and password, run a backup and restore test,
   then enable the timer. See [backups](backups.md).
 - [x] VPN: `vpn-menu` toggles WireGuard profiles through NetworkManager and
