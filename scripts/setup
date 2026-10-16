@@ -243,6 +243,32 @@ def opensnitch(dry):
         run('sudo', 'systemctl', 'restart', 'opensnitch.service', dry=dry)
 
 
+def autologin(user, dry):
+    """Log the desktop user in on tty1 so an encrypted boot asks for one passphrase only."""
+    destination = Path('/etc/systemd/system/getty@tty1.service.d/autologin.conf')
+    content = ('# Installed by linux-config setup --autologin. Pair with full-disk encryption:\n'
+               '# the LUKS passphrase is the gate, .zshrc starts Sway on tty1.\n'
+               '[Service]\nExecStart=\n'
+               f'ExecStart=-/sbin/agetty --autologin {user} --noclear %I $TERM\n')
+    if destination.is_file() and destination.read_text() == content:
+        print(f'Autologin for {user} on tty1 already configured')
+        return
+    if dry:
+        print(f'Back up {destination} if present, then configure autologin for {user} on tty1')
+    else:
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+        backup = Path('/var/backups/linux-config') / stamp / 'getty@tty1.service.d/autologin.conf'
+        if destination.exists():
+            run('sudo', 'install', '-d', '-m', '0700', backup.parent)
+            run('sudo', 'cp', '-a', destination, backup)
+        with tempfile.TemporaryDirectory(prefix='linux-config-autologin-') as temporary:
+            source = Path(temporary) / 'autologin.conf'
+            source.write_text(content)
+            run('sudo', 'install', '-Dm644', source, destination)
+    run('sudo', 'systemctl', 'daemon-reload', dry=dry)
+    print('Autologin takes effect at the next boot; the running getty is left alone.')
+
+
 def firewall(dry):
     """Install and activate the host policy without restarting other firewall tables."""
     source = REPO / 'system/nftables.conf'
@@ -311,6 +337,8 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Print the plan without downloads, sudo or file changes')
     parser.add_argument('--backups', action='store_true', help='Also install Restic; backups remain disabled until configured')
     parser.add_argument('--dev-tools', action='store_true', help='Also install optional editor development tools')
+    parser.add_argument('--autologin', action='store_true',
+                        help='Log this user in on tty1 at boot; pair with full-disk encryption')
     args = parser.parse_args()
     if os.geteuid() == 0:
         parser.error('Run as your normal desktop user; the script calls sudo only when needed')
@@ -350,6 +378,8 @@ def main():
     elif not colors_present:
         run(home / '.local/bin/theme', 'apply', 'summer-dusk', dry=args.dry_run)
     host_settings(user, args.dry_run, 'libvirt-daemon-system' in packages)
+    if args.autologin:
+        autologin(user, args.dry_run)
     if shutil.which('tailscale'):
         # Let the desktop user toggle Tailscale without sudo; vpn-off relies on this.
         run('sudo', 'tailscale', 'set', f'--operator={user}', dry=args.dry_run)

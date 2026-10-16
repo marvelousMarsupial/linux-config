@@ -67,7 +67,13 @@ swaylock to finish before releasing the sleep inhibitor, within logind's
 `InhibitDelayMaxSec`. Fullscreen windows do not inhibit idle on their own;
 application-requested inhibitors such as video playback are respected. Super+Escape
 and the power menu lock manually. Test idle locking, manual locking and
-suspend/resume on the real machine before enabling any auto-login plan.
+suspend/resume on the real machine before enabling autologin.
+
+`setup --autologin` installs `/etc/systemd/system/getty@tty1.service.d/autologin.conf`,
+which logs the installing user in on tty1; `.zshrc` then starts Sway. Pair it
+with full-disk encryption so the LUKS passphrase stays the only prompt. The
+file is plain text, so remove it and run `systemctl daemon-reload` to go back
+to a login prompt.
 
 `system/systemd/logind.conf.d/lid.conf` is optional lid policy; see
 [installation](installation.md#local-and-system-configuration).

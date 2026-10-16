@@ -56,7 +56,12 @@ sudo or file changes. A normal run, in order:
 - Writes an installation receipt once every step has succeeded.
 
 Use `./scripts/setup --dev-tools` to also install optional editor development
-tools, and `--backups` to include Restic. Setup stops on failure; fix the
+tools, `--backups` to include Restic, and `--autologin` to log the installing
+user in on tty1 at boot. Autologin is for machines with full-disk encryption,
+where the LUKS passphrase is the only prompt wanted; `.zshrc` then starts Sway.
+Without encryption it lets anyone at the console in, which is acceptable for a
+throwaway VM only. The drop-in takes effect at the next boot and is backed up
+like the other system files. Setup stops on failure; fix the
 reported step and rerun. It is repeatable, not transactional: completed steps
 stay applied. Changed user files have the config installer's backups, replaced
 application files have dated backups, and no packages are purged. No running
@@ -83,7 +88,8 @@ certificates installed:
 curl -fsSL https://raw.githubusercontent.com/marvelousMarsupial/linux-config/main/scripts/bootstrap | bash
 ```
 
-Pass `--dry-run` or `--dev-tools` after `bash` to forward them to setup. To use
+Pass `--dry-run`, `--dev-tools` or `--autologin` after `bash` to forward them to
+setup. To use
 another host or a release tag, set the two environment variables; fetch the
 bootstrap from the same tag you select:
 

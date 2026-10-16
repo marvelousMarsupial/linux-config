@@ -69,16 +69,52 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(backups[0].read_text(), 'old override\n')
         self.assertEqual(policy.read_bytes(), original)
 
+    def test_autologin_renders_the_user_backs_up_and_is_idempotent(self):
+        commands = []
+        def local_path(value):
+            value = str(value)
+            return self.home / value.lstrip('/') if value.startswith(('/etc/', '/var/')) else Path(value)
+        def command(*args, **kwargs):
+            commands.append(tuple(map(str, args)))
+            if args[1] == 'install':
+                if '-d' in args:
+                    Path(args[-1]).mkdir(parents=True, exist_ok=True)
+                else:
+                    Path(args[-1]).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(args[-2], args[-1])
+            elif args[1] == 'cp':
+                shutil.copyfile(args[-2], args[-1])
+        destination = local_path('/etc/systemd/system/getty@tty1.service.d/autologin.conf')
+        destination.parent.mkdir(parents=True)
+        destination.write_text('old drop-in\n')
+        with patch.object(setup, 'Path', side_effect=local_path), patch.object(setup, 'run', side_effect=command):
+            setup.autologin('someone', False)
+            text = destination.read_text()
+            self.assertIn('ExecStart=-/sbin/agetty --autologin someone --noclear %I $TERM\n', text)
+            self.assertIn('ExecStart=\n', text)
+            self.assertEqual(commands[-1], ('sudo', 'systemctl', 'daemon-reload'))
+            self.assertFalse(any('restart' in c or 'getty' in ' '.join(c) and c[1] == 'systemctl' for c in commands))
+            backups = list((self.home / 'var/backups').rglob('autologin.conf'))
+            self.assertEqual([b.read_text() for b in backups], ['old drop-in\n'])
+            commands.clear()
+            setup.autologin('someone', False)
+            self.assertEqual(commands, [])
+            setup.autologin('other', True)
+            # A dry run only announces the reload through run(dry=True); nothing is installed.
+            self.assertEqual(commands, [('sudo', 'systemctl', 'daemon-reload')])
+            self.assertEqual(destination.read_text(), text)
+
     def test_dry_run_does_not_write_home_or_call_sudo(self):
         binary = self.home / 'bin'
         binary.mkdir()
         sudo = binary / 'sudo'
         sudo.write_text('#!/bin/sh\necho unexpected-sudo >&2\nexit 99\n')
         sudo.chmod(0o755)
-        result = run(str(REPO / 'scripts/setup'), '--dry-run',
+        result = run(str(REPO / 'scripts/setup'), '--dry-run', '--autologin',
                      env=dict(os.environ, HOME=str(self.home), PATH=f'{binary}:/usr/bin:/bin'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Plan complete.', result.stdout)
+        self.assertIn('then configure autologin for', result.stdout)
         browser = setup.pinned_releases()[setup.BROWSER_PACKAGE]
         self.assertIn(f'marvelousMarsupial/firefoxconfig {browser["tag"]}: '
                       f'firefoxconfig_{browser["tag"].removeprefix("v")}_all.deb', result.stdout)
@@ -103,6 +139,7 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(rerun.returncode, 0, rerun.stderr)
         self.assertIn('theme apply kanagawa', rerun.stdout)
         self.assertNotIn('summer-dusk', rerun.stdout)
+        self.assertNotIn('autologin', rerun.stdout)
 
     def test_firewall_backs_up_both_files_and_reloads_without_global_flush(self):
         policy = '/etc/nftables.conf'
