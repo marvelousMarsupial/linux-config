@@ -14,10 +14,10 @@ tag = "v26.9.1"
 
 [firefoxconfig]
 repository = "marvelousMarsupial/firefoxconfig"
-tag = "v0.1.0"
+tag = "v0.2.0"
 
 [firefoxconfig.assets]
-"firefoxconfig_{version}_all.deb" = "7e4d0a23a161bb5c4335917f1957a8a5529e8932e1f7271b905669b1ebd766a3"
+"firefoxconfig_{version}_all.deb" = "a83e6e00fea8daa80b4831f48f2d3e26b9529a28303b45ed91a77e285d66bcca"
 
 [font]
 repository = "ryanoasis/nerd-fonts"
