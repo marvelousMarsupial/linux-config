@@ -11,7 +11,9 @@ the list.
 Reopen the viewer to refresh its snapshot. Notification markup is shown as text;
 the viewer does not invoke actions or dismiss messages.
 
-Mako keeps up to 100 expired/dismissed notifications in memory. History ends
+Normal notifications close after five seconds whatever timeout the sender asked
+for; critical ones (battery, failed connections, failed backups) stay until
+dismissed. Mako keeps up to 100 expired/dismissed notifications in memory. History ends
 when Mako exits or the session ends; it is not a permanent log. Alias hints and
 status OSD messages are excluded. Super+N still opens notes.
 

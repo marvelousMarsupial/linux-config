@@ -7,6 +7,6 @@ StartLimitBurst=5
 
 [Service]
 Type=exec
-ExecStart=/usr/bin/swayidle -w timeout 1800 'swaylock -f' before-sleep 'swaylock -f'
+ExecStart=/usr/bin/swayidle -w timeout 1800 'swaylock -f' before-sleep 'swaylock -f' lock 'swaylock -f'
 Restart=on-failure
 RestartSec=2

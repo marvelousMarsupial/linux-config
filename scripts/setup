@@ -118,6 +118,20 @@ def replace(source, destination, backup):
         raise
 
 
+def firefox_running():
+    """True while this user has Firefox ESR open; its startup scripts are about to be replaced."""
+    return subprocess.run(['pgrep', '-u', str(os.getuid()), '-x', 'firefox-esr'], capture_output=True).returncode == 0
+
+
+def encrypted_disk():
+    """True when any block device is a dm-crypt mapping, the gate autologin relies on."""
+    try:
+        types = subprocess.run(['lsblk', '-rno', 'TYPE'], capture_output=True, text=True, timeout=15).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return 'crypt' in types.split()
+
+
 def installed_version(package):
     """Version dpkg has for a package, or None when it is not installed."""
     try:
@@ -162,14 +176,15 @@ def applications(home, dry, machine=None):
                 package = temporary / asset_name(asset, pin['tag'])
                 archive.rename(package)
                 # Firefox must be closed: the package replaces its startup scripts.
-                if subprocess.run(['pgrep', '-x', 'firefox-esr'], capture_output=True).returncode == 0:
+                if firefox_running():
                     raise ValueError(f'Close Firefox before setup installs {BROWSER_PACKAGE}')
                 run('sudo', 'dpkg', '-i', package)
                 if installed_version(BROWSER_PACKAGE) != pin['tag'].removeprefix('v'):
                     raise ValueError(f'{BROWSER_PACKAGE} {pin["tag"]} did not install')
                 # Firefox caches autoconfig scripts per profile; drop the cache so the new ones load.
                 for cache in (home / '.cache/mozilla/firefox').glob('*/startupCache'):
-                    shutil.rmtree(cache)
+                    if not cache.is_symlink():
+                        shutil.rmtree(cache)
                 continue
             unpack(archive, temporary / 'extracted')
             extracted = temporary / 'extracted'
@@ -216,6 +231,51 @@ def portal(home, dry):
     marker.write_text(PORTAL_COMMIT + '\n')
 
 
+# Outbound rules for the system's own daemons. Without them a fresh desktop
+# prompts for apt, unattended upgrades, time sync and DHCP, and the UI's
+# prompt denies on timeout, so updates silently stop until someone clicks.
+# User applications still prompt. Existing rule files are never replaced.
+OPENSNITCH_SYSTEM_RULES = {
+    'apt-http': '/usr/lib/apt/methods/http',
+    'systemd-timesyncd': '/usr/lib/systemd/systemd-timesyncd',
+    'networkmanager': '/usr/sbin/NetworkManager',
+    'dhcpcd': '/usr/sbin/dhcpcd',
+}
+
+
+ANNOUNCED_RULES = set()
+
+
+def opensnitch_rules(dry):
+    """Install allow rules for system daemons; returns True when a rule was added."""
+    rules = Path('/etc/opensnitchd/rules')
+    if not rules.is_dir():
+        return False
+    added = False
+    for name, executable in OPENSNITCH_SYSTEM_RULES.items():
+        rule = rules / f'000-linux-config-{name}.json'
+        # A dry run announces each rule once although it installs nothing.
+        if rule.is_file() or rule.name in ANNOUNCED_RULES:
+            continue
+        ANNOUNCED_RULES.add(rule.name)
+        stamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        content = json.dumps({
+            'created': stamp, 'updated': stamp, 'name': rule.stem, 'enabled': True,
+            'precedence': False, 'nolog': False, 'action': 'allow', 'duration': 'always',
+            'operator': {'type': 'simple', 'operand': 'process.path', 'sensitive': False,
+                         'data': executable, 'list': []},
+        }, indent=2) + '\n'
+        print(f'Install OpenSnitch rule {rule.name}: allow {executable}', flush=True)
+        added = True
+        if dry:
+            continue
+        with tempfile.TemporaryDirectory(prefix='linux-config-opensnitch-') as temporary:
+            source = Path(temporary) / rule.name
+            source.write_text(content)
+            run('sudo', 'install', '-Dm644', source, rule)
+    return added
+
+
 def opensnitch(dry):
     """Connect the system daemon to this workstation user's session UI."""
     destination = Path('/etc/systemd/system/opensnitch.service.d/90-linux-config.conf')
@@ -238,13 +298,17 @@ def opensnitch(dry):
                 source.write_text(content)
                 run('sudo', 'install', '-Dm644', source, destination)
         run('sudo', 'systemctl', 'daemon-reload', dry=dry)
+    rules_added = opensnitch_rules(dry)
     run('sudo', 'systemctl', 'enable', '--now', 'opensnitch.service', dry=dry)
-    if changed:
+    if changed or rules_added:
         run('sudo', 'systemctl', 'restart', 'opensnitch.service', dry=dry)
 
 
 def autologin(user, dry):
     """Log the desktop user in on tty1 so an encrypted boot asks for one passphrase only."""
+    if not encrypted_disk():
+        print(f'WARNING: no encrypted disk found; autologin lets anyone at the console in as {user}. '
+              'Fine for a throwaway VM, not for a laptop.', flush=True)
     destination = Path('/etc/systemd/system/getty@tty1.service.d/autologin.conf')
     content = ('# Installed by linux-config setup --autologin. Pair with full-disk encryption:\n'
                '# the LUKS passphrase is the gate, .zshrc starts Sway on tty1.\n'
@@ -302,11 +366,16 @@ def firewall(dry):
 
 
 def host_settings(user, dry, virtualization):
-    run('sudo', 'usermod', '-aG', 'video,libvirt,kvm' if virtualization else 'video', user, dry=dry)
+    # adm and systemd-journal let the health report and update notifier read
+    # /var/log and the system journal without sudo.
+    groups = 'video,adm,systemd-journal' + (',libvirt,kvm' if virtualization else '')
+    run('sudo', 'usermod', '-aG', groups, user, dry=dry)
     run('sudo', 'usermod', '-s', '/bin/zsh', user, dry=dry)
     locales = subprocess.run(['locale', '-a'], capture_output=True, text=True, check=True).stdout.lower()
     if 'en_us.utf8' not in locales:
-        run('sudo', 'localedef', '-i', 'en_US', '-f', 'UTF-8', 'en_US.UTF-8', dry=dry)
+        # Through /etc/locale.gen, so the locales package keeps it on its next regeneration.
+        run('sudo', 'sed', '-i', r's/^#\s*\(en_US\.UTF-8 UTF-8\)/\1/', '/etc/locale.gen', dry=dry)
+        run('sudo', 'locale-gen', dry=dry)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
     for name in ('20auto-upgrades', '90linux-config-unattended-upgrades'):
         source = REPO / 'system/apt/apt.conf.d' / name
@@ -324,6 +393,59 @@ def host_settings(user, dry, virtualization):
             run('sudo', 'install', '-Dm644', source, dest)
     services = ['libvirtd.service'] if virtualization else []
     run('sudo', 'systemctl', 'enable', '--now', *services, 'apt-daily.timer', 'apt-daily-upgrade.timer', dry=dry)
+
+
+def network_manager(dry):
+    """Hand interfaces the Debian installer gave ifupdown to NetworkManager.
+
+    NetworkManager leaves any interface named in /etc/network/interfaces unmanaged,
+    so wifi-menu and the status panel would see nothing on such a machine while
+    dhcpcd keeps running beside it. Only the stanzas for other interfaces are
+    commented out; the loopback stays. The change applies at the next boot.
+    """
+    interfaces = Path('/etc/network/interfaces')
+    if not interfaces.is_file():
+        return
+    lines = interfaces.read_text().splitlines(keepends=True)
+    rendered, handed_over, in_stanza = [], set(), False
+    for line in lines:
+        words = line.split()
+        if words and words[0] in ('auto', 'allow-hotplug', 'allow-auto', 'iface', 'mapping') and not line.startswith('#'):
+            names = [w for w in words[1:] if w not in ('inet', 'inet6')][:1]
+            in_stanza = words[0] in ('iface', 'mapping') and names != ['lo']
+            if names and names != ['lo']:
+                handed_over.update(names)
+                rendered.append('# ' + line)
+                continue
+            in_stanza = False
+        elif in_stanza and words and not line.startswith('#'):
+            rendered.append('# ' + line)
+            continue
+        rendered.append(line)
+    if not handed_over:
+        return
+    print(f'Hand {", ".join(sorted(handed_over))} from ifupdown to NetworkManager in {interfaces}', flush=True)
+    if dry:
+        return
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+    backup = Path('/var/backups/linux-config') / stamp / 'network/interfaces'
+    run('sudo', 'install', '-d', '-m', '0700', backup.parent)
+    run('sudo', 'cp', '-a', interfaces, backup)
+    with tempfile.TemporaryDirectory(prefix='linux-config-network-') as temporary:
+        source = Path(temporary) / 'interfaces'
+        source.write_text('# linux-config setup commented out the stanzas below; NetworkManager owns these interfaces.\n'
+                          + ''.join(rendered))
+        run('sudo', 'install', '-Dm644', source, interfaces)
+    print('NetworkManager takes over at the next boot; the running connection is left alone.')
+
+
+def leftover_services():
+    """Point out listening services this setup neither installs nor opens in the firewall."""
+    for unit in ('ssh.service', 'avahi-daemon.service'):
+        if subprocess.run(['systemctl', 'is-active', '--quiet', unit]).returncode == 0:
+            print(f'Notice: {unit} is running but not part of this setup; the firewall drops its incoming '
+                  f'traffic. Keep it for remote access (see docs/firewall.md) or run: '
+                  f'sudo systemctl disable --now {unit}')
 
 
 def package_list(path):
@@ -353,15 +475,21 @@ def main():
         parser.error('~/.local must stay inside your home directory')
     user = pwd.getpwuid(os.getuid()).pw_name
     os.environ['PATH'] = f'{home}/.local/bin:' + os.environ['PATH']
+    # New directories and backups stay private whatever umask the login shell has.
+    os.umask(0o077)
     packages = set(package_list(REPO / 'packages.txt')) | set(package_list(REPO / f'packages.{machine}.txt'))
     if args.backups:
         packages.add('restic')
     packages = sorted(packages)
+    # On a rerun the OpenSnitch UI is already up: let apt through before it is used.
+    if opensnitch_rules(args.dry_run) and not args.dry_run:
+        run('sudo', 'systemctl', 'try-restart', 'opensnitch.service')
     run('sudo', 'apt-get', 'update', dry=args.dry_run)
     run('sudo', 'apt-get', 'install', '-y', *packages, dry=args.dry_run)
     firewall(args.dry_run)
     applications(home, args.dry_run)
-    run(REPO / 'scripts/setup-shell', dry=args.dry_run)
+    # The sub-installers have their own dry runs; show their plans instead of only their names.
+    run(REPO / 'scripts/setup-shell', *(['--dry-run'] if args.dry_run else []))
     portal(home, args.dry_run)
     editor = [str(REPO / 'scripts/setup-editor'), '--skip-apt']
     if args.dev_tools:
@@ -370,6 +498,8 @@ def main():
         editor.append('--dev-tools')
     colors_present = (home / '.config/sway/colors').is_file()
     run(*editor, dry=args.dry_run)
+    if args.dry_run:
+        run(REPO / 'scripts/install', '--dry-run')
     # setup-editor applies user files and installs/checks Neovim plugins.
     current = home / '.cache/theme/current'
     if current.is_file():
@@ -378,6 +508,7 @@ def main():
     elif not colors_present:
         run(home / '.local/bin/theme', 'apply', 'summer-dusk', dry=args.dry_run)
     host_settings(user, args.dry_run, 'libvirt-daemon-system' in packages)
+    network_manager(args.dry_run)
     if args.autologin:
         autologin(user, args.dry_run)
     if shutil.which('tailscale'):
@@ -394,6 +525,7 @@ def main():
             timer_link.symlink_to('../sysreport.timer')
         print('No user bus: log in to the desktop to load user services')
     run('bash', REPO / 'scripts/install-receipt', REPO, home, 'setup', dry=args.dry_run)
+    leftover_services()
     print('Plan complete.' if args.dry_run else 'Setup complete. Log out/in (or reboot) to apply groups, shell and portals; restart Firefox.')
     print('Disk encryption, lid rules and hardware tests remain separate; see docs/installation.md.')
 

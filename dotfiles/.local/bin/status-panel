@@ -6,6 +6,7 @@ import argparse
 import fcntl
 import json
 import re
+import runpy
 import signal
 import subprocess
 import sys
@@ -67,9 +68,12 @@ def get_clock() -> str:
 
 def get_network() -> str:
     'Return the WiFi name, Ethernet, or Offline.'
-    wifi = run(["iwgetid", "-r"]).strip()
-    if wifi:
-        return f"WiFi {trunc(wifi, SSID_MAX)}"
+    # Terse nmcli output is `yes:<ssid>` for the active network; a colon in
+    # the SSID arrives escaped as `\:`.
+    for line in run(["nmcli", "-t", "-f", "ACTIVE,SSID", "device", "wifi"]).splitlines():
+        if line.startswith("yes:"):
+            wifi = line[4:].replace("\\:", ":")
+            return f"WiFi {trunc(wifi, SSID_MAX)}" if wifi else "WiFi"
 
     # Format from `ip -br link show`:
     #     <ifname>  <state>  <mac>  <flags>
@@ -80,6 +84,8 @@ def get_network() -> str:
         if len(parts) >= 2 and parts[1] == "UP" and parts[0] != "lo":
             if parts[0].startswith(("en", "eth", "em")):
                 return "Ethernet"
+            if parts[0].startswith("wl"):
+                return "WiFi"
     return "Offline"
 
 
@@ -112,45 +118,9 @@ def get_power() -> str:
 
 
 def covered_background() -> list[str]:
-    """Return an opaque background flag when a window sits under the panel.
-
-    Glass mode gives fuzzel an almost clear background, which reads fine over
-    the wallpaper but not over a window. The focused workspace's leaf nodes
-    tell us whether anything is underneath; failures fall back to no override.
-    """
-    try:
-        tree = json.loads(run(["swaymsg", "-t", "get_tree", "-r"]))
-    except ValueError:
-        return []
-
-    def windows(node: dict) -> int:
-        children = node.get("nodes", []) + node.get("floating_nodes", [])
-        if not children:
-            return 1 if node.get("type") in ("con", "floating_con") else 0
-        return sum(windows(child) for child in children)
-
-    def focused_workspace(node: dict) -> dict | None:
-        children = node.get("nodes", []) + node.get("floating_nodes", [])
-        if node.get("type") == "workspace":
-            if node.get("focused") or any(focused_workspace(child) is not None for child in children):
-                return node
-            return None
-        for child in children:
-            found = focused_workspace(child)
-            if found is not None:
-                return found
-        return node if node.get("focused") else None
-
-    workspace = focused_workspace(tree)
-    if not workspace or workspace.get("type") != "workspace" or windows(workspace) == 0:
-        return []
-    colors = Path.home() / ".config/fuzzel/colors.ini"
-    try:
-        match = re.search(r"(?m)^background=([0-9a-fA-F]{6})", colors.read_text())
-    except OSError:
-        return []
-    # 85% opaque keeps the rounded glass look while hiding the window below.
-    return [f"--background={match[1]}d9"] if match else []
+    """Opaque background flag when a window sits under the panel; shared with every menu."""
+    helper = runpy.run_path(str(Path(__file__).resolve().parent / "menu-background"))
+    return helper["covered_background"](run=run, home=Path.home())
 
 
 def main() -> None:

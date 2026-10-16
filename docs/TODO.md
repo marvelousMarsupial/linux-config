@@ -2,7 +2,7 @@
 
 [Documentation index](README.md)
 
-Updated 2026-10-15. Keep this file current as work is completed or priorities
+Updated 2026-10-16. Keep this file current as work is completed or priorities
 change. Record reusable lessons in [LESSONS.md](LESSONS.md).
 
 Unfinished work only, including optional and deferred tasks. Hardware tasks
@@ -29,6 +29,42 @@ are grouped at the end because they cannot be verified in the development VM.
 - [x] Pin Yazi, Zen and the Nerd Font to reviewed releases with recorded
   digests in `releases.toml`; `scripts/releases check` reports newer upstream
   releases and `bump` records them for review.
+
+## Review follow-ups (2026-10-16)
+
+Found in a full review of the live VM and both repositories; the fixes that
+shipped with it are in the Git history of the same day.
+
+- [ ] Decide the rest of OpenSnitch's policy. Setup now ships allow rules for
+  the system daemons (a fresh VM denied apt, Firefox and time sync on its
+  first login because the prompt defaults to Deny after 30 s). Still open:
+  Debian's `DefaultAction: allow` means everything is allowed before login and
+  whenever the UI is down; rules created from prompts last only until restart
+  (UI default duration), so a mis-click, like the ssh deny seen on the dev VM,
+  blocks a tool until reboot but also heals itself. Choose between a daemon
+  `deny` default and a longer prompt duration. History is persistent now.
+- [ ] The six palettes disagree on whether base01 is lighter or darker than
+  base00, so terminals are lighter than the wallpaper in three palettes and
+  darker in the other three. Normalise the schemes or compute the raised
+  surface in `theme`.
+- [ ] The appearance popup covers palette and glass but not wallpaper style;
+  add a third row so `wallpaper-texture` is not CLI-only, and re-render the
+  Sway target when the style changes so tile/fill does not go stale.
+- [ ] Firefox's idle inhibit while playing video goes through the portal's
+  ScreenSaver proxy, which has no owner here (journal: "Backend call failed
+  ... org.freedesktop.ScreenSaver"). Play a video for over 30 minutes and
+  confirm swayidle does not lock; if it does, run an inhibit bridge.
+- [ ] Setup now hands ifupdown interfaces to NetworkManager; verify on the
+  laptop that Wi-Fi configured during installation appears in `wifi-menu`
+  after the first reboot.
+- [ ] `udiskie --automount` mounts any inserted filesystem; consider
+  `--no-automount` and mounting from Yazi.
+- [ ] Fuzzel prompts, widths and the status panel's hard-coded white selection
+  colour differ between menus; pick one style.
+- [ ] Pin bumps for Yazi and the font in `releases.toml` only install when the
+  program is missing; record the installed tag and reinstall on mismatch.
+- [ ] `python3.13.desktop` hides a version-specific entry that reappears on the
+  next Python bump.
 
 ## Security
 

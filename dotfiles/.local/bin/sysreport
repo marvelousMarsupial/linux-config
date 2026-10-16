@@ -167,7 +167,7 @@ def units_scope(s, scope):
         s.problem(f'Systemd: {scope} failed units unknown')
         return
     failed = [line.split()[0] for line in out.splitlines() if line.split()]
-    s.write('Failed units:', out.rstrip('\n'))
+    s.write('Failed units:', out.rstrip('\n') or 'none')
     if failed:
         s.problem(f'Failed {scope} units: {" ".join(failed)}')
     names = set(failed)

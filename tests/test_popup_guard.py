@@ -32,7 +32,20 @@ class PopupGuardTests(unittest.TestCase):
         self.guard.handle(event('new', 20), tree([window(20)], floating=False))
         self.assertEqual(len(self.commands), 1)
         self.assertIn('[con_id=10] fullscreen disable;', self.commands[0])
-        self.assertIn('[con_id=20] floating enable, resize set 800 520, move position center, focus', self.commands[0])
+        # A native dialog keeps its own size; only the move and focus are forced.
+        self.assertIn('[con_id=20] floating enable, move position center, focus', self.commands[0])
+        self.assertNotIn('resize set', self.commands[0])
+
+    def test_terminal_popups_get_the_large_frame(self):
+        for app_id in ('foot', 'yazi-portal', 'fullscreen-terminal-10-1'):
+            with self.subTest(app_id=app_id):
+                self.commands.clear()
+                guard = self.module.PopupGuard(self.commands.append)
+                popup = window(20)
+                popup['app_id'] = app_id
+                guard.handle(event('new', 20), tree([popup], floating=False))
+                self.assertEqual(len(self.commands), 1)
+                self.assertIn('[con_id=20] floating enable, resize set 800 520, move position center, focus', self.commands[0])
 
     def test_new_visible_floating_dialog_also_leaves_fullscreen(self):
         self.guard.handle(event('new', 20), tree([window(20, visible=True)]))

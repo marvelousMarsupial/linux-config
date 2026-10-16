@@ -9,7 +9,7 @@ main() {
     local temporary status=0
     case "${1:-}" in
         --help)
-            echo 'Usage: bash bootstrap [--dry-run] [--dev-tools]'
+            echo 'Usage: bash bootstrap [--dry-run] [--dev-tools] [--backups] [--autologin]'
             echo 'Downloads a temporary checkout and forwards arguments to scripts/setup.'
             echo 'Override the source with LINUX_CONFIG_REPOSITORY (HTTPS) and LINUX_CONFIG_REF (branch/tag).'
             return 0 ;;

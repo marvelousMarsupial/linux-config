@@ -49,8 +49,23 @@ sudo or file changes. A normal run, in order:
   installed, selects zsh as the login shell,
   generates the English UTF-8 locale if missing, installs the APT update policy
   with backups, and enables Debian's update timers and, on x86_64, libvirtd.
+- Hands any interface the Debian installer left to ifupdown in
+  `/etc/network/interfaces` over to NetworkManager (the stanzas are commented
+  out with a backup; the change applies at the next boot), so the Wi-Fi menu
+  and status panel see every interface and dhcpcd no longer runs beside
+  NetworkManager.
 - Configures the OpenSnitch daemon socket for the installing user and enables
-  the daemon. Sway starts the matching UI service at login.
+  the daemon. Sway starts the matching UI service at login. The UI keeps its
+  connection history in `~/.local/share/opensnitch.db` for 30 days, which the
+  health report reads. Allow rules for the system's own daemons (APT's HTTP
+  method, which unattended upgrades use too, systemd-timesyncd, NetworkManager
+  and dhcpcd) go into `/etc/opensnitchd/rules`; without them the UI's prompt,
+  which denies on timeout, silently stops updates and time sync on a fresh
+  machine. Rule files you edit or delete are not replaced. Applications still
+  prompt.
+- Points out `ssh` or `avahi-daemon` when the installer left them running: the
+  firewall drops their incoming traffic, and the notice shows how to disable
+  them or where to open the firewall instead.
 - Enables the daily health-report timer, or creates its enablement link when no
   user bus is available.
 - Writes an installation receipt once every step has succeeded.
@@ -60,8 +75,15 @@ tools, `--backups` to include Restic, and `--autologin` to log the installing
 user in on tty1 at boot. Autologin is for machines with full-disk encryption,
 where the LUKS passphrase is the only prompt wanted; `.zshrc` then starts Sway.
 Without encryption it lets anyone at the console in, which is acceptable for a
-throwaway VM only. The drop-in takes effect at the next boot and is backed up
-like the other system files. Setup stops on failure; fix the
+throwaway VM only; setup prints a warning when it finds no encrypted disk. The
+drop-in takes effect at the next boot and is backed up like the other system
+files. To turn autologin off again:
+
+```sh
+sudo rm /etc/systemd/system/getty@tty1.service.d/autologin.conf
+sudo systemctl daemon-reload
+```
+ Setup stops on failure; fix the
 reported step and rerun. It is repeatable, not transactional: completed steps
 stay applied. Changed user files have the config installer's backups, replaced
 application files have dated backups, and no packages are purged. No running
@@ -134,7 +156,10 @@ systemctl --user daemon-reload
 ```
 
 Log out of Sway and back in after changing units; see [systemd](systemd.md).
-Press Super+Shift+c to reload Sway after config changes. Sway starts on tty1
+Press Super+Shift+c to reload Sway after config changes. If Sway cannot start
+(no GPU driver, broken config), `.zshrc` leaves you in a shell on tty1 with the
+exit status and a pointer to `journalctl -t sway` instead of logging in again
+every few seconds. Sway starts on tty1
 from the zsh login shell; run `sway` manually for an initial session.
 
 ## Shell setup
@@ -156,7 +181,10 @@ Without fzf-tab, standard Zsh completion remains available. See [shell](shell.md
 The brightness keys change the screen in 10 percent steps. Super+F11 dims it
 and Super+F12 brightens it. Debian needs `brightness-udev` and membership in the
 video group; full setup handles both, and the config-only installer does not.
-Reboot after setup to apply the group and device permissions.
+Setup also adds the `adm` and `systemd-journal` groups so the health report and
+the update notifier can read `/var/log` and the system journal, plus `libvirt`
+and `kvm` on x86_64. Reboot after setup to apply the group and device
+permissions.
 
 On the laptop, run these from a terminal in Sway:
 

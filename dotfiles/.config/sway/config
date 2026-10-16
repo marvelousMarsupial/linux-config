@@ -20,6 +20,9 @@ set $right l
 # Include theme colors
 include ~/.config/sway/colors
 
+# One cursor theme and size for the compositor and every client (sway-session exports the same)
+seat * xcursor_theme Adwaita 24
+
 
 # ===========================================
 # MONITORS
@@ -252,8 +255,8 @@ bindsym --to-code $mod+q kill
 # Reload config
 bindsym --to-code $mod+Shift+c reload
 
-# Exit sway
-bindsym --to-code $mod+Shift+e exec swaymsg exit
+# Exit sway through the power menu so a mistyped chord cannot end the session
+bindsym --to-code $mod+Shift+e exec $bin/power-menu
 
 # ===========================================
 # SYSTEM
@@ -262,8 +265,8 @@ bindsym --to-code $mod+Shift+e exec swaymsg exit
 # Help (keybindings cheatsheet): launches, hides to the scratchpad, or shows again
 bindsym $mod+Shift+slash exec $bin/keybinds toggle
 
-# Lock screen
-bindsym $mod+Escape exec swaylock
+# Lock screen through logind so swayidle starts swaylock and KeePassXC locks too
+bindsym $mod+Escape exec loginctl lock-session
 
 # VNC passthrough mode (pass all keys to remote)
 bindsym $mod+Ctrl+p mode "passthrough"

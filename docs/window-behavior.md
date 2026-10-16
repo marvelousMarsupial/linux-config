@@ -16,8 +16,11 @@ launching Foot; see [portals](portals.md#desired-fullscreen-behavior).
 `sway-popup-guard.service` starts with the Sway session and reacts to IPC
 events; it never polls. When a window opens on a workspace with a fullscreen
 window, including windows Sway already reports visible, the guard exits that
-fullscreen, floats and centers the new window at up to 800 by 550 logical pixels
-and 65% of the workspace, and focuses it. It restores fullscreen after the
+fullscreen, floats and centers the new window, and focuses it. The repo's own
+terminal popups (Foot, the Yazi picker, scratch terminals) are also resized to
+up to 800 by 550 logical pixels and 65% of the workspace; native dialogs keep
+the size they ask for, since a forced frame left a small dialog inside a large
+empty border. It restores fullscreen after the
 tracked windows close or leave the workspace. Moving a floating window into a
 fullscreen workspace, delayed visibility after focus or title events, and
 floating windows already hidden at startup are handled the same way.

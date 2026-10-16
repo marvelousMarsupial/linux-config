@@ -23,11 +23,17 @@ protected = {'.config/kanshi/config', '.config/nvim/lazy-lock.json',
              '.config/nvim/lua/plugins/colorscheme.lua', '.config/yazi/theme.toml',
              '.config/foot/colors.ini', '.config/sway/colors', '.config/fuzzel/colors.ini',
              '.config/gtk-3.0/gtk.css', '.config/gtk-4.0/gtk.css'}
-# Apply only the chosen theme to existing app configs; never replace histories,
-# browser pairing settings or firewall preferences with a template.
-managed_themes = {
-    '.config/keepassxc/keepassxc.ini': ('GUI', 'ApplicationTheme', 'dark'),
-    '.config/opensnitch/settings.conf': ('global', 'theme', 'dark_amber.xml'),
+# Apply only the chosen theme (and OpenSnitch's history database) to existing app
+# configs; never replace histories, browser pairing settings or firewall
+# preferences with a template. /home/user is rendered for the destination home.
+managed_settings = {
+    '.config/keepassxc/keepassxc.ini': [('GUI', 'ApplicationTheme', 'dark')],
+    '.config/opensnitch/settings.conf': [('global', 'theme', 'dark_amber.xml'),
+                                         ('database', 'type', '1'),
+                                         ('database', 'file', '/home/user/.local/share/opensnitch.db'),
+                                         ('database', 'jrnl_wal', 'false'),
+                                         ('database', 'purge_oldest', 'true'),
+                                         ('database', 'max_days', '30')],
 }
 
 
@@ -64,10 +70,12 @@ for source in sorted((repo / 'dotfiles').rglob('*')):
                 rendered.append(line.replace('/home/user', str(home)))
         content = ('\n'.join(rendered) + '\n').encode()
     mode = 0o755 if content.startswith((b'#!', b'\x7fELF')) else 0o644
-    if str(rel) in managed_themes:
+    if str(rel) in managed_settings:
         mode = 0o600
-        if dest.is_file():
-            content = set_ini_value(dest.read_text(), *managed_themes[str(rel)]).encode()
+        text = dest.read_text() if dest.is_file() else content.decode()
+        for section, key, value in managed_settings[str(rel)]:
+            text = set_ini_value(text, section, key, value.replace('/home/user', str(home)))
+        content = text.encode()
     if str(rel) in protected and dest.exists():
         continue
     if dest.is_file() and not dest.is_symlink() and content == dest.read_bytes() and mode == (dest.stat().st_mode & 0o777):

@@ -46,6 +46,7 @@ if [[ "$action" == backup ]]; then
     # Keep recovery credentials separately; caches are reproducible.
     exec restic backup --tag linux-config-home \
         --exclude "$HOME/.cache" --exclude "$config_dir" \
+        --exclude "$HOME/.local/share/Trash" \
         --exclude "$RESTIC_PASSWORD_FILE" "$@" -- "$HOME"
 fi
 exec restic "$action" "$@"

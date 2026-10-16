@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
-from support import load_script
+from support import REPO, load_script
 
 
 class StatusTests(unittest.TestCase):
@@ -78,11 +78,14 @@ class BatteryLoopTests(unittest.TestCase):
 class PanelTests(unittest.TestCase):
     def test_network_wifi_wired_and_offline(self):
         panel = load_script('status-panel')
-        for wifi, links, expected in (('Home', '', 'WiFi Home'),
-                                       ('x'*50, '', 'WiFi '+'x'*19+'…'),
-                                       ('', 'lo UP\nenx123 UP', 'Ethernet'),
-                                       ('', 'lo UP\nwlan0 UP\nenp1 DOWN', 'Offline')):
-            with self.subTest(wifi=wifi, links=links), patch.object(panel, 'run', side_effect=[wifi, links] if not wifi else [wifi]):
+        # nmcli is asked first (terse `ACTIVE:SSID` rows), then `ip -br link` when nothing is active.
+        for wifi, links, expected in (('no:Other\nyes:Home', '', 'WiFi Home'),
+                                       ('yes:' + 'x'*50, '', 'WiFi '+'x'*19+'…'),
+                                       ('yes:Caf\\:Net', '', 'WiFi Caf:Net'),
+                                       ('no:Other', 'lo UP\nenx123 UP', 'Ethernet'),
+                                       ('', 'lo UP\nwlan0 UP\nenp1 DOWN', 'WiFi'),
+                                       ('', 'lo UP\nenp1 DOWN', 'Offline')):
+            with self.subTest(wifi=wifi, links=links), patch.object(panel, 'run', side_effect=[wifi, links]):
                 self.assertEqual(panel.get_network(), expected)
 
     def test_popup_is_read_only_and_has_no_application_search_label(self):
@@ -121,6 +124,36 @@ class PanelTests(unittest.TestCase):
                     self.assertEqual(panel.covered_background(), [])
                 with patch.object(panel, 'run', return_value=''):
                     self.assertEqual(panel.covered_background(), [])
+
+
+class MenuBackgroundTests(unittest.TestCase):
+    def test_every_menu_darkens_over_windows_only_in_glass_mode(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        helper = load_script('menu-background')
+        leaf = {'type': 'con', 'nodes': [], 'floating_nodes': [], 'app_id': 'firefox-esr'}
+        workspace = lambda nodes: {'type': 'workspace', 'focused': True, 'nodes': nodes, 'floating_nodes': []}
+        tree = lambda nodes: json.dumps({'type': 'root', 'nodes': [
+            {'type': 'output', 'nodes': [workspace(nodes)], 'floating_nodes': []}], 'floating_nodes': []})
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            colors = home / '.config/fuzzel/colors.ini'
+            colors.parent.mkdir(parents=True)
+            colors.write_text('[colors]\nbackground=1f1d2e14\ntext=ffffffff\n')
+            self.assertEqual(helper.covered_background(run=lambda cmd: tree([leaf]), home=home), ['--background=1f1d2ed9'])
+            self.assertEqual(helper.covered_background(run=lambda cmd: tree([]), home=home), [])
+            self.assertEqual(helper.covered_background(run=lambda cmd: '', home=home), [])
+            # Glass off renders a solid background; a window underneath changes nothing.
+            colors.write_text('[colors]\nbackground=1f1d2eff\n')
+            self.assertEqual(helper.covered_background(run=lambda cmd: tree([leaf]), home=home), [])
+            # No colors file at all (first login before theme apply) is not an error.
+            colors.unlink()
+            self.assertEqual(helper.covered_background(run=lambda cmd: tree([leaf]), home=home), [])
+        # Every fuzzel menu consults the helper.
+        for name in ('launcher', 'power-menu', 'notes-picker', 'notifications', 'wifi-menu', 'vpn-menu', 'status-panel'):
+            text = (REPO / 'dotfiles/.local/bin' / name).read_text()
+            self.assertTrue('menu-background' in text or 'menu_background' in text, name)
 
 
 class HealthReportTests(unittest.TestCase):

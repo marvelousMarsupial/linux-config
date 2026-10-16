@@ -10,9 +10,16 @@ if [[ -r "$HOME/.config/environment.d/appearance.conf" ]]; then
   export GTK_THEME
 fi
 
-# Auto-start Sway on tty1
+# Auto-start Sway on tty1. Not an exec: with autologin, a Sway that cannot
+# start (no GPU driver, broken config) would otherwise log in and fail again
+# every few seconds with no way to reach a shell. A clean exit logs out.
 if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && [ "$XDG_VTNR" = "1" ] && command -v sway >/dev/null; then
-  exec systemd-cat --identifier=sway sway
+  if ls /dev/dri/card* >/dev/null 2>&1; then
+    systemd-cat --identifier=sway sway && exit 0
+    echo "Sway exited with status $?; staying in this shell. See journalctl -t sway, then run sway to retry." >&2
+  else
+    echo "No GPU device under /dev/dri, so Sway was not started. Fix the driver, then run sway." >&2
+  fi
 fi
 
 # Locale for Unicode and emoji. LANG alone leaves LC_* overrides available.

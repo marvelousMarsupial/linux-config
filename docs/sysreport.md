@@ -44,16 +44,20 @@ No previous installation date is invented when the receipt is absent.
 
 ## OpenSnitch
 
-In the main OpenSnitch window, click the gear beside the top-left menu button.
-On the Database tab, choose File and select `~/.local/share/opensnitch.db` using
-the full home path. Save, quit the UI completely, and restart its user service.
-Changing the preference does not move an already-running in-memory database.
+The config installer sets the UI's database to `~/.local/share/opensnitch.db`
+(file mode, 30 days of history) in `~/.config/opensnitch/settings.conf`; other
+UI preferences are left alone. The UI reads that setting when it starts, so log
+out and back in after the first install. An already-running in-memory database
+is not moved.
 
 The report reads the configured database read-only. An empty database stays amber.
 It lists rules created in the last 24 hours, denied destinations and connection
 counts by process. It does not show browser page URLs or page contents.
 
-Setup installs a root-owned systemd override for the daemon with
+Setup installs allow rules for the system daemons (APT, systemd-timesyncd,
+NetworkManager, dhcpcd) under `/etc/opensnitchd/rules`; everything else keeps
+prompting, and the prompt denies on timeout. Setup also installs a root-owned
+systemd override for the daemon with
 `-ui-socket unix:///run/user/UID/opensnitch/osui.sock`, using the installing user's
 UID. Existing daemon preferences and rules are preserved; a replaced project
 override is backed up. Setup enables the daemon and restarts it when the override
@@ -65,7 +69,9 @@ runtime directory and launches the themed UI on the matching socket. The
 no-argument launcher uses the same runtime socket. Log out/in after setup to
 activate the session changes. Starting `/usr/bin/opensnitch-ui` directly without
 the socket argument can instead use `/tmp/osui.sock` and leave collection empty.
-Persistent database storage remains an optional UI preference as described above.
+The database path above is applied on every config install; change it in the UI
+if you want history elsewhere, and the installer will keep your choice only if
+you also remove the key from the repository's `settings.conf`.
 
 ## Journal
 

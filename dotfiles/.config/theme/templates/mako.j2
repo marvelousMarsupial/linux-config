@@ -34,6 +34,8 @@ background-color=#{{ base01 }}{{ "b8" if glass_mode else "ff" }}
 border-color=#{{ base03 }}
 
 [urgency=high]
+# Critical notices (battery, failed connections) stay until dismissed.
+default-timeout=0
 background-color=#{{ base01 }}{{ "b8" if glass_mode else "ff" }}
 border-color=#{{ base08 }}
 

@@ -5,6 +5,9 @@ set -euo pipefail
 export XDG_CURRENT_DESKTOP=sway
 export XDG_SESSION_DESKTOP="${XDG_SESSION_DESKTOP:-sway}"
 export XDG_SESSION_TYPE=wayland
+# One cursor for the compositor, GTK, Qt and XWayland; Sway's seat setting matches.
+export XCURSOR_THEME="${XCURSOR_THEME:-Adwaita}"
+export XCURSOR_SIZE="${XCURSOR_SIZE:-24}"
 
 # Explicit imports avoid leaking unrelated shell variables to user services.
 VARS="DESKTOP_SESSION XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE"
@@ -34,7 +37,8 @@ fi
 # reset-failed rejects units that have not been loaded yet. Query the failed
 # subset first; leave unrelated user services alone.
 failed=$(systemctl --user list-units --failed --type=service --plain --no-legend --no-pager \
-    kanshi.service sway-session-monitor.service battery-monitor.service swayidle.service udiskie.service)
+    kanshi.service sway-session-monitor.service battery-monitor.service swayidle.service udiskie.service \
+    sway-popup-guard.service opensnitch-ui.service update-notify.service vpn-off.service)
 failed_units=()
 while read -r unit _rest; do
     [[ -z "$unit" ]] || failed_units+=("$unit")

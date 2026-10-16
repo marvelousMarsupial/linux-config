@@ -2,6 +2,7 @@
 """Install the pinned fzf-tab plugin; shell configuration is copied by scripts/install."""
 import argparse
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 import runpy
 import subprocess
@@ -47,6 +48,7 @@ if __name__ == '__main__':
     parser.add_argument('--home', type=Path, default=Path.home())
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
+    os.umask(0o077)
     try:
         install(args.home.expanduser().resolve(), args.dry_run)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:

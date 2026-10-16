@@ -78,7 +78,7 @@ def main():
             print(f"{target['name']}: {path}")
         if paths and target.get('hook'):
             try:
-                result = subprocess.run(shlex.split(target['hook']), capture_output=True, timeout=5)
+                result = subprocess.run(shlex.split(target['hook']), capture_output=True, timeout=60)
                 if result.returncode:
                     print(f"{target['name']}: restart the app to apply colors")
             except (OSError, subprocess.TimeoutExpired):
@@ -86,7 +86,14 @@ def main():
     if args.command == 'apply':
         current.parent.mkdir(parents=True, exist_ok=True)
         current.write_text(name + '\n')
-        print(f'Applied {name}\nReload Sway and reopen editors')
+        # Window borders and titles only change when Sway re-reads its colors file.
+        reloaded = False
+        if os.environ.get('SWAYSOCK'):
+            try:
+                reloaded = subprocess.run(['swaymsg', 'reload'], capture_output=True, timeout=10).returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        print(f'Applied {name}\n' + ('Reopen terminals and editors' if reloaded else 'Reload Sway and reopen editors'))
 
 
 if __name__ == '__main__':

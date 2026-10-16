@@ -29,7 +29,8 @@ def main():
             opener = gzip.open if path.suffix == '.gz' else open
             with opener(path, 'rt') as log:
                 updates.update(completed_updates(log.read()))
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError):
+            # Absent or root-only (Debian cloud images keep /var/log/apt 0750); setup adds adm.
             pass
     previous = set(json.loads(state.read_text())) if state.exists() else None
     new = set(updates) - (previous or set())

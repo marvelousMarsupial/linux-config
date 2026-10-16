@@ -32,7 +32,7 @@ class CommandTests(CommandSandbox):
         self.assertIn('Check backlight permissions', result.stderr)
 
     def test_power_actions_and_unknown_selection(self):
-        actions = {'Lock': ('swaylock', ['-f']), 'Sleep': ('systemctl', ['suspend']),
+        actions = {'Lock': ('loginctl', ['lock-session']), 'Sleep': ('systemctl', ['suspend']),
                    'Log out': ('swaymsg', ['exit']), 'Restart': ('systemctl', ['reboot']),
                    'Shut down': ('systemctl', ['poweroff'])}
         for choice in [*actions, 'Restart; echo injected', '']:
@@ -65,7 +65,9 @@ class CommandTests(CommandSandbox):
                                                      'systemctl', 'systemctl', 'systemctl'])
         self.assertEqual(events[-1]['args'], ['--user', 'start', 'sway-session.target'])
         self.assertEqual(events[3]['args'], ['--user', 'list-units', '--failed', '--type=service', '--plain', '--no-legend', '--no-pager', 'kanshi.service', 'sway-session-monitor.service',
-                                          'battery-monitor.service', 'swayidle.service', 'udiskie.service'])
+                                          'battery-monitor.service', 'swayidle.service', 'udiskie.service',
+                                          'sway-popup-guard.service', 'opensnitch-ui.service', 'update-notify.service', 'vpn-off.service'])
+        self.assertIn('XCURSOR_THEME', events[4]['args'])
         self.assertIn('WAYLAND_DISPLAY', events[4]['args'])
         self.assertNotIn('TOP_SECRET', events[4]['args'])
         self.assertTrue(all(e['desktop'] == 'sway' and e['session'] == 'wayland' for e in events))
@@ -73,7 +75,7 @@ class CommandTests(CommandSandbox):
     def test_session_resets_only_failed_session_units(self):
         result = self.execute('sway-session', responses={
             'systemctl --user --quiet is-active sway-session.target': {'code': 3},
-            'systemctl --user list-units --failed --type=service --plain --no-legend --no-pager kanshi.service sway-session-monitor.service battery-monitor.service swayidle.service udiskie.service':
+            'systemctl --user list-units --failed --type=service --plain --no-legend --no-pager kanshi.service sway-session-monitor.service battery-monitor.service swayidle.service udiskie.service sway-popup-guard.service opensnitch-ui.service update-notify.service vpn-off.service':
                 {'out': 'kanshi.service loaded failed failed Monitor manager\n'}})
         self.assertEqual(result.returncode, 0, result.stderr)
         resets = [e for e in self.events() if 'reset-failed' in e['args']]

@@ -4,5 +4,5 @@ PartOf=sway-session.target
 
 [Timer]
 OnActiveSec=30s
-OnUnitActiveSec=2min
+OnUnitActiveSec=20min
 AccuracySec=15s

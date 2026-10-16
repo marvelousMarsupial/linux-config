@@ -23,8 +23,10 @@ the palette is kept.
   save pickers, use at least 60% opacity so text stays readable over pages. The
   popup guard updates this when a window changes between floating and tiled.
   See [window behavior](window-behavior.md#floating-foot-opacity).
-- Fuzzel launchers and the status panel use about 8%. The status panel
-  switches to 85% when the focused workspace has a window under it.
+- Fuzzel launchers and the status panel use about 8% over the wallpaper and
+  switch to 85% when the focused workspace has a window under them, so menu
+  text stays readable over a page. `menu-background` makes that decision for
+  every menu.
 - Mako and GTK backgrounds stay about 72% opaque. Text is always opaque. The
   lock screen stays solid.
 

@@ -2,9 +2,16 @@ local repo = vim.fn.fnamemodify(debug.getinfo(1, 'S').source:sub(2), ':p:h:h')
 vim.opt.runtimepath:prepend(repo .. '/dotfiles/.config/nvim')
 vim.opt.runtimepath:append(repo .. '/dotfiles/.config/nvim/after')
 
+-- Tree-sitter parsers beyond Neovim's bundled set arrive with --dev-tools; skip the
+-- query checks for languages this machine cannot parse rather than fail on them.
 local function query_checks(lang, query_lang, sample, wanted)
+  local ok, parser = pcall(vim.treesitter.get_string_parser, sample, lang)
+  if not ok then
+    print('no ' .. lang .. ' parser installed; query checks skipped')
+    return
+  end
   local source = table.concat(vim.fn.readfile(repo .. '/dotfiles/.config/nvim/after/queries/' .. query_lang .. '/highlights.scm'), '\n')
-  local tree = vim.treesitter.get_string_parser(sample, lang):parse()[1]
+  local tree = parser:parse()[1]
   local query = vim.treesitter.query.parse(lang, source)
   local counts = {}
   for _, node, metadata in query:iter_captures(tree:root(), sample) do

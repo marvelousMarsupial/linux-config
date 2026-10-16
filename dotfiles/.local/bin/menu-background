@@ -1,0 +1,64 @@
+#!/usr/bin/python3
+"""Print fuzzel's --background flag when glass mode would show a window through a menu.
+
+Glass mode gives fuzzel an almost clear background, which reads fine over the
+wallpaper but not over a window. Every menu runs this before opening fuzzel:
+it prints an 85% opaque background when the focused workspace has a window
+under the menu, and nothing when the desktop is solid or the workspace is empty.
+"""
+import json
+from pathlib import Path
+import re
+import subprocess
+
+
+def run(cmd):
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        return result.stdout if result.returncode == 0 else ''
+    except (OSError, subprocess.TimeoutExpired):
+        return ''
+
+
+def covered_background(run=run, home=None):
+    """Return ['--background=RRGGBBd9'] when a window sits under a glass menu, else []."""
+    home = home or Path.home()
+    try:
+        match = re.search(r'(?m)^background=([0-9a-fA-F]{6})([0-9a-fA-F]{2})?', (home / '.config/fuzzel/colors.ini').read_text())
+    except OSError:
+        return []
+    # A solid background (alpha ff) is what glass-off renders; nothing to darken.
+    if not match or (match[2] or 'ff').lower() == 'ff':
+        return []
+    try:
+        tree = json.loads(run(['swaymsg', '-t', 'get_tree', '-r']))
+    except ValueError:
+        return []
+
+    def windows(node):
+        children = node.get('nodes', []) + node.get('floating_nodes', [])
+        if not children:
+            return 1 if node.get('type') in ('con', 'floating_con') else 0
+        return sum(windows(child) for child in children)
+
+    def focused_workspace(node):
+        children = node.get('nodes', []) + node.get('floating_nodes', [])
+        if node.get('type') == 'workspace':
+            if node.get('focused') or any(focused_workspace(child) is not None for child in children):
+                return node
+            return None
+        for child in children:
+            found = focused_workspace(child)
+            if found is not None:
+                return found
+        return node if node.get('focused') else None
+
+    workspace = focused_workspace(tree)
+    if not workspace or workspace.get('type') != 'workspace' or windows(workspace) == 0:
+        return []
+    # 85% opaque keeps the rounded glass look while hiding the window below.
+    return [f'--background={match[1]}d9']
+
+
+if __name__ == '__main__':
+    print(' '.join(covered_background()))

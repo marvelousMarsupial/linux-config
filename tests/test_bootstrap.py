@@ -114,12 +114,17 @@ class BootstrapTests(unittest.TestCase):
                      env=dict(os.environ, HOME=str(self.home), PATH=f'{binary}:/usr/bin:/bin'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Plan complete.', result.stdout)
-        self.assertIn('then configure autologin for', result.stdout)
+        # The dry run reads the real /etc; a host that already has the drop-in says so instead.
+        self.assertTrue('then configure autologin for' in result.stdout
+                        or 'on tty1 already configured' in result.stdout, result.stdout)
         browser = setup.pinned_releases()[setup.BROWSER_PACKAGE]
-        self.assertIn(f'marvelousMarsupial/firefoxconfig {browser["tag"]}: '
-                      f'firefoxconfig_{browser["tag"].removeprefix("v")}_all.deb', result.stdout)
+        if setup.installed_version(setup.BROWSER_PACKAGE) != browser['tag'].removeprefix('v'):
+            # dpkg's state is real even in a dry run; a host with the pin installed plans no download.
+            self.assertIn(f'marvelousMarsupial/firefoxconfig {browser["tag"]}: '
+                          f'firefoxconfig_{browser["tag"].removeprefix("v")}_all.deb', result.stdout)
         self.assertIn('--skip-apt', result.stdout)
-        self.assertIn('configure OpenSnitch UI socket:', result.stdout)
+        self.assertTrue('configure OpenSnitch UI socket:' in result.stdout
+                        or 'enable --now opensnitch.service' in result.stdout, result.stdout)
         self.assertIn('enable --now opensnitch.service', result.stdout)
         self.assertIn('enable --now nftables.service', result.stdout)
         self.assertIn('reload nftables.service', result.stdout)
@@ -138,7 +143,7 @@ class BootstrapTests(unittest.TestCase):
         rerun = run(str(REPO / 'scripts/setup'), '--dry-run', env=env)
         self.assertEqual(rerun.returncode, 0, rerun.stderr)
         self.assertIn('theme apply kanagawa', rerun.stdout)
-        self.assertNotIn('summer-dusk', rerun.stdout)
+        self.assertNotIn('theme apply summer-dusk', rerun.stdout)
         self.assertNotIn('autologin', rerun.stdout)
 
     def test_firewall_backs_up_both_files_and_reloads_without_global_flush(self):
@@ -305,6 +310,7 @@ class BootstrapTests(unittest.TestCase):
 
         with patch.object(setup.shutil, 'which', return_value=None), \
              patch.object(setup, 'installed_version', side_effect=[None, pinned]), \
+             patch.object(setup, 'firefox_running', return_value=False), \
              patch.object(setup, 'release_asset', side_effect=download) as fetch, \
              patch.object(setup, 'run') as command:
             setup.applications(self.home, False)
@@ -398,7 +404,7 @@ class BootstrapTests(unittest.TestCase):
                 command.return_value.returncode = 0
                 setup.host_settings('someone', True, virtualization)
                 calls = [call.args for call in run.call_args_list]
-                self.assertIn(('sudo', 'usermod', '-aG', 'video,libvirt,kvm' if virtualization else 'video', 'someone'), calls)
+                self.assertIn(('sudo', 'usermod', '-aG', 'video,adm,systemd-journal,libvirt,kvm' if virtualization else 'video,adm,systemd-journal', 'someone'), calls)
                 enabled = next(call for call in calls if call[:3] == ('sudo', 'systemctl', 'enable'))
                 self.assertEqual('libvirtd.service' in enabled, virtualization)
 

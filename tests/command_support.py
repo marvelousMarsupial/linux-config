@@ -19,7 +19,7 @@ class CommandSandbox(unittest.TestCase):
         self.env = dict(os.environ, HOME=str(self.home), PATH=f'{self.bin}:/usr/bin:/bin',
                         TEST_LOG=str(self.log), TEST_RESPONSES='{}')
         # Never invoke the live compositor, power manager, network or clipboard.
-        for name in ('fuzzel', 'foot', 'swaymsg', 'swaylock', 'systemctl',
+        for name in ('fuzzel', 'foot', 'swaymsg', 'swaylock', 'systemctl', 'loginctl',
                      'dbus-update-activation-environment', 'notify-send', 'nmcli',
                      'bluetoothctl', 'wl-copy', 'grim', 'slurp'):
             self.stub(name)

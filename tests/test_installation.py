@@ -136,6 +136,10 @@ class InstallerTests(unittest.TestCase):
                 if not line.startswith(('ApplicationTheme=', 'theme=')):
                     self.assertIn(line, text)
             self.assertIn(expected, text)
+            if rel.endswith('settings.conf'):
+                self.assertIn(f'file={self.home}/.local/share/opensnitch.db', text)
+                self.assertIn('type=1', text)
+                self.assertNotIn('/home/user', text)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             backup = next((self.home / '.local/state/linux-config/backups').glob('*/' + rel))
             self.assertEqual(backup.read_text(), original)

@@ -196,11 +196,16 @@ class PopupGuard:
             self.suspended[ws_id] = saved
         self.pending.discard(target)
         saved['popups'].add(target)
-        width = max(1, min(800, int(ws['rect']['width'] * 0.65)))
-        height = max(1, min(550, int(ws['rect']['height'] * 0.65)))
+        # Only the repo's own terminal popups (pickers, scratch terminals) take the
+        # 65% frame. Native dialogs size themselves; forcing them bigger leaves a
+        # small dialog inside a large empty border.
+        resize = ''
+        if re.fullmatch(r'(foot|footclient|yazi-portal|fullscreen-terminal-\d+-[12])', node.get('app_id') or ''):
+            width = max(1, min(800, int(ws['rect']['width'] * 0.65)))
+            height = max(1, min(550, int(ws['rect']['height'] * 0.65)))
+            resize = f'resize set {width} {height}, '
         self.command(f'[con_id={saved["parent"]}] fullscreen disable; '
-                f'[con_id={target}] floating enable, resize set {width} {height}, '
-                     'move position center, focus')
+                     f'[con_id={target}] floating enable, {resize}move position center, focus')
 
     def recover(self, tree, startup=False):
         # Retry only windows arriving during fullscreen. Existing floaters must

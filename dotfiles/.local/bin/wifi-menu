@@ -32,12 +32,20 @@ def run_output(cmd: list[str]) -> str:
         return ""
 
 
+def menu_background():
+    """fuzzel background override from menu-background when glass shows a window through."""
+    try:
+        return subprocess.run(["menu-background"], capture_output=True, text=True, timeout=5).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+
+
 def notify(title: str, msg: str, critical: bool = False) -> None:
     """Send a desktop notification via notify-send.
 
     Silently no-ops if notify-send is missing (minimal installs / over
-    SSH). Critical notifications use ``-u critical`` so mako keeps them
-    on-screen until dismissed — useful for connection failures the user
+    SSH). Critical notifications use ``-u critical``; the mako template
+    gives that urgency no timeout, so they stay until dismissed — useful for connection failures the user
     might miss otherwise.
     """
     try:
@@ -191,6 +199,7 @@ def prompt_password(ssid: str) -> str | None:
         result = subprocess.run(
             [
                 "fuzzel",
+                *menu_background(),
                 "--dmenu",
                 "--password=•",
                 f"--prompt=Password for {ssid} ",
@@ -349,7 +358,7 @@ Signal strength
         # Show the diagnosis in fuzzel so the user has a visible, fixed-
         # width popup rather than a fleeting libnotify bubble.
         subprocess.run(
-            ["fuzzel", "--dmenu", "--prompt=", "--lines=1", "--width=30"],
+            ["fuzzel", *menu_background(), "--dmenu", "--prompt=", "--lines=1", "--width=30"],
             input=msg,
             text=True,
             capture_output=True,
@@ -368,7 +377,7 @@ Signal strength
     # Show the network picker.
     try:
         result = subprocess.run(
-            ["fuzzel", "--dmenu", "--prompt=WiFi  ", "--lines=10", "--width=40"],
+            ["fuzzel", *menu_background(), "--dmenu", "--prompt=WiFi  ", "--lines=10", "--width=40"],
             input="\n".join(menu_lines),
             text=True,
             capture_output=True,

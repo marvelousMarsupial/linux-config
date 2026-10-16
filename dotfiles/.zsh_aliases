@@ -116,7 +116,7 @@ alias reload='source ~/.zshrc'
 
 # Clipboard (wayland)
 alias clip='wl-copy'
-alias paste='wl-paste'
+alias clipout='wl-paste'  # not `paste`: that shadows coreutils paste(1)
 
 # Archives
 alias untar='tar -xvf'

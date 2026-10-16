@@ -7,11 +7,43 @@ import select
 import subprocess
 import termios
 import time
+from pathlib import Path
 from support import REPO, run
 from command_support import CommandSandbox
 
 
 class ShellTests(CommandSandbox):
+    def test_tty1_autostart_keeps_a_shell_when_sway_cannot_start(self):
+        """With autologin, a looping `exec sway` would lock the console; the rc must stay interactive."""
+        import shutil
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            shutil.copy(REPO / 'dotfiles/.zshrc', home / '.zshrc')
+            # .zshrc resets PATH with ~/.local/bin first, so the stubs live there.
+            tools = home / '.local/bin'
+            tools.mkdir(parents=True)
+            (tools / 'sway').write_text('#!/bin/sh\nprintf sway-ran >> "$HOME/sway.log"\nexit 1\n')
+            (tools / 'systemd-cat').write_text('#!/bin/sh\nshift\nexec "$@"\n')
+            for stub in tools.iterdir():
+                stub.chmod(0o755)
+            env = dict(HOME=str(home), ZDOTDIR=str(home), PATH=f'{tools}:/usr/bin:/bin', TERM='xterm')
+            for vt, started in (('1', True), ('2', False)):
+                with self.subTest(vt=vt):
+                    (home / 'sway.log').unlink(missing_ok=True)
+                    result = subprocess.run(['zsh', '-i', '-c', 'echo STILL-HERE'], env=dict(env, XDG_VTNR=vt),
+                                            capture_output=True, text=True, timeout=30)
+                    self.assertIn('STILL-HERE', result.stdout)
+                    ran = (home / 'sway.log').exists()
+                    if started and not Path('/dev/dri').exists():
+                        self.assertIn('No GPU device', result.stderr)
+                        self.assertFalse(ran)
+                    else:
+                        self.assertEqual(ran, started)
+                        self.assertEqual('staying in this shell' in result.stderr, started)
+                        if started:
+                            self.assertEqual((home / 'sway.log').read_text(), 'sway-ran')
+
     def zsh(self, script):
         return run('zsh', '-f', '-c', script, env=self.env)
 

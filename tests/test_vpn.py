@@ -57,7 +57,7 @@ class VpnTests(CommandSandbox):
         self.assertEqual(self.calls('tailscale')[-1], ['down'])
         self.assertIn('-u', self.calls('notify-send')[-1])
 
-    def test_import_disables_autoconnect_and_trashes_the_file(self):
+    def test_import_disables_autoconnect_and_deletes_the_file(self):
         config = self.home / 'Downloads/home.conf'
         config.parent.mkdir()
         config.write_text('[Interface]\nPrivateKey = secret\n')
@@ -67,7 +67,10 @@ class VpnTests(CommandSandbox):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.calls('nmcli')[1:], [['connection', 'modify', 'home', 'connection.autoconnect', 'no'],
                                                    ['connection', 'down', 'home']])
-        self.assertEqual(self.calls('trash-put'), [['--', str(config)]])
+        # The private key is in NetworkManager's store now; no readable copy may stay in home.
+        self.assertFalse(config.exists())
+        self.assertEqual(self.calls('trash-put'), [])
+        self.assertIn('deleted', ' '.join(self.calls('notify-send')[-1]))
         self.reset()
         result = self.execute('vpn-menu', 'import', str(self.home / 'missing.conf'))
         self.assertEqual(result.returncode, 1)

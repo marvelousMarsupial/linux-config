@@ -21,7 +21,10 @@ def main():
             print('Glass mode: ' + ('on' if enabled else 'off'))
             return
         enabled = not enabled if args.action == 'toggle' else args.action == 'on'
-        current = (home / '.cache/theme/current').read_text().strip()
+        try:
+            current = (home / '.cache/theme/current').read_text().strip()
+        except FileNotFoundError:
+            raise SystemExit('No palette selected yet: run theme apply <scheme> first')
         state.write_text(('on' if enabled else 'off') + '\n')
         env = dict(os.environ)
         env.setdefault('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')

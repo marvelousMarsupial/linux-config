@@ -3,7 +3,7 @@
 set -euo pipefail
 
 message() {
-    printf '%s\n' "$1" | fuzzel --dmenu --width=70 --lines=6 \
+    printf '%s\n' "$1" | fuzzel $(menu-background 2>/dev/null) --dmenu --width=70 --lines=6 \
         --placeholder='Notifications' >/dev/null || true
 }
 
@@ -43,13 +43,13 @@ rows=$(jq -r '.[] | (if .state == "Active" then "● " else "" end)
     + "\(.app) · \(.summary)" + (if .body == "" then "" else " · \(.body)" end)' <<<"$entries")
 count=$(jq 'length' <<<"$entries")
 lines=$(( count < 15 ? count : 15 ))
-while choice=$(printf '%s\n' "$rows" | fuzzel --dmenu --index --width=70 --lines="$lines" \
+while choice=$(printf '%s\n' "$rows" | fuzzel $(menu-background 2>/dev/null) --dmenu --index --width=70 --lines="$lines" \
     --placeholder='Notifications'); do
     [[ $choice =~ ^[0-9]+$ ]] || exit 0
     detail=$(jq -r --argjson index "$choice" '
         .[$index] // empty | "\(.app) · \(.state)\n\n\(.summary)\n\n\(.body)"
     ' <<<"$entries")
     [[ -n $detail ]] || exit 0
-    printf '%s\n' "$detail" | fold -s -w 70 | fuzzel --dmenu --width=75 --lines=20 \
+    printf '%s\n' "$detail" | fold -s -w 70 | fuzzel $(menu-background 2>/dev/null) --dmenu --width=75 --lines=20 \
         --placeholder='' >/dev/null || true
 done

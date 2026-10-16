@@ -46,9 +46,12 @@ sudo tailscale set --operator="$USER"
 ```
 
 The first "Tailscale" choice opens the login page in the browser. Finish
-signing in, then choose Tailscale again. The [firewall](firewall.md) drops
-unsolicited incoming traffic, so peers reach this machine through Tailscale's
-relays unless you allow UDP 41641 in.
+signing in, then choose Tailscale again. Outgoing connections to peers work
+unchanged. The [firewall](firewall.md) drops unsolicited incoming traffic on
+every interface, including `tailscale0`, so nothing on this machine is
+reachable from the tailnet (Taildrop receive, SSH, a local web server) until
+you add an `iifname "tailscale0"` accept rule for that port in
+`system/nftables.conf`.
 
 ## Checks
 

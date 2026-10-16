@@ -8,7 +8,15 @@ default palette; the other five render through the same templates.
 ## Typography and geometry
 
 CaskaydiaCove Nerd Font is the only font the repo installs. Setup fetches it
-from the Nerd Fonts release when `fc-match` does not already resolve it.
+from the Nerd Fonts release when `fc-match` does not already resolve it. A
+fontconfig alias (`~/.config/fontconfig/conf.d/10-linux-config-fonts.conf`)
+points the generic `monospace`, `sans-serif`, `serif` and `system-ui` families
+at it, and GTK's font setting names it, so applications that only ask for a
+generic family (GTK dialogs, KeePassXC, Chromium, web pages without their own
+web fonts) use it as well. Monospace body text on web pages is a deliberate
+look; sites that ship web fonts keep them. To read pages in a proportional
+font again, delete the `sans-serif`, `serif` and `system-ui` aliases from that
+file and rerun `scripts/install`.
 
 | Surface | Setting |
 | --- | --- |

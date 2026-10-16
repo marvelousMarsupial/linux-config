@@ -10,7 +10,7 @@ esac
 
 fail() {
     printf '%s\n' "$1" >&2
-    notify-send -a brightness 'Brightness' "$1" || true
+    notify-send -a Brightness 'Brightness' "$1" || true
     exit 1
 }
 

@@ -2,10 +2,10 @@
 # Power menu using fuzzel
 set -euo pipefail
 
-choice=$(printf "Lock\nSleep\nLog out\nRestart\nShut down" | fuzzel --dmenu --prompt="Power  " --lines=5 --width=20) || exit 0
+choice=$(printf "Lock\nSleep\nLog out\nRestart\nShut down" | fuzzel $(menu-background 2>/dev/null) --dmenu --prompt="Power  " --lines=5 --width=20) || exit 0
 
 case "$choice" in
-    Lock)       swaylock -f ;;
+    Lock)       loginctl lock-session ;;
     Sleep)      systemctl suspend ;;
     "Log out")  swaymsg exit ;;
     Restart)    systemctl reboot ;;

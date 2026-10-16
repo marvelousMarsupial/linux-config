@@ -120,9 +120,14 @@ def import_config(path):
     # NetworkManager activates an imported profile and autoconnects it; undo both.
     run(['nmcli', 'connection', 'modify', name, 'connection.autoconnect', 'no'], timeout=15)
     run(['nmcli', 'connection', 'down', name], timeout=15)
-    # The private key now lives in NetworkManager's root-only store; keep no plain copy.
-    moved = shutil.which('trash-put') and run(['trash-put', '--', str(path)], timeout=15)[0]
-    notify('VPN profile added', f'{name}; original file {"moved to trash" if moved else "left in place"}')
+    # The private key now lives in NetworkManager's root-only store; keep no
+    # plain copy. The trash would keep it readable in home and in backups.
+    try:
+        path.unlink()
+        removed = True
+    except OSError:
+        removed = False
+    notify('VPN profile added', f'{name}; original file {"deleted" if removed else "left in place"}')
     return 0
 
 
@@ -144,9 +149,17 @@ def status():
     return 0
 
 
+def menu_background():
+    '''fuzzel background override from menu-background when glass shows a window through.'''
+    try:
+        return subprocess.run(['menu-background'], capture_output=True, text=True, timeout=5).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+
+
 def choose(rows, prompt):
     try:
-        result = subprocess.run(['fuzzel', '--dmenu', '--index', f'--prompt={prompt} ',
+        result = subprocess.run(['fuzzel', *menu_background(), '--dmenu', '--index', f'--prompt={prompt} ',
                                  f'--lines={max(1, min(len(rows), 10))}', '--width=36'],
                                 input='\n'.join(rows) + '\n', capture_output=True, text=True, timeout=120)
     except (OSError, subprocess.TimeoutExpired):

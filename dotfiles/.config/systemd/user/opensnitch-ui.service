@@ -7,6 +7,7 @@ After=graphical-session.target
 Type=exec
 RuntimeDirectory=opensnitch
 RuntimeDirectoryMode=0700
-ExecStart=%h/.local/bin/opensnitch-ui --socket unix://%t/opensnitch/osui.sock
+# --background: prompts still appear; the statistics window opens from the launcher.
+ExecStart=%h/.local/bin/opensnitch-ui --background --socket unix://%t/opensnitch/osui.sock
 Restart=on-failure
 RestartSec=3
