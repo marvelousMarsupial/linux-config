@@ -1,12 +1,9 @@
 #!/usr/bin/python3
-"""Switch desktop and Zen glass together; Zen applies changes at next startup."""
+"""Switch desktop glass; terminals and launchers pick it up when reopened."""
 import argparse
-import configparser
 import fcntl
 import os
 from pathlib import Path
-import re
-import shutil
 import subprocess
 
 
@@ -25,49 +22,12 @@ def main():
             return
         enabled = not enabled if args.action == 'toggle' else args.action == 'on'
         current = (home / '.cache/theme/current').read_text().strip()
-        # Current Zen builds keep profiles under ~/.config/zen; older ones used ~/.zen.
-        root = next((r for r in (home / '.config/zen', home / '.zen') if (r / 'profiles.ini').is_file()),
-                    home / '.config/zen')
-        profiles = configparser.ConfigParser(interpolation=None)
-        profiles.read(root / 'profiles.ini')
-        selected = next((profiles[s]['Default'] for s in profiles.sections()
-                         if s.startswith('Install') and profiles[s].get('Default')), None)
-        if not selected:
-            selected = next((profiles[s]['Path'] for s in profiles.sections()
-                             if s.startswith('Profile') and profiles[s].get('Default') == '1'), None)
-        profile = root / selected if selected else None
-        if profile:
-            profile = profile.resolve()
-            if not profile.is_dir() or not profile.is_relative_to(root.resolve()):
-                parser.error('Invalid default Zen profile')
-            chrome = profile / 'chrome'
-            chrome.mkdir(exist_ok=True)
-            shutil.copy2(home / '.config/zen/userChrome.css', chrome / 'glass-chrome.css')
-            stylesheet = chrome / 'userChrome.css'
-            css = stylesheet.read_text() if stylesheet.exists() else ''
-            css = re.sub(r'/\* glass-mode:begin \*/.*?/\* glass-mode:end \*/\n?', '', css, flags=re.S)
-            if enabled:
-                # Imports precede rules, preserving existing customizations below.
-                css = '/* glass-mode:begin */\n@import "glass-chrome.css";\n/* glass-mode:end */\n' + css
-            stylesheet.write_text(css)
-            prefs = profile / 'user.js'
-            text = prefs.read_text() if prefs.exists() else ''
-            values = {'toolkit.legacyUserProfileCustomizations.stylesheets': 'true',
-                      'zen.widget.linux.transparency': str(enabled).lower(),
-                      'browser.tabs.allow_transparent_browser': 'false'}
-            for key, value in values.items():
-                text = re.sub(r'(?m)^user_pref\("' + re.escape(key) + r'",.*\);\n?', '', text)
-                text = text.rstrip('\n') + f'\nuser_pref("{key}", {value});\n'
-            temporary = prefs.with_suffix('.js.glass-tmp')
-            temporary.write_text(text)
-            temporary.chmod(0o600)
-            temporary.replace(prefs)
         state.write_text(('on' if enabled else 'off') + '\n')
         env = dict(os.environ)
         env.setdefault('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')
         env.setdefault('DBUS_SESSION_BUS_ADDRESS', f"unix:path={env['XDG_RUNTIME_DIR']}/bus")
         subprocess.run([str(home / '.local/bin/theme'), 'apply', current], env=env, check=True)
-        message = 'Glass mode ' + ('on' if enabled else 'off') + '. Restart Zen and reopen terminals to apply.'
+        message = 'Glass mode ' + ('on' if enabled else 'off') + '. Reopen terminals to apply.'
         print(message)
         try:
             subprocess.run(['notify-send', '-a', 'Glass mode', 'Glass mode', message], env=env, check=False)

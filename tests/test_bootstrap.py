@@ -79,7 +79,7 @@ class BootstrapTests(unittest.TestCase):
                      env=dict(os.environ, HOME=str(self.home), PATH=f'{binary}:/usr/bin:/bin'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Plan complete.', result.stdout)
-        self.assertIn('zen-browser/desktop', result.stdout)
+        self.assertIn('marvelousMarsupial/firefoxconfig v0.1.0: firefoxconfig_0.1.0_all.deb', result.stdout)
         self.assertIn('--skip-apt', result.stdout)
         self.assertIn('configure OpenSnitch UI socket:', result.stdout)
         self.assertIn('enable --now opensnitch.service', result.stdout)
@@ -176,17 +176,24 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual(urls, ['https://github.com/example/app/releases/download/v1/fixture.zip'])
             with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
                 setup.release_asset('example/app', 'fixture.zip', destination, 'v1', '0' * 64)
+            # A hosted package: {version} expands and the entry's url replaces GitHub.
+            setup.release_asset('example/app', 'app_{version}_all.deb', destination, 'v1.2',
+                                hashlib.sha256(payload).hexdigest(), 'https://packages.example/pool')
+            self.assertEqual(urls[-1], 'https://packages.example/pool/app_1.2_all.deb')
 
     def test_pins_cover_every_architecture_and_reject_bad_entries(self):
         releases = setup.pinned_releases()
         for assets in setup.ARCHITECTURES.values():
             self.assertIn(assets['yazi'], releases['yazi']['assets'])
-            self.assertIn(assets['zen'], releases['zen']['assets'])
         self.assertIn('CascadiaCode.zip', releases['font']['assets'])
-        self.assertEqual(releases['zen']['repository'], 'zen-browser/desktop')
+        browser = releases[setup.BROWSER_PACKAGE]
+        self.assertEqual(browser['repository'], 'marvelousMarsupial/firefoxconfig')
+        self.assertEqual(list(browser['assets']), ['firefoxconfig_{version}_all.deb'])
+        self.assertEqual(setup.asset_name('firefoxconfig_{version}_all.deb', 'v0.1.0'), 'firefoxconfig_0.1.0_all.deb')
         bad = self.home / 'releases.toml'
         for text, message in (('[yazi]\nrepository = "x"\ntag = "v1"\n', 'invalid repository'),
                               ('[yazi]\nrepository = "a/b"\ntag = "../x"\n', 'invalid tag'),
+                              ('[yazi]\nrepository = "a/b"\ntag = "v1"\nurl = "http://x/"\n', 'HTTPS'),
                               ('[yazi]\nrepository = "a/b"\ntag = "v1"\n[yazi.assets]\n"a.zip" = "short"\n',
                                'SHA-256')):
             bad.write_text(text)
@@ -209,16 +216,24 @@ class BootstrapTests(unittest.TestCase):
         self.assertFalse((self.home / 'outside').exists())
 
     def test_installed_applications_are_preserved(self):
-        zen = self.home / '.local/zen/zen'
-        zen.parent.mkdir(parents=True)
-        zen.write_text('existing browser')
+        pinned = setup.pinned_releases()[setup.BROWSER_PACKAGE]['tag'].removeprefix('v')
         with patch.object(setup.shutil, 'which', return_value='/bin/existing'), \
              patch.object(setup.subprocess, 'run') as command, \
+             patch.object(setup, 'installed_version', return_value=pinned), \
              patch.object(setup, 'release_asset') as download:
             command.return_value.stdout = 'CaskaydiaCove Nerd Font Mono'
             setup.applications(self.home, False)
             download.assert_not_called()
-        self.assertEqual(zen.read_text(), 'existing browser')
+
+    def test_installed_version_reads_dpkg_and_tolerates_its_absence(self):
+        query = subprocess.CompletedProcess([], 0, stdout='0.1.0\n', stderr='')
+        with patch.object(setup.subprocess, 'run', return_value=query) as command:
+            self.assertEqual(setup.installed_version('firefoxconfig'), '0.1.0')
+            self.assertEqual(command.call_args.args[0][:2], ['dpkg-query', '-W'])
+        with patch.object(setup.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, stdout='', stderr='')):
+            self.assertIsNone(setup.installed_version('firefoxconfig'))
+        with patch.object(setup.subprocess, 'run', side_effect=FileNotFoundError):
+            self.assertIsNone(setup.installed_version('firefoxconfig'))
 
     def test_failed_replacement_restores_previous_installation(self):
         dest = self.home / 'installed'
@@ -230,14 +245,17 @@ class BootstrapTests(unittest.TestCase):
         self.assertFalse(backup.exists())
 
     def test_fresh_home_installs_all_missing_applications(self):
-        def download(repository, name, destination, tag, digest):
+        pinned = setup.pinned_releases()[setup.BROWSER_PACKAGE]['tag'].removeprefix('v')
+        cache = self.home / '.cache/mozilla/firefox/abc.default-esr/startupCache'
+        cache.mkdir(parents=True)
+        (cache / 'scriptCache.bin').write_bytes(b'stale')
+
+        def download(repository, name, destination, tag, digest, url=None):
             self.assertRegex(digest, r'^[0-9a-f]{64}$')
-            if repository == 'zen-browser/desktop':
-                with tarfile.open(destination, 'w') as archive:
-                    item = tarfile.TarInfo('zen/zen')
-                    payload = b'#!/bin/sh\nexit 0\n'
-                    item.size, item.mode = len(payload), 0o755
-                    archive.addfile(item, io.BytesIO(payload))
+            if repository == 'marvelousMarsupial/firefoxconfig':
+                self.assertEqual(name, 'firefoxconfig_{version}_all.deb')
+                self.assertIsNone(url)
+                destination.write_bytes(b'!<arch>\ndeb fixture')
             else:
                 with zipfile.ZipFile(destination, 'w') as archive:
                     if repository == 'sxyazi/yazi':
@@ -247,22 +265,43 @@ class BootstrapTests(unittest.TestCase):
                         archive.writestr('CaskaydiaCoveNerdFont-Regular.ttf', 'fixture')
 
         with patch.object(setup.shutil, 'which', return_value=None), \
+             patch.object(setup, 'installed_version', side_effect=[None, pinned]), \
              patch.object(setup, 'release_asset', side_effect=download) as fetch, \
-             patch.object(setup, 'run'):
+             patch.object(setup, 'run') as command:
             setup.applications(self.home, False)
             self.assertEqual(fetch.call_count, 3)
-        for executable in ('.local/bin/yazi', '.local/bin/ya', '.local/zen/zen'):
+        installs = [call.args for call in command.call_args_list if call.args[:2] == ('sudo', 'dpkg')]
+        self.assertEqual(len(installs), 1)
+        self.assertEqual(installs[0][2], '-i')
+        self.assertEqual(Path(installs[0][3]).name, f'firefoxconfig_{pinned}_all.deb')
+        self.assertTrue(Path(installs[0][3]).is_relative_to(self.home / '.local'))
+        self.assertFalse(cache.exists())
+        for executable in ('.local/bin/yazi', '.local/bin/ya'):
             path = self.home / executable
             self.assertTrue(path.is_file())
             self.assertEqual(path.stat().st_mode & 0o777, 0o755)
         self.assertTrue(list((self.home / '.local/share/fonts').rglob('*.ttf')))
         self.assertEqual(list((self.home / '.local').glob('linux-config-*')), [])
 
+    def test_browser_package_that_does_not_install_stops_setup(self):
+        def download(repository, name, destination, tag, digest, url=None):
+            destination.write_bytes(b'!<arch>\ndeb fixture')
+        with patch.object(setup.shutil, 'which', return_value='/bin/existing'), \
+             patch.object(setup.subprocess, 'run') as command, \
+             patch.object(setup, 'installed_version', return_value=None), \
+             patch.object(setup, 'release_asset', side_effect=download), \
+             patch.object(setup, 'run'):
+            command.return_value.stdout = 'CaskaydiaCove Nerd Font Mono'
+            with self.assertRaisesRegex(ValueError, 'did not install'):
+                setup.applications(self.home, False)
+        self.assertEqual(list((self.home / '.local').glob('linux-config-*')), [])
+
     def test_each_architecture_requests_its_own_release_assets(self):
-        for machine, yazi, zen in (('x86_64', 'yazi-x86_64-unknown-linux-musl.zip', 'zen.linux-x86_64.tar.xz'),
-                                   ('aarch64', 'yazi-aarch64-unknown-linux-musl.zip', 'zen.linux-aarch64.tar.xz')):
+        for machine, yazi in (('x86_64', 'yazi-x86_64-unknown-linux-musl.zip'),
+                              ('aarch64', 'yazi-aarch64-unknown-linux-musl.zip')):
             with self.subTest(machine=machine), patch.object(setup.shutil, 'which', return_value=None), \
                  patch.object(setup.subprocess, 'run') as command, \
+                 patch.object(setup, 'installed_version', return_value=None), \
                  patch.object(setup, 'release_asset', side_effect=OSError('offline')) as download:
                 command.return_value.stdout = ''
                 with self.assertRaises(OSError):
@@ -270,7 +309,8 @@ class BootstrapTests(unittest.TestCase):
                 self.assertEqual(download.call_args.args[:2], ('sxyazi/yazi', yazi))
             with self.assertRaises(KeyError):
                 setup.applications(self.home, True, machine='armv7l')
-        self.assertEqual(setup.ARCHITECTURES['aarch64']['zen'], 'zen.linux-aarch64.tar.xz')
+        # The browser package is architecture independent, so it is not an architecture asset.
+        self.assertNotIn(setup.BROWSER_PACKAGE, setup.ARCHITECTURES['aarch64'])
 
     def test_release_helper_checks_and_bumps_pins(self):
         helper = importlib.machinery.SourceFileLoader('releases', str(REPO / 'scripts/releases')).load_module()
@@ -279,7 +319,8 @@ class BootstrapTests(unittest.TestCase):
         current = tomllib.loads(pins.read_text())
         newer = {name: ('v99', {asset: 'f' * 64 for asset in release['assets']})
                  for name, release in current.items()}
-        newer['zen'] = (current['zen']['tag'], {})
+        newer['font'] = (current['font']['tag'], {})
+        newer['firefoxconfig'] = ('v9.9.9', {'firefoxconfig_9.9.9_all.deb': 'e' * 64})
         with patch.object(helper, 'PINS', pins), patch.object(helper, 'latest', side_effect=lambda r: next(
                 newer[n] for n, rel in current.items() if rel['repository'] == r)), \
                 patch.object(sys, 'argv', ['releases', 'check']):
@@ -287,13 +328,21 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual(pins.read_text(), (REPO / 'releases.toml').read_text())
         with patch.object(helper, 'PINS', pins), patch.object(helper, 'latest', side_effect=lambda r: next(
                 newer[n] for n, rel in current.items() if rel['repository'] == r)), \
-                patch.object(sys, 'argv', ['releases', 'bump', 'yazi']):
+                patch.object(sys, 'argv', ['releases', 'bump', 'yazi', 'firefoxconfig']):
             self.assertEqual(helper.main(), 0)
         bumped = tomllib.loads(pins.read_text())
         self.assertEqual(bumped['yazi']['tag'], 'v99')
         self.assertEqual(set(bumped['yazi']['assets'].values()), {'f' * 64})
         self.assertEqual(bumped['font'], current['font'])
-        self.assertEqual(bumped['zen'], current['zen'])
+        # The versioned asset name stays a template; the digest is the new release's.
+        self.assertEqual(bumped['firefoxconfig'], {'repository': current['firefoxconfig']['repository'],
+                                                    'tag': 'v9.9.9',
+                                                    'assets': {'firefoxconfig_{version}_all.deb': 'e' * 64}})
+        setup.pinned_releases(pins)
+        # A hosted entry keeps its url through a rewrite.
+        bumped['firefoxconfig']['url'] = 'https://packages.example/pool'
+        pins.write_text(helper.render(bumped))
+        self.assertEqual(tomllib.loads(pins.read_text())['firefoxconfig']['url'], 'https://packages.example/pool')
         setup.pinned_releases(pins)
 
     def test_vm_packages_are_x86_only_and_host_settings_follow_them(self):
@@ -317,10 +366,11 @@ class BootstrapTests(unittest.TestCase):
     def test_other_username_is_rendered_and_repeat_install_is_clean(self):
         result = run(str(REPO / 'scripts/install'), '--home', str(self.home))
         self.assertEqual(result.returncode, 0, result.stderr)
-        for rel in ('.config/theme/config.toml', '.local/share/applications/zen.desktop'):
+        for rel in ('.local/share/applications/firefox-esr.desktop',):
             content = (self.home / rel).read_text()
             self.assertNotIn('/home/user/', content)
             self.assertIn(str(self.home), content)
+        self.assertNotIn('/home/', (self.home / '.config/theme/config.toml').read_text())
         # The Sway config needs no rendering: its exec commands expand a tilde.
         sway = (self.home / '.config/sway/config').read_text()
         self.assertNotIn('/home/', sway)

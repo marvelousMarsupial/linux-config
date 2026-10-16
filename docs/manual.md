@@ -4,14 +4,13 @@
 
 After `./scripts/setup`. Follow the links only when you need details.
 
-- [ ] **Restart:** reboot or log out and back in, then fully restart Zen.
+- [ ] **Restart:** reboot or log out and back in, then fully restart Firefox.
 - [ ] **Shell:** open a new terminal; test prefix Up/Down, Ctrl+R, grey
   suggestions, Tab selection and cancel, and directory/file previews.
   [Shell](shell.md)
-- [ ] **Browser:** check all four extensions in `about:addons`.
-- [ ] **Surfingkeys:** paste `~/.surfingkeys.js` into advanced settings and save.
-  Reload a webpage; test `jj`, `t` and `f`. Repeat after config edits.
-  [Browser](browser.md)
+- [ ] **Browser:** check the extensions in `about:addons` and the policies in
+  `about:policies`, then follow the firefoxconfig README for Surfingkeys and
+  the other first-start steps. [Browser](browser.md)
 - [ ] **KeePassXC:** open or create your database, connect the browser
   extension, approve pairing, and test filling a login. [Passwords](passwords.md)
 - [ ] **Monitors:** adjust `~/.config/kanshi/config` for this machine. Put

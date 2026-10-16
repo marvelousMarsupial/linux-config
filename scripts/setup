@@ -22,9 +22,12 @@ REPO = Path(__file__).resolve().parent.parent
 # Release assets per CPU architecture. packages.<machine>.txt adds packages for
 # that machine only; today that is the VM stack, which stays off the Raspberry Pi.
 ARCHITECTURES = {
-    'x86_64': {'yazi': 'yazi-x86_64-unknown-linux-musl.zip', 'zen': 'zen.linux-x86_64.tar.xz'},
-    'aarch64': {'yazi': 'yazi-aarch64-unknown-linux-musl.zip', 'zen': 'zen.linux-aarch64.tar.xz'},
+    'x86_64': {'yazi': 'yazi-x86_64-unknown-linux-musl.zip'},
+    'aarch64': {'yazi': 'yazi-aarch64-unknown-linux-musl.zip'},
 }
+# The Firefox configuration is a .deb built by its own repository; the asset
+# name follows the pinned tag.
+BROWSER_PACKAGE = 'firefoxconfig'
 PORTAL_COMMIT = 'cb8cec0b30aa6e2cc36b1b5cb34d6dc9a1face29'
 
 
@@ -36,6 +39,8 @@ def pinned_releases(path=REPO / 'releases.toml'):
             raise ValueError(f'{name}: invalid repository in releases.toml')
         if not re.fullmatch(r'[\w.+-]+', release.get('tag', '')):
             raise ValueError(f'{name}: invalid tag in releases.toml')
+        if 'url' in release and not re.fullmatch(r'https://[\w.-]+(/[\w.+-]+)*', release['url']):
+            raise ValueError(f'{name}: url must be an HTTPS location without a trailing slash')
         for asset, digest in release.get('assets', {}).items():
             if not re.fullmatch(r'[0-9a-f]{64}', digest):
                 raise ValueError(f'{name}: {asset} needs a SHA-256 digest in releases.toml')
@@ -60,9 +65,15 @@ def request(url):
     return response
 
 
-def release_asset(repository, name, destination, tag, expected):
+def asset_name(name, tag):
+    """Expand {version} in a pinned asset name to the tag without its leading v."""
+    return name.replace('{version}', tag.removeprefix('v'))
+
+
+def release_asset(repository, name, destination, tag, expected, url=None):
     """Download one pinned release asset and verify it against the reviewed digest."""
-    url = f'https://github.com/{repository}/releases/download/{tag}/{name}'
+    name = asset_name(name, tag)
+    url = f'{url}/{name}' if url else f'https://github.com/{repository}/releases/download/{tag}/{name}'
     digest = hashlib.sha256()
     with request(url) as response, destination.open('wb') as output:
         while chunk := response.read(1024 * 1024):
@@ -107,37 +118,61 @@ def replace(source, destination, backup):
         raise
 
 
+def installed_version(package):
+    """Version dpkg has for a package, or None when it is not installed."""
+    try:
+        result = subprocess.run(['dpkg-query', '-W', '-f', '${Version}', package], capture_output=True, text=True)
+    except FileNotFoundError:
+        return None
+    return result.stdout.strip() if result.returncode == 0 and result.stdout.strip() else None
+
+
 def applications(home, dry, machine=None):
     assets = ARCHITECTURES[machine or platform.machine()]
     # Temporary directory is on the same filesystem as the installed applications.
     local = home / '.local'
     if not dry:
         local.mkdir(exist_ok=True)
+    releases = pinned_releases()
     wanted = []
     if not shutil.which('yazi') or not shutil.which('ya'):
         wanted.append(('sxyazi/yazi', assets['yazi'], 'yazi'))
-    if not (local / 'zen/zen').is_file():
-        wanted.append(('zen-browser/desktop', assets['zen'], 'zen'))
+    browser = releases[BROWSER_PACKAGE]
+    if installed_version(BROWSER_PACKAGE) != browser['tag'].removeprefix('v'):
+        wanted.append((browser['repository'], next(iter(browser['assets'])), BROWSER_PACKAGE))
     fontdir = local / 'share/fonts/CaskaydiaCove'
     fonts = subprocess.run(['fc-match', '-f', '%{family}', 'CaskaydiaCove Nerd Font'],
                            capture_output=True, text=True).stdout if shutil.which('fc-match') else ''
     if 'CaskaydiaCove' not in fonts or 'Nerd Font' not in fonts:
         wanted.append(('ryanoasis/nerd-fonts', 'CascadiaCode.zip', 'font'))
-    releases = pinned_releases()
     for repository, asset, kind in wanted:
         pin = releases[kind]
         if pin['repository'] != repository or asset not in pin['assets']:
             raise ValueError(f'releases.toml has no digest for {repository}/{asset}')
-        print(f'Install missing {kind} from pinned release {repository} {pin["tag"]}: {asset}', flush=True)
+        print(f'Install missing {kind} from pinned release {repository} {pin["tag"]}: '
+              f'{asset_name(asset, pin["tag"])}', flush=True)
         if dry:
             continue
         with tempfile.TemporaryDirectory(prefix='linux-config-', dir=local) as temporary:
             temporary = Path(temporary)
             archive = temporary / 'release'
-            release_asset(repository, asset, archive, pin['tag'], pin['assets'][asset])
+            release_asset(repository, asset, archive, pin['tag'], pin['assets'][asset], pin.get('url'))
+            stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+            if kind == BROWSER_PACKAGE:
+                package = temporary / asset_name(asset, pin['tag'])
+                archive.rename(package)
+                # Firefox must be closed: the package replaces its startup scripts.
+                if subprocess.run(['pgrep', '-x', 'firefox-esr'], capture_output=True).returncode == 0:
+                    raise ValueError(f'Close Firefox before setup installs {BROWSER_PACKAGE}')
+                run('sudo', 'dpkg', '-i', package)
+                if installed_version(BROWSER_PACKAGE) != pin['tag'].removeprefix('v'):
+                    raise ValueError(f'{BROWSER_PACKAGE} {pin["tag"]} did not install')
+                # Firefox caches autoconfig scripts per profile; drop the cache so the new ones load.
+                for cache in (home / '.cache/mozilla/firefox').glob('*/startupCache'):
+                    shutil.rmtree(cache)
+                continue
             unpack(archive, temporary / 'extracted')
             extracted = temporary / 'extracted'
-            stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
             if kind == 'yazi':
                 for binary in ('yazi', 'ya'):
                     matches = list(extracted.rglob(binary))
@@ -149,12 +184,6 @@ def applications(home, dry, machine=None):
                     source = next(extracted.rglob(binary))
                     dest = local / 'bin' / binary
                     replace(source, dest, local / f'state/linux-config/backups/{stamp}/.local/bin/{binary}')
-            elif kind == 'zen':
-                source = extracted / 'zen'
-                if not (source / 'zen').is_file():
-                    raise ValueError('Missing Zen executable')
-                run(source / 'zen', '--version')
-                replace(source, local / 'zen', local / f'zen.backup.{stamp}')
             else:
                 if not list(extracted.rglob('*.ttf')):
                     raise ValueError('Missing font files')
@@ -335,7 +364,7 @@ def main():
             timer_link.symlink_to('../sysreport.timer')
         print('No user bus: log in to the desktop to load user services')
     run('bash', REPO / 'scripts/install-receipt', REPO, home, 'setup', dry=args.dry_run)
-    print('Plan complete.' if args.dry_run else 'Setup complete. Log out/in (or reboot) to apply groups, shell and portals; restart Zen.')
+    print('Plan complete.' if args.dry_run else 'Setup complete. Log out/in (or reboot) to apply groups, shell and portals; restart Firefox.')
     print('Disk encryption, lid rules and hardware tests remain separate; see docs/installation.md.')
 
 

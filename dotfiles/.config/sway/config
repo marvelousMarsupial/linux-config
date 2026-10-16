@@ -218,8 +218,8 @@ bindsym $mod+Return exec $bin/terminal
 # Launcher (Space is easy to hit)
 bindsym $mod+Space exec $menu
 
-# Browser installed separately at ~/.local/zen/zen.
-bindsym --to-code $mod+b exec $bin/zen
+# Firefox ESR through the repo launcher, which turns on the portal file picker.
+bindsym --to-code $mod+b exec $bin/firefox
 
 # Notes - new vim note (foot+nvim with timestamp filename)
 bindsym $mod+n exec $bin/notes-toggle

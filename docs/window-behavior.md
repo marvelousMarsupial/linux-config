@@ -55,14 +55,13 @@ After installing an updated guard:
 systemctl --user restart sway-popup-guard.service
 ```
 
-Or log out and back in. Restarting Zen alone does not reload the guard.
+Or log out and back in. Restarting the browser alone does not reload the guard.
 
 ## Fullscreen limits
 
-Sway hides the wallpaper behind native fullscreen. Zen paints a local copy of
-the wallpaper behind its chrome in that state; Foot has no image-background
-setting, so a fullscreen terminal looks solid. Preserving the pattern behind a
-fullscreen terminal would need compositor support.
+Sway hides the wallpaper behind native fullscreen. Foot has no image-background
+setting, so a fullscreen window looks solid. Preserving the pattern behind a
+fullscreen window would need compositor support.
 
 ## Touchpad gestures and status panel
 

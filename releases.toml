@@ -1,5 +1,8 @@
 # Upstream releases installed by scripts/setup, pinned by tag and SHA-256.
 # Review release notes, then update with scripts/releases (check, bump).
+# An asset name may contain {version}, the tag without its leading v.
+# An optional url replaces the GitHub download location for an entry: assets
+# are then fetched from <url>/<asset>; check and bump still read GitHub.
 
 [yazi]
 repository = "sxyazi/yazi"
@@ -9,13 +12,12 @@ tag = "v26.9.1"
 "yazi-x86_64-unknown-linux-musl.zip" = "9b9c39decccf8cb0ff53a7d637d38f8a79d93bbd0099f4ea9c619ef6bb392f5d"
 "yazi-aarch64-unknown-linux-musl.zip" = "dd569daecaae914185f295634109295ccd25c1b42b02eb89a74f651970024f2e"
 
-[zen]
-repository = "zen-browser/desktop"
-tag = "1.23.2b"
+[firefoxconfig]
+repository = "marvelousMarsupial/firefoxconfig"
+tag = "v0.1.0"
 
-[zen.assets]
-"zen.linux-x86_64.tar.xz" = "5e67f4fa081b1b437243c464449ea1bd2a3b15b6f932487a8aa0c25aa8514600"
-"zen.linux-aarch64.tar.xz" = "96971f099c0adeae6a2edb4e128596d0706df974ac279b5ecde2aa93b07621d8"
+[firefoxconfig.assets]
+"firefoxconfig_{version}_all.deb" = "7e4d0a23a161bb5c4335917f1957a8a5529e8932e1f7271b905669b1ebd766a3"
 
 [font]
 repository = "ryanoasis/nerd-fonts"

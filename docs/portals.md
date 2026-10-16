@@ -34,10 +34,11 @@ intentional rebuild. Then run `./scripts/install` from the repo root.
 
 ## Activate and use
 
-Fully log out of Sway and back in, then start Zen through the repo launcher.
-The launcher sets Wayland and relies on Mozilla's default
-`widget.use-xdg-desktop-portal.file-picker=2` (automatic). If that preference
-was customized, set it to **1** in `about:config`.
+Fully log out of Sway and back in, then start Firefox through the repo
+launcher (`~/.local/bin/firefox`, Super+B). The launcher sets `GTK_USE_PORTAL=1`,
+which Mozilla's default `widget.use-xdg-desktop-portal.file-picker=2`
+(automatic) honors. If that preference was customized, set it to **1** in
+`about:config`.
 
 Yazi opens in a separate floating Foot window. Enter selects a file; Space
 selects several before confirming a multiple-file request. For saving, the
@@ -54,7 +55,7 @@ containing newlines are unsupported by the line-based wrapper protocol.
 Confirmed by the user and regressed before; preserve it when changing portal,
 Sway or window rules.
 
-- Opening an upload or save picker from fullscreen Zen first leaves Sway
+- Opening an upload or save picker from fullscreen Firefox first leaves Sway
   fullscreen, then shows Yazi in a centered, focused floating Foot window.
 - Selecting a file or cancelling closes the picker and restores the original
   fullscreen, unless another window has since been made fullscreen.
@@ -64,8 +65,8 @@ Sway or window rules.
 
 ## Verify on the live desktop
 
-- In Zen, test Ctrl+O and a web upload with one and several files.
-- Repeat an upload while Zen is fullscreen; check restoration after selection
+- In Firefox, test Ctrl+O and a web upload with one and several files.
+- Repeat an upload while Firefox is fullscreen; check restoration after selection
   and after cancel.
 - Test Save As to a new filename, cancel, and overwrite of a disposable file.
 - Test directory upload and cancellation.
@@ -80,12 +81,13 @@ Sway or window rules.
 
 To return to GTK dialogs, set `org.freedesktop.impl.portal.FileChooser=gtk` in
 `~/.config/xdg-desktop-portal/sway-portals.conf`, then log out and back in and
-restart Zen.
+restart Firefox.
 
 Status: the user confirmed a single-file upload through Yazi and the
-fullscreen exit and reveal. Offline tests cover literal filenames, single and
-multiple selection, cancellation, directory fallback cleanup and the Zen
-launcher environment. Save and overwrite, directory requests, screen sharing
+fullscreen exit and reveal, on the earlier Zen setup. Offline tests cover
+literal filenames, single and multiple selection, cancellation, directory
+fallback cleanup and the Firefox launcher environment. The Firefox picker
+still needs a live check. Save and overwrite, directory requests, screen sharing
 and fullscreen restoration after selection and cancel still need live checks.
 
 ## Sources

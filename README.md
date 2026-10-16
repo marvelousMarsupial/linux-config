@@ -19,7 +19,8 @@ Raspberry Pi 4 or 5, run as your normal user from the checkout:
 ./scripts/setup
 ```
 
-Setup installs Debian packages, missing Yazi/Zen/font releases, the pinned Yazi
+Setup installs Debian packages, missing Yazi/font releases, the pinned Firefox
+configuration package, the pinned Yazi
 portal backend, fzf-tab, Neovim and plugins, user configs, initial colors, group
 permissions, the zsh login shell, the incoming firewall and the automatic-update
 policy. It requires sudo and network access. Review required incoming access in

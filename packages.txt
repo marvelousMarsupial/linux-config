@@ -10,6 +10,7 @@ brightnessctl
 btop
 ca-certificates
 chromium
+firefox-esr
 curl
 dbus-user-session
 eza

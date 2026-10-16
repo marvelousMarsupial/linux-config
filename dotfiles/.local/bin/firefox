@@ -1,0 +1,5 @@
+#!/bin/sh
+# Firefox ESR from Debian, configured by the firefoxconfig package that
+# scripts/setup installs. GTK_USE_PORTAL makes Mozilla's automatic file-picker
+# setting use the desktop portal, so upload and save dialogs open Yazi.
+exec env MOZ_ENABLE_WAYLAND=1 GTK_USE_PORTAL=1 firefox-esr "$@"

@@ -86,7 +86,7 @@ def main():
     if args.command == 'apply':
         current.parent.mkdir(parents=True, exist_ok=True)
         current.write_text(name + '\n')
-        print(f'Applied {name}\nReload Sway, reopen editors, and restart Zen')
+        print(f'Applied {name}\nReload Sway and reopen editors')
 
 
 if __name__ == '__main__':

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Firefox ESR
+Comment=Browse the World Wide Web
+Exec=/home/user/.local/bin/firefox %u
+Icon=firefox-esr
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+StartupWMClass=firefox-esr

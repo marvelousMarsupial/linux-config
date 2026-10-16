@@ -1,8 +1,0 @@
-#!/bin/sh
-# Install Zen separately into ~/.local/zen.
-# Mozilla's default file-picker preference (2/auto) honors GTK_USE_PORTAL.
-# Sync after the first launch creates a profile, and before subsequent launches.
-if [ -x "$HOME/.local/bin/zen-theme-sync" ] && [ -f "$HOME/.config/zen/system-theme.css" ]; then
-    "$HOME/.local/bin/zen-theme-sync" || printf '%s\n' 'Zen theme sync failed; see the error above.' >&2
-fi
-exec env MOZ_ENABLE_WAYLAND=1 GTK_USE_PORTAL=1 "$HOME/.local/zen/zen" "$@"

@@ -35,12 +35,22 @@ def latest(repository):
     return tag, digests
 
 
+def expand(asset, tag):
+    """Asset names may contain {version}, the tag without its leading v."""
+    return asset.replace('{version}', tag.removeprefix('v'))
+
+
 def render(releases):
     lines = ['# Upstream releases installed by scripts/setup, pinned by tag and SHA-256.',
-             '# Review release notes, then update with scripts/releases (check, bump).']
+             '# Review release notes, then update with scripts/releases (check, bump).',
+             '# An asset name may contain {version}, the tag without its leading v.',
+             '# An optional url replaces the GitHub download location for an entry: assets',
+             '# are then fetched from <url>/<asset>; check and bump still read GitHub.']
     for name, release in releases.items():
-        lines += ['', f'[{name}]', f'repository = "{release["repository"]}"', f'tag = "{release["tag"]}"',
-                  '', f'[{name}.assets]']
+        lines += ['', f'[{name}]', f'repository = "{release["repository"]}"', f'tag = "{release["tag"]}"']
+        if release.get('url'):
+            lines.append(f'url = "{release["url"]}"')
+        lines += ['', f'[{name}.assets]']
         lines += [f'"{asset}" = "{digest}"' for asset, digest in release['assets'].items()]
     return '\n'.join(lines) + '\n'
 
@@ -63,7 +73,7 @@ def main():
             print(f'{name}: {tag} is current')
             continue
         behind = True
-        missing = [asset for asset in release['assets'] if asset not in digests]
+        missing = [asset for asset in release['assets'] if expand(asset, tag) not in digests]
         if missing:
             print(f'{name}: {release["tag"]} -> {tag} is missing published digests for {", ".join(missing)}')
             continue
@@ -71,7 +81,7 @@ def main():
             print(f'{name}: {release["tag"]} -> {tag} available')
             continue
         release['tag'] = tag
-        release['assets'] = {asset: digests[asset] for asset in release['assets']}
+        release['assets'] = {asset: digests[expand(asset, tag)] for asset in release['assets']}
         print(f'{name}: pinned {tag}')
     if args.command == 'bump':
         PINS.write_text(render(releases))

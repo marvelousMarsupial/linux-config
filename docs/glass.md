@@ -2,27 +2,23 @@
 
 [Documentation index](README.md)
 
-Glass mode makes the desktop and Zen's browser chrome translucent over a
-patterned wallpaper. Off is the default on a fresh install: a solid wallpaper,
-opaque surfaces, no texture generation and no managed Zen import.
+Glass mode makes the desktop translucent over a patterned wallpaper. Off is
+the default on a fresh install: a solid wallpaper, opaque surfaces and no
+texture generation. The browser is not part of glass mode.
 
 ## One switch
 
 `glass-mode on`, `glass-mode off`, `glass-mode toggle` and `glass-mode status`
-control desktop and Zen glass together. The same switch sits in the
+control desktop glass. The same switch sits in the
 **Appearance** popup on **Super+G**. State lives in
 `~/.config/theme/glass-mode`; no file means off.
 
-Switching re-applies the current palette. Restart Zen and reopen terminals
-afterward; reopen launchers and GTK apps as needed. Running apps stay open and
+Switching re-applies the current palette. Reopen terminals afterward; reopen
+launchers and GTK apps as needed. Running apps stay open and
 the palette is kept.
 
 ## What becomes translucent
 
-- Zen chrome uses an 8% base00 tint. The floating sidebar uses 38% with 8 px
-  blur; the expanded search uses 24% with 14 px blur. Web pages stay opaque:
-  the preference that would let pages be transparent is forced off. Only Zen's
-  empty-tab placeholder is cleared.
 - Tiled Foot windows are untinted. Floating Foot windows, including upload and
   save pickers, use at least 60% opacity so text stays readable over pages. The
   popup guard updates this when a window changes between floating and tiled.
@@ -32,9 +28,7 @@ the palette is kept.
 - Mako and GTK backgrounds stay about 72% opaque. Text is always opaque. The
   lock screen stays solid.
 
-Standard Sway has no compositor blur. Zen blurs its own content behind its
-overlays using the Natsumi clip workaround; attribution is in
-`licenses/natsumi-MIT.txt`.
+Standard Sway has no compositor blur, so surfaces are tinted, not blurred.
 
 ## Wallpaper styles
 
@@ -56,22 +50,14 @@ command without a style regenerates the current one, and `--output` previews
 without changing anything. Every theme apply regenerates the wallpaper from
 base00 and keeps the style. With glass off the command sets a solid color.
 
-Sway hides the wallpaper behind a native fullscreen window. Zen paints a local
-copy of the same image behind its chrome in that state; Foot has no equivalent
-setting, so a fullscreen terminal looks solid.
+Sway hides the wallpaper behind a native fullscreen window; Foot has no
+image-background setting, so a fullscreen window looks solid.
 
 ## Implementation and rollback
 
-Theme sources live in `dotfiles/.config/theme/`; Zen CSS in
-`dotfiles/.config/zen/userChrome.css`. The default Zen profile is read from
-`profiles.ini` under `~/.config/zen`, or `~/.zen` for older Zen builds. The
-switch installs a managed import in that profile's `userChrome.css` and sets
-three preferences in its
-`user.js`: legacy stylesheet support on, Linux chrome transparency to match the
-mode, and page transparency off. Every theme apply also runs `zen-theme-sync`,
-which copies the generated palette CSS into the profile. Its import precedes
-the glass import so glass wins for translucency. Other CSS and preferences are
-preserved.
+Theme sources live in `dotfiles/.config/theme/`. The switch writes the state
+file and re-applies the palette; the templates read the state to pick opaque
+or translucent colors.
 
 `glass-mode off` is the rollback. The older snapshot tool from the first
 transparency trial is retired; any backups it left live in
@@ -88,6 +74,3 @@ smaller and a larger monitor, and check mixed scaling and rotation. Generated
 tile size, repeated dot pixels and the Sway tile configuration were verified on
 a 1280 by 800 virtual display.
 
-Sources: [Zen preferences](https://docs.zen-browser.app/guides/about-config-flags),
-[Transparent Zen](https://github.com/sameerasw/zen-themes/tree/main/TransparentZen),
-[Natsumi sidebar CSS](https://github.com/Psychosoc1al/natsumi/blob/main/natsumi/modules/sidebars.css).

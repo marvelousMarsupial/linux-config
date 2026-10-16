@@ -115,13 +115,12 @@ class CommandTests(CommandSandbox):
                 self.assertFalse((self.home / 'vault').exists())
                 self.assertFalse(any(e['name'] == 'foot' for e in self.events()))
 
-    def test_zen_argument_forwarding_and_wayland(self):
-        binary = self.home / '.local/zen/zen'
-        binary.parent.mkdir(parents=True)
-        binary.symlink_to(self.stub('zen-fixture'))
-        result = self.execute('zen', 'https://example.invalid/a?x=1&y=2', 'two words')
+    def test_firefox_launcher_forwards_arguments_with_portal_and_wayland(self):
+        self.stub('firefox-esr')
+        result = self.execute('firefox', 'https://example.invalid/a?x=1&y=2', 'two words')
         self.assertEqual(result.returncode, 0, result.stderr)
         event = self.events()[0]
+        self.assertEqual(event['name'], 'firefox-esr')
         self.assertEqual(event['args'], ['https://example.invalid/a?x=1&y=2', 'two words'])
         self.assertEqual(event['wayland'], '1')
         self.assertEqual(event['portal'], '1')

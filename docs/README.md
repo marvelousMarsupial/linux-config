@@ -24,13 +24,13 @@ LESSONS, and dated evidence in the security audit and testing documents.
 | Document | Purpose |
 | --- | --- |
 | [Appearance](appearance.md) | Palettes, typography, dark defaults and the theme picker. |
-| [Glass mode](glass.md) | Translucent desktop and Zen chrome, wallpaper styles and rollback. |
+| [Glass mode](glass.md) | Translucent desktop, wallpaper styles and rollback. |
 | [Window behavior](window-behavior.md) | Fullscreen, floating dialogs, the popup guard and touchpad gestures. |
 | [Notifications](notifications.md) | Searchable Mako history and desktop shortcut. |
-| [Portals](portals.md) | Sway screen sharing and Zen file dialogs through Yazi. |
+| [Portals](portals.md) | Sway screen sharing and Firefox file dialogs through Yazi. |
 | [VPN](vpn.md) | WireGuard and Tailscale toggle that fails off. |
-| [Passwords](passwords.md) | KeePassXC shortcut, scratchpad and Zen browser integration. |
-| [Browser](browser.md) | Zen extensions, first-launch defaults and tracked Surfingkeys settings. |
+| [Passwords](passwords.md) | KeePassXC shortcut, scratchpad and Firefox integration. |
+| [Browser](browser.md) | Firefox ESR with the pinned firefoxconfig package and the portal launcher. |
 | [Editor](editor.md) | Neovim setup, optional development tools, operator symbols and daily use. |
 | [Shell](shell.md) | Prefix history, suggestions, fuzzy Tab/Ctrl+R search and the Git prompt. |
 

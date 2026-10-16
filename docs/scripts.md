@@ -28,7 +28,7 @@ with executable permissions. Repository maintenance commands live in `scripts/`.
 | battery-monitor | Validates thresholds and polling interval; tolerates notification failures; no repeated warnings after a critical one. |
 | brightness | Changes screen backlights in 10 percent steps; shows failures; never falls back to keyboard LEDs. |
 | desktop-appearance | Publishes the dark desktop and GTK preferences at Sway start and reload. |
-| glass-mode | Switches desktop and Zen glass together, re-applies the palette, tolerates a missing notification daemon. |
+| glass-mode | Switches desktop glass, re-applies the palette, tolerates a missing notification daemon. |
 | keepass-toggle | Super+P launches KeePassXC, focuses its window or toggles it into the scratchpad. |
 | keybinds | Static shortcut help. Super+Shift+/ launches it, hides it in the scratchpad when focused, or shows it again. |
 | launcher | Quoted argument forwarding; keeps inherited XDG data directories. |
@@ -48,7 +48,7 @@ with executable permissions. Repository maintenance commands live in `scripts/`.
 | wallpaper-texture | Generates the palette-colored wallpaper; dots by default; solid color when glass is off. |
 | wifi-menu | Preserves saved profiles on failure; passwords go through nmcli's stdin; bounded connection timeout. |
 | vpn-menu | Super+Shift+W toggles WireGuard profiles and Tailscale; imports configs with autoconnect off; `off` runs at session start. See [VPN](vpn.md). |
-| zen, zen-theme-sync | Browser launcher; copies generated colors into the default Zen profile while preserving custom CSS and preferences. |
+| firefox | Browser launcher: runs firefox-esr with the portal file picker enabled and arguments forwarded. |
 
 The integration suite uses temporary homes and command stubs for disruptive
 actions. Wi-Fi authentication, VM launches, session and power changes,

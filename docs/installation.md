@@ -29,11 +29,12 @@ sudo or file changes. A normal run, in order:
   up previous files, then enables and reloads nftables. A failed check stops
   setup. Review the [firewall policy](firewall.md) before running setup,
   especially over a remote connection.
-- Installs missing Yazi/ya, Zen and CaskaydiaCove Nerd Font from the GitHub
+- Installs missing Yazi/ya and CaskaydiaCove Nerd Font from the GitHub
   releases pinned in `releases.toml`, choosing the x86_64 or aarch64 build to
-  match the machine. Each download is checked against the recorded SHA-256
-  before extraction; a mismatch stops setup. See [updates](updates.md) for
-  bumping the pins.
+  match the machine, and the pinned firefoxconfig `.deb` when the installed
+  version differs. Each download is checked against the recorded SHA-256
+  before extraction or `dpkg -i`; a mismatch stops setup. See
+  [updates](updates.md) for bumping the pins and [browser](browser.md).
 - Calls `setup-shell` to install the pinned fzf-tab plugin. See [shell](shell.md).
 - Builds termfilechooser at the pinned upstream commit from temporary sources
   and installs it into `/usr`. Build dependencies remain installed. A marker
@@ -61,7 +62,7 @@ stay applied. Changed user files have the config installer's backups, replaced
 application files have dated backups, and no packages are purged. No running
 desktop or browser is restarted.
 
-Log out and back in, or reboot, then launch Zen normally. The script does not
+Log out and back in, or reboot, then launch Firefox normally. The script does not
 configure disk encryption, firmware, new monitor layouts, lid policy, VM
 networks/storage or hardware-specific drivers. Those are covered below or in
 the [manual checklist](manual.md).
@@ -165,16 +166,14 @@ its panel type before changing kernel settings.
 
 ## Separately installed applications
 
-Setup installs missing Yazi/ya, Zen and CaskaydiaCove Nerd Font from official
-releases. For config-only installs, provide those yourself. Zen's wrapper
-expects `~/.local/zen/zen`. Flatpak is not installed by the package list; if
+Setup installs missing Yazi/ya and CaskaydiaCove Nerd Font from official
+releases, and the firefoxconfig package from its release. For config-only
+installs, provide those yourself. Flatpak is not installed by the package list; if
 you add it yourself, the launcher already lists its applications. No
 application binaries or fonts are bundled by this repository.
 
-Zen's config installer installs uBlock Origin, Dark Reader, Surfingkeys and
-KeePassXC-Browser through browser policies on the next browser startup, skips
-the welcome screen and sets dark defaults before the first launch. See
-[browser](browser.md).
+Firefox extensions, policies and preferences come from the firefoxconfig
+package, not from this repository. See [browser](browser.md).
 
 Run `./scripts/setup-editor` for Neovim and its plugins; see [editor](editor.md)
 for the optional development tools. Debian calls bat and fd `batcat` and

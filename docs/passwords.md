@@ -1,9 +1,9 @@
-# KeePassXC and Zen
+# KeePassXC and Firefox
 
 [Documentation index](README.md)
 
 The intended workflow is Super+P to open/unlock KeePassXC, then use the
-KeePassXC-Browser extension in Zen to fill logins. Super+P hides a focused
+KeePassXC-Browser extension in Firefox to fill logins. Super+P hides a focused
 KeePassXC window in the Sway scratchpad and shows it again on the next press.
 Hiding does not lock or quit KeePassXC. A window on another workspace is focused
 there. New KeePassXC windows float and are centered.
@@ -15,18 +15,18 @@ there. New KeePassXC windows float and are centered.
    master password in the application. Keep the database and master password out
    of this repository and chat. KeePassXC remembers the last database.
 3. Install [KeePassXC-Browser for Firefox](https://addons.mozilla.org/firefox/addon/keepassxc-browser/)
-   in Zen. Pin its toolbar button for convenient access.
+   in Firefox; the firefoxconfig package installs it by policy. Pin its
+   toolbar button for convenient access.
 4. With the database unlocked, click the extension and choose **Connect**. Give
-   the connection a recognizable name such as `Zen on Debian` and approve it in
+   the connection a recognizable name such as `Firefox on Debian` and approve it in
    KeePassXC. This pairing is stored in your database.
 5. Test with a disposable login whose URL matches the test website. Approve the
    initial request in KeePassXC, then use the extension's fill button. The usual
-   Firefox extension shortcut is Ctrl+Shift+U; check Zen's extension shortcuts if
+   Firefox extension shortcut is Ctrl+Shift+U; check the extension shortcuts if
    it conflicts. Keep automatic submission off so you can review the filled form.
 
 Browser integration uses `/usr/bin/keepassxc-proxy` and the Firefox native
-messaging manifest in `~/.mozilla/native-messaging-hosts/`. Native Zen uses this
-Firefox directory. The extension talks to the local app; the app must be running
+messaging manifest in `~/.mozilla/native-messaging-hosts/`. The extension talks to the local app; the app must be running
 and the database unlocked. Pairing and first-site approvals are interactive.
 
 ## Defaults and existing settings
@@ -60,5 +60,4 @@ prove that integration works.
 
 Sources: [KeePassXC browser setup](https://keepassxc.org/docs/KeePassXC_GettingStarted#_setup_browser_integration),
 [upstream native messaging implementation](https://github.com/keepassxreboot/keepassxc/blob/2.7.10/src/browser/NativeMessageInstaller.cpp),
-[Zen native messaging directory](https://github.com/zen-browser/desktop/issues/10622),
 [official downloads](https://keepassxc.org/download/).

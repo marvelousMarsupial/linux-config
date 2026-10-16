@@ -82,12 +82,14 @@ For an immediate real run after reviewing the dry run, use
 
 Periodically review the remaining updates with `sudo apt-get update` and
 `apt list --upgradable`, then apply them interactively with `sudo apt upgrade`.
-Update Zen, Yazi, Neovim, plugins and other separately installed tools through
+Update Yazi, Neovim, plugins and other separately installed tools through
 their own installation methods. They are not covered by APT automation.
+Firefox itself is a Debian package; its configuration package follows the pin
+below.
 
 ## Pinned upstream releases
 
-Yazi, Zen and the Nerd Font are installed from the release tags and SHA-256
+Yazi, the Nerd Font and the firefoxconfig package are installed from the release tags and SHA-256
 digests recorded in `releases.toml`, so a setup run installs exactly what was
 reviewed. Check for newer upstream releases every few weeks:
 

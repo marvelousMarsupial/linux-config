@@ -297,7 +297,7 @@ class FootOpacityTests(unittest.TestCase):
     def test_other_applications_are_not_written(self):
         from pathlib import Path
         from unittest.mock import patch
-        with patch.object(Path, 'readlink', return_value=Path('/usr/bin/zen')), \
+        with patch.object(Path, 'readlink', return_value=Path('/usr/bin/firefox-esr')), \
                 patch.object(self.module.os, 'open') as opening:
             self.assertFalse(self.module.write_foot_background(123, b'example'))
         opening.assert_not_called()

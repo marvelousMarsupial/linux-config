@@ -86,14 +86,3 @@ output = "~/.config/gtk-3.0/gtk.css"
 name = "gtk4"
 template = "gtk4.css.j2"
 output = "~/.config/gtk-4.0/gtk.css"
-
-[[targets]]
-name = "zen-glass"
-template = "zen-glass.css.j2"
-output = "~/.config/zen/glass-palette.css"
-
-[[targets]]
-name = "zen-system"
-template = "zen-system.css.j2"
-output = "~/.config/zen/system-theme.css"
-hook = "/home/user/.local/bin/zen-theme-sync"

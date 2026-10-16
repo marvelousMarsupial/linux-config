@@ -56,9 +56,9 @@ toolkit preferences are set explicitly and kept lightweight.
   `global/theme=dark_amber.xml`, which needs `python3-qt-material`. The config
   installer merges only those keys into existing settings. The repo launchers
   reapply them before each launch.
-- Zen's theme sync requests dark system and content colors, including
-  `prefers-color-scheme: dark`, while preserving unrelated profile preferences.
-  Websites must implement the preference themselves; Dark Reader covers the rest.
+- Firefox's dark UI and `prefers-color-scheme: dark` come from the
+  firefoxconfig package. Websites must implement the preference themselves;
+  Dark Reader covers the rest.
 
 After changing toolkit environment defaults, log out and back in and reopen
 apps. Reloading Sway cannot change its inherited environment or the theme of
@@ -103,9 +103,9 @@ required. Schemes, templates and target definitions live in
 `dotfiles/.config/theme/`, one source of truth with no build step.
 
 Applying a theme renders every template before writing anything, then runs the
-configured reload hooks: the wallpaper is regenerated, Mako reloads, and the
-Zen profile is synced. Existing Foot windows are never signaled; open a new
-terminal for new colors. Reload Sway and restart open editors to finish.
-Zen loads the new colors on restart.
+configured reload hooks: the wallpaper is regenerated and Mako reloads.
+Existing Foot windows are never signaled; open a new terminal for new colors.
+Reload Sway and restart open editors to finish. The browser keeps its own
+dark theme and does not follow the palette.
 
 Glass mode and wallpaper styles are described in [glass mode](glass.md).

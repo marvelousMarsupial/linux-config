@@ -17,8 +17,12 @@ are grouped at the end because they cannot be verified in the development VM.
   panel closing on focus loss, setup skipping template re-renders, and Zen's
   profile move to `~/.config/zen`.
 - [ ] Repeat the bootstrap on the replacement laptop and on a Raspberry Pi,
-  and exercise cleanup after a failed step. The aarch64 path (Zen and Yazi
-  aarch64 builds, no VM stack) has only been checked offline.
+  and exercise cleanup after a failed step. The aarch64 path (Yazi aarch64
+  build, no VM stack) has only been checked offline.
+- [ ] First real setup run with the firefoxconfig package: confirm `dpkg -i`,
+  the startup cache clear and the Yazi picker from Firefox on the laptop.
+- [ ] When the firefoxconfig `.deb` moves off GitHub releases, add `url` to its
+  `releases.toml` entry; `scripts/releases` check and bump still read GitHub.
   The default source now points at the GitHub repository; if the repository
   is private, the raw URL in [installation](installation.md#remote-bootstrap)
   will not work anonymously.
