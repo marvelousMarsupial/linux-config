@@ -79,7 +79,9 @@ class BootstrapTests(unittest.TestCase):
                      env=dict(os.environ, HOME=str(self.home), PATH=f'{binary}:/usr/bin:/bin'))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Plan complete.', result.stdout)
-        self.assertIn('marvelousMarsupial/firefoxconfig v0.1.0: firefoxconfig_0.1.0_all.deb', result.stdout)
+        browser = setup.pinned_releases()[setup.BROWSER_PACKAGE]
+        self.assertIn(f'marvelousMarsupial/firefoxconfig {browser["tag"]}: '
+                      f'firefoxconfig_{browser["tag"].removeprefix("v")}_all.deb', result.stdout)
         self.assertIn('--skip-apt', result.stdout)
         self.assertIn('configure OpenSnitch UI socket:', result.stdout)
         self.assertIn('enable --now opensnitch.service', result.stdout)
