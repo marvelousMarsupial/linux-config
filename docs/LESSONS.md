@@ -8,7 +8,7 @@ Updated 2026-10-16. Add lessons when a change exposes a reusable rule; keep outs
 
 - Do not alias over a coreutils name. `alias paste='wl-paste'` broke every one-liner and script that used paste(1) from an interactive shell; clipboard helpers get their own names (`clip`, `clipout`).
 - Mako criteria sections do not inherit `default-timeout`; a global timeout with `ignore-timeout=1` dismisses critical notices too unless `[urgency=high]` sets its own.
-- Lock the screen through `loginctl lock-session`, not by running swaylock directly: swayidle's `lock` event starts swaylock and logind's signal is what KeePassXC listens to.
+- Lock the screen through `loginctl lock-session` while swayidle runs: its `lock` event starts swaylock and logind's signal is what KeePassXC listens to. But logind alone locks nothing, so fall back to swaylock when swayidle is down.
 - Never `exec` the compositor from a login shell that autologin reaches. A fresh VM without a GPU driver logged in, failed and logged in again eight times a minute with no way to a shell; run Sway as a child and stay in the shell on failure.
 - Tests must not read the live host: patch `pgrep`-style checks and `/etc` reads, and skip tree-sitter checks when the parser is absent, or the suite only passes on a machine where setup never ran.
 - Keep one font family. A comparison helper that installs a second font and sets it in one app quietly becomes a second default; compare with a one-window override and delete the helper afterward.

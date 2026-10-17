@@ -104,6 +104,66 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual(commands, [('sudo', 'systemctl', 'daemon-reload')])
             self.assertEqual(destination.read_text(), text)
 
+    def test_ifupdown_handover_keeps_static_stanzas_and_migrates_wifi(self):
+        commands = []
+        def local_path(value):
+            value = str(value)
+            return self.home / value.lstrip('/') if value.startswith(('/etc/', '/var/')) else Path(value)
+        def command(*args, **kwargs):
+            commands.append(tuple(map(str, args)))
+            if args[1] == 'install':
+                if '-d' in args:
+                    Path(args[-1]).mkdir(parents=True, exist_ok=True)
+                else:
+                    Path(args[-1]).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(args[-2], args[-1])
+            elif args[1] == 'cp':
+                shutil.copyfile(args[-2], args[-1])
+        interfaces = local_path('/etc/network/interfaces')
+        interfaces.parent.mkdir(parents=True)
+        original = ('source /etc/network/interfaces.d/*\n\n'
+                    'auto lo\niface lo inet loopback\n\n'
+                    'allow-hotplug enp0s3\niface enp0s3 inet dhcp\n\n'
+                    'allow-hotplug wlp2s0\niface wlp2s0 inet dhcp\n\twpa-ssid "Home Net"\n\twpa-psk s3cret pass\n\n'
+                    'auto eth1\niface eth1 inet static\n\taddress 10.0.0.5/24\n\tgateway 10.0.0.1\n')
+        interfaces.write_text(original)
+        with patch.object(setup, 'Path', side_effect=local_path), patch.object(setup, 'run', side_effect=command), \
+                patch('sys.stdout', new_callable=io.StringIO) as out:
+            setup.network_manager(True)
+            self.assertEqual(commands, [])
+            self.assertEqual(interfaces.read_text(), original)
+            self.assertIn('eth1 has a static', out.getvalue())
+            self.assertIn('Hand enp0s3, wlp2s0 from ifupdown', out.getvalue())
+            self.assertIn('connection "Home Net" for wlp2s0', out.getvalue())
+            setup.network_manager(False)
+        text = interfaces.read_text()
+        for kept in ('source /etc/network/interfaces.d/*', 'auto lo\n', 'iface lo inet loopback',
+                     'auto eth1\n', 'iface eth1 inet static', '\taddress 10.0.0.5/24', '\tgateway 10.0.0.1'):
+            self.assertIn(kept, text)
+        for commented in ('allow-hotplug enp0s3', 'iface enp0s3 inet dhcp', 'allow-hotplug wlp2s0',
+                          'iface wlp2s0 inet dhcp', '\twpa-ssid "Home Net"', '\twpa-psk s3cret pass'):
+            self.assertIn('# ' + commented, text)
+            self.assertNotIn('\n' + commented, text)
+        keyfile = local_path('/etc/NetworkManager/system-connections/Home Net.nmconnection')
+        connection = keyfile.read_text()
+        for line in ('id=Home Net', 'interface-name=wlp2s0', 'ssid=Home Net', 'key-mgmt=wpa-psk', 'psk=s3cret pass', 'method=auto'):
+            self.assertIn(line + '\n', connection)
+        self.assertRegex(connection, r'uuid=[0-9a-f-]{36}\n')
+        installs = [c for c in commands if c[1] == 'install' and c[2] == '-Dm600']
+        self.assertEqual(len(installs), 1)
+        self.assertEqual(commands[-1], ('sudo', 'nmcli', 'connection', 'reload'))
+        self.assertFalse(any('s3cret' in ' '.join(c) for c in commands))
+        backups = list((self.home / 'var/backups').rglob('interfaces'))
+        self.assertEqual([b.read_text() for b in backups], [original])
+        # A rerun finds only commented stanzas and does nothing.
+        commands.clear()
+        with patch.object(setup, 'Path', side_effect=local_path), patch.object(setup, 'run', side_effect=command):
+            setup.network_manager(False)
+            self.assertEqual(commands, [])
+            interfaces.write_text('auto lo\niface lo inet loopback\n')
+            setup.network_manager(False)
+            self.assertEqual(commands, [])
+
     def test_dry_run_does_not_write_home_or_call_sudo(self):
         binary = self.home / 'bin'
         binary.mkdir()

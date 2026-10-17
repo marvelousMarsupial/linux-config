@@ -54,9 +54,9 @@ shipped with it are in the Git history of the same day.
   ScreenSaver proxy, which has no owner here (journal: "Backend call failed
   ... org.freedesktop.ScreenSaver"). Play a video for over 30 minutes and
   confirm swayidle does not lock; if it does, run an inhibit bridge.
-- [ ] Setup now hands ifupdown interfaces to NetworkManager; verify on the
-  laptop that Wi-Fi configured during installation appears in `wifi-menu`
-  after the first reboot.
+- [ ] Setup hands DHCP ifupdown interfaces to NetworkManager and turns the
+  installer's Wi-Fi stanza into a connection; verify on the laptop that the
+  network comes back by itself after the first reboot.
 - [ ] `udiskie --automount` mounts any inserted filesystem; consider
   `--no-automount` and mounting from Yazi.
 - [ ] Fuzzel prompts, widths and the status panel's hard-coded white selection

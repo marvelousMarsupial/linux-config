@@ -1,0 +1,8 @@
+#!/bin/sh
+# Lock the screen. Through logind when swayidle is running, so its lock event
+# starts swaylock and KeePassXC gets the signal too; straight to swaylock when
+# swayidle is down, so the key never silently does nothing.
+if systemctl --user --quiet is-active swayidle.service; then
+    exec loginctl lock-session
+fi
+exec swaylock -f

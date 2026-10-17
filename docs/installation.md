@@ -49,11 +49,13 @@ sudo or file changes. A normal run, in order:
   installed, selects zsh as the login shell,
   generates the English UTF-8 locale if missing, installs the APT update policy
   with backups, and enables Debian's update timers and, on x86_64, libvirtd.
-- Hands any interface the Debian installer left to ifupdown in
+- Hands DHCP interfaces the Debian installer left to ifupdown in
   `/etc/network/interfaces` over to NetworkManager (the stanzas are commented
   out with a backup; the change applies at the next boot), so the Wi-Fi menu
   and status panel see every interface and dhcpcd no longer runs beside
-  NetworkManager.
+  NetworkManager. A Wi-Fi stanza's `wpa-ssid` and `wpa-psk` become a
+  NetworkManager connection, so the laptop is back online after the reboot.
+  Static stanzas stay with ifupdown and are reported for you to move by hand.
 - Configures the OpenSnitch daemon socket for the installing user and enables
   the daemon. Sway starts the matching UI service at login. The UI keeps its
   connection history in `~/.local/share/opensnitch.db` for 30 days, which the

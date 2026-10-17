@@ -265,8 +265,8 @@ bindsym --to-code $mod+Shift+e exec $bin/power-menu
 # Help (keybindings cheatsheet): launches, hides to the scratchpad, or shows again
 bindsym $mod+Shift+slash exec $bin/keybinds toggle
 
-# Lock screen through logind so swayidle starts swaylock and KeePassXC locks too
-bindsym $mod+Escape exec loginctl lock-session
+# Lock through logind while swayidle runs (KeePassXC locks too), else swaylock directly
+bindsym $mod+Escape exec $bin/lock
 
 # VNC passthrough mode (pass all keys to remote)
 bindsym $mod+Ctrl+p mode "passthrough"

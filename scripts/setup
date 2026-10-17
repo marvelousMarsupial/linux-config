@@ -16,6 +16,7 @@ import tarfile
 import tempfile
 import tomllib
 import urllib.request
+import uuid
 import zipfile
 
 REPO = Path(__file__).resolve().parent.parent
@@ -395,36 +396,65 @@ def host_settings(user, dry, virtualization):
     run('sudo', 'systemctl', 'enable', '--now', *services, 'apt-daily.timer', 'apt-daily-upgrade.timer', dry=dry)
 
 
+def ifupdown_stanzas(lines):
+    """Split /etc/network/interfaces into (name, method, options, line numbers) per iface stanza."""
+    stanzas, current = [], None
+    for number, line in enumerate(lines):
+        words = line.split()
+        if not words or line.startswith('#'):
+            continue
+        if words[0] in ('auto', 'allow-hotplug', 'allow-auto', 'iface', 'mapping', 'source', 'source-directory'):
+            current = None
+            if words[0] in ('iface', 'mapping') and len(words) > 1 and words[1] != 'lo':
+                current = {'name': words[1], 'method': words[-1] if words[0] == 'iface' else 'mapping',
+                           'options': {}, 'lines': [number]}
+                stanzas.append(current)
+            elif words[0] in ('auto', 'allow-hotplug', 'allow-auto') and words[1:] and words[1:] != ['lo']:
+                stanzas.append({'name': words[1], 'method': 'auto', 'options': {}, 'lines': [number]})
+        elif current is not None:
+            current['options'][words[0]] = ' '.join(words[1:])
+            current['lines'].append(number)
+    return stanzas
+
+
 def network_manager(dry):
     """Hand interfaces the Debian installer gave ifupdown to NetworkManager.
 
     NetworkManager leaves any interface named in /etc/network/interfaces unmanaged,
     so wifi-menu and the status panel would see nothing on such a machine while
-    dhcpcd keeps running beside it. Only the stanzas for other interfaces are
-    commented out; the loopback stays. The change applies at the next boot.
+    dhcpcd keeps running beside it. DHCP stanzas are commented out, and a Wi-Fi
+    stanza's network becomes a NetworkManager connection so the laptop comes back
+    online after the reboot. Static stanzas stay with ifupdown and are reported:
+    translating addresses, routes and DNS is a decision, not a rewrite. The
+    loopback stays. The change applies at the next boot.
     """
     interfaces = Path('/etc/network/interfaces')
     if not interfaces.is_file():
         return
     lines = interfaces.read_text().splitlines(keepends=True)
-    rendered, handed_over, in_stanza = [], set(), False
-    for line in lines:
-        words = line.split()
-        if words and words[0] in ('auto', 'allow-hotplug', 'allow-auto', 'iface', 'mapping') and not line.startswith('#'):
-            names = [w for w in words[1:] if w not in ('inet', 'inet6')][:1]
-            in_stanza = words[0] in ('iface', 'mapping') and names != ['lo']
-            if names and names != ['lo']:
-                handed_over.update(names)
-                rendered.append('# ' + line)
-                continue
-            in_stanza = False
-        elif in_stanza and words and not line.startswith('#'):
-            rendered.append('# ' + line)
-            continue
-        rendered.append(line)
+    stanzas = ifupdown_stanzas(lines)
+    static = {s['name'] for s in stanzas if s['method'] not in ('dhcp', 'auto', 'manual')}
+    for name in sorted(static):
+        print(f'Notice: {name} has a static or non-DHCP stanza in {interfaces}; left with ifupdown. '
+              'Move it to NetworkManager yourself (nmcli connection add) and remove the stanza.')
+    handed_over = {s['name'] for s in stanzas} - static
     if not handed_over:
         return
+    commented = {n for s in stanzas if s['name'] in handed_over for n in s['lines']}
+    rendered = [('# ' + line if number in commented else line) for number, line in enumerate(lines)]
+    wifi = []
+    for stanza in stanzas:
+        if stanza['name'] not in handed_over or stanza['method'] != 'dhcp':
+            continue
+        options = stanza['options']
+        if options.get('wpa-ssid') and options.get('wpa-psk'):
+            wifi.append((stanza['name'], options['wpa-ssid'].strip('"'), options['wpa-psk'].strip('"')))
+        elif any(key.startswith('wpa-') for key in options):
+            print(f"Notice: {stanza['name']} uses {', '.join(k for k in options if k.startswith('wpa-'))}, "
+                  'which setup does not translate; reconnect with wifi-menu after the reboot.')
     print(f'Hand {", ".join(sorted(handed_over))} from ifupdown to NetworkManager in {interfaces}', flush=True)
+    for name, ssid, _ in wifi:
+        print(f'Add NetworkManager connection "{ssid}" for {name} from the installer\'s Wi-Fi settings', flush=True)
     if dry:
         return
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
@@ -432,10 +462,22 @@ def network_manager(dry):
     run('sudo', 'install', '-d', '-m', '0700', backup.parent)
     run('sudo', 'cp', '-a', interfaces, backup)
     with tempfile.TemporaryDirectory(prefix='linux-config-network-') as temporary:
-        source = Path(temporary) / 'interfaces'
+        temporary = Path(temporary)
+        source = temporary / 'interfaces'
         source.write_text('# linux-config setup commented out the stanzas below; NetworkManager owns these interfaces.\n'
                           + ''.join(rendered))
         run('sudo', 'install', '-Dm644', source, interfaces)
+        for name, ssid, psk in wifi:
+            # A keyfile keeps the passphrase out of argument lists and process listings.
+            keyfile = temporary / f'{ssid}.nmconnection'
+            keyfile.write_text(f'[connection]\nid={ssid}\nuuid={uuid.uuid4()}\ntype=wifi\n'
+                               f'interface-name={name}\nautoconnect=true\n\n'
+                               f'[wifi]\nssid={ssid}\nmode=infrastructure\n\n'
+                               f'[wifi-security]\nkey-mgmt=wpa-psk\npsk={psk}\n\n'
+                               '[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=auto\n')
+            run('sudo', 'install', '-Dm600', keyfile, Path('/etc/NetworkManager/system-connections') / keyfile.name)
+    if wifi:
+        run('sudo', 'nmcli', 'connection', 'reload')
     print('NetworkManager takes over at the next boot; the running connection is left alone.')
 
 

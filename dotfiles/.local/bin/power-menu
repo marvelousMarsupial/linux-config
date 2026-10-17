@@ -5,7 +5,7 @@ set -euo pipefail
 choice=$(printf "Lock\nSleep\nLog out\nRestart\nShut down" | fuzzel $(menu-background 2>/dev/null) --dmenu --prompt="Power  " --lines=5 --width=20) || exit 0
 
 case "$choice" in
-    Lock)       loginctl lock-session ;;
+    Lock)       "$(dirname "$0")/lock" ;;
     Sleep)      systemctl suspend ;;
     "Log out")  swaymsg exit ;;
     Restart)    systemctl reboot ;;

@@ -40,8 +40,22 @@ class CommandTests(CommandSandbox):
                 self.reset()
                 result = self.execute('power-menu', responses={'fuzzel': {'out': choice+'\n'}})
                 self.assertEqual(result.returncode, 0, result.stderr)
-                actions_seen = [(e['name'], e['args']) for e in self.events()[1:]]
+                actions_seen = [(e['name'], e['args']) for e in self.events()[1:]
+                                if e['args'] != ['--user', '--quiet', 'is-active', 'swayidle.service']]
                 self.assertEqual(actions_seen, [actions[choice]] if choice in actions else [])
+
+    def test_lock_uses_logind_only_while_swayidle_runs(self):
+        probe = 'systemctl --user --quiet is-active swayidle.service'
+        result = self.execute('lock')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([(e['name'], e['args']) for e in self.events()],
+                         [('systemctl', probe.split()[1:]), ('loginctl', ['lock-session'])])
+        self.reset()
+        # swayidle down: logind's lock signal would reach nobody, so lock directly.
+        result = self.execute('lock', responses={probe: {'code': 3}})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([(e['name'], e['args']) for e in self.events()],
+                         [('systemctl', probe.split()[1:]), ('swaylock', ['-f'])])
 
     def test_launcher_search_and_data_paths(self):
         for inherited in ('', '/custom/share'):

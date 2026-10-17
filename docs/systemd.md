@@ -66,7 +66,9 @@ This locks after 30 minutes without input and before suspend. `-w` waits for
 swaylock to finish before releasing the sleep inhibitor, within logind's
 `InhibitDelayMaxSec`. Fullscreen windows do not inhibit idle on their own;
 application-requested inhibitors such as video playback are respected. Super+Escape
-and the power menu lock manually. Test idle locking, manual locking and
+and the power menu lock through `~/.local/bin/lock`: logind's lock-session
+while swayidle runs, so KeePassXC locks too, and swaylock directly when
+swayidle is down, so the key never does nothing. Test idle locking, manual locking and
 suspend/resume on the real machine before enabling autologin.
 
 `setup --autologin` installs `/etc/systemd/system/getty@tty1.service.d/autologin.conf`,
