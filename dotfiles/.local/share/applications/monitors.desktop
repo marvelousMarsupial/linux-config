@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Monitors
+Comment=Match the kanshi display profiles to the connected monitors
+Exec=/home/user/.local/bin/monitor-setup
+Icon=preferences-desktop-display
+Type=Application
+Categories=Settings;HardwareSettings;
+Keywords=monitor;display;kanshi;dock;rotate;
+Terminal=false

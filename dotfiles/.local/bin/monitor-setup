@@ -1,0 +1,146 @@
+#!/usr/bin/python3
+"""Fill the kanshi monitor profiles with the displays that are actually connected.
+
+The shipped profiles name each external display by make, model and a
+placeholder serial. Each slot is matched to a connected output with the same
+make and model; the serial and current mode are written in. With --auto only
+unambiguous matches are applied and nothing asks; without it a fuzzel picker
+resolves the rest, so two identical monitors can still be told apart.
+"""
+import argparse
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import tempfile
+
+OUTPUT_LINE = re.compile(r'^(\s*output\s+)"([^"]+)"(.*)$')
+MODE = re.compile(r'\bmode \d+x\d+(@[\d.]+Hz)?')
+
+
+def run(cmd, **kwargs):
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, **kwargs)
+        return result.stdout if result.returncode == 0 else ''
+    except (OSError, subprocess.TimeoutExpired):
+        return ''
+
+
+def connected_outputs():
+    try:
+        outputs = json.loads(run(['swaymsg', '-t', 'get_outputs', '-r']) or '[]')
+    except ValueError:
+        return []
+    found = []
+    for output in outputs:
+        mode = output.get('current_mode') or {}
+        if not output.get('make') or not mode.get('width'):
+            continue
+        refresh = mode.get('refresh', 0) / 1000
+        found.append(dict(name=output['name'], make=output['make'], model=output.get('model', ''),
+                          serial=output.get('serial') or '', mode=f"{mode['width']}x{mode['height']}@{refresh:g}Hz"))
+    return found
+
+
+def description(output):
+    return f"{output['make']} {output['model']} {output['serial']}".strip()
+
+
+def model_key(text):
+    """Make and model of a kanshi description: everything before the serial."""
+    return text.rsplit(' ', 1)[0]
+
+
+def choose(prompt, outputs):
+    rows = [f"{o['name']}: {description(o)} ({o['mode']})" for o in outputs]
+    try:
+        flags = subprocess.run(['menu-background'], capture_output=True, text=True, timeout=5).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        flags = []
+    try:
+        result = subprocess.run(['fuzzel', *flags, '--dmenu', '--index', f'--prompt={prompt} ',
+                                 f'--lines={len(rows)}', '--width=60'],
+                                input='\n'.join(rows) + '\n', capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    choice = result.stdout.strip()
+    return outputs[int(choice)] if result.returncode == 0 and choice.isdigit() and int(choice) < len(rows) else None
+
+
+def notify(title, message):
+    try:
+        subprocess.run(['notify-send', '--app-name=Monitors', title, message], timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--auto', action='store_true', help='Apply only unambiguous matches; never ask')
+    args = parser.parse_args()
+    home = Path.home()
+    config = home / '.config/kanshi/config'
+    if not config.is_file():
+        parser.exit(1, 'No kanshi config found\n')
+    lines = config.read_text().splitlines(keepends=True)
+    slots = []  # distinct descriptions in profile order
+    for line in lines:
+        match = OUTPUT_LINE.match(line)
+        if match and match[2] not in slots:
+            slots.append(match[2])
+    outputs = connected_outputs()
+    if not outputs:
+        parser.exit(0 if args.auto else 1, 'No connected displays reported by Sway\n')
+    assigned = {}
+    free = list(outputs)
+    for slot in slots:
+        candidates = [o for o in free if f"{o['make']} {o['model']}" == model_key(slot)]
+        if len(candidates) == 1:
+            assigned[slot] = candidates[0]
+            free.remove(candidates[0])
+    if not args.auto:
+        for slot in slots:
+            if slot in assigned or not free:
+                continue
+            choice = choose(f'Which display is "{model_key(slot)}"?', free)
+            if choice is None:
+                continue
+            assigned[slot] = choice
+            free.remove(choice)
+    rendered, changed = [], []
+    for line in lines:
+        match = OUTPUT_LINE.match(line)
+        if match and match[2] in assigned:
+            output = assigned[match[2]]
+            rest = MODE.sub(f"mode {output['mode']}", match[3])
+            new = f'{match[1]}"{description(output)}"{rest}'
+            if new != line.rstrip('\n'):
+                changed.append(output['name'])
+            line = new + '\n'
+        rendered.append(line)
+    if not changed:
+        if not args.auto:
+            notify('Monitors', 'Profiles already match the connected displays')
+        return
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+    backup = home / '.local/state/linux-config/backups' / stamp / '.config/kanshi/config'
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(config, backup)
+    with tempfile.NamedTemporaryFile('w', dir=config.parent, delete=False) as staged:
+        staged.write(''.join(rendered))
+    os.chmod(staged.name, 0o644)
+    os.replace(staged.name, config)
+    if shutil.which('kanshictl'):
+        subprocess.run(['kanshictl', 'reload'], capture_output=True, timeout=15)
+    else:
+        subprocess.run(['systemctl', '--user', 'try-restart', 'kanshi.service'], capture_output=True, timeout=30)
+    names = sorted(set(changed))
+    print(f"Updated {config} for {', '.join(names)}; backup in {backup.parent}")
+    notify('Monitors', f"Profiles updated for {', '.join(names)}")
+
+
+if __name__ == '__main__':
+    main()

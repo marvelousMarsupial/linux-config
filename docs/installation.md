@@ -238,9 +238,13 @@ for machine-specific bindings or output rules.
 Fresh installs receive a kanshi config with a laptop-only profile and docked
 profiles for two external monitors: curved landscape on the left, portrait
 ultrawide on the right, laptop panel off when docked. The monitor serials in
-those profiles are placeholders, so the docked profiles match nothing until
-you replace `SERIAL1` and `SERIAL2` with your displays' serials. Find them
-with the command in the config's comments. Existing kanshi configs are
+those profiles are placeholders. At every login `monitor-setup --auto` matches
+each profile entry to a connected display by make and model and writes in its
+serial and current mode, so with both monitors plugged in the docked profile
+works on the first login. When a match is ambiguous (two identical monitors)
+or a different monitor is used, the **Monitors** entry in the launcher asks
+which display fills which slot. The previous config is backed up under
+`~/.local/state/linux-config/backups`. Existing kanshi configs are
 preserved by later installs. Profiles match on monitor description, so
 connector names can change without affecting them.
 [`examples/kanshi-laptop.conf`](../examples/kanshi-laptop.conf) is the same

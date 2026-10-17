@@ -48,5 +48,7 @@ if (( ${#failed_units[@]} )); then
 fi
 # shellcheck disable=SC2086 # intentional splitting of variable names
 systemctl --user import-environment $VARS
+# Fill placeholder monitor serials from what is plugged in, before kanshi reads its config.
+"$HOME/.local/bin/monitor-setup" --auto >/dev/null 2>&1 || true
 # kanshi is started through the target after its session dependencies.
 systemctl --user start "$SESSION_TARGET"
