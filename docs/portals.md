@@ -17,7 +17,7 @@ builds it from the pinned upstream commit, which corresponds to v1.4.3. The
 manual equivalent, from a host terminal with network access and sudo:
 
 ```sh
-sudo apt install xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr build-essential git meson ninja-build libinih-dev libsystemd-dev scdoc
+sudo apt install xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr build-essential pkgconf git meson ninja-build libinih-dev libsystemd-dev scdoc
 mkdir -p ~/.local/src
 cd ~/.local/src
 git clone https://github.com/hunkyburrito/xdg-desktop-portal-termfilechooser.git

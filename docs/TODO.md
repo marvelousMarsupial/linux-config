@@ -16,9 +16,11 @@ are grouped at the end because they cannot be verified in the development VM.
   checkout is gone. Found and fixed the Yazi filetype key rename, the status
   panel closing on focus loss, setup skipping template re-renders, and Zen's
   profile move to `~/.config/zen`.
-- [ ] Repeat the bootstrap on the replacement laptop and on a Raspberry Pi,
-  and exercise cleanup after a failed step. The aarch64 path (Yazi aarch64
-  build, no VM stack) has only been checked offline.
+- [ ] Repeat the bootstrap on the replacement laptop and exercise cleanup
+  after a failed step. The aarch64 path ran on an Armbian board on 2026-10-17:
+  it stopped once at the termfilechooser build for lack of pkg-config, fixed in
+  `BUILD_PACKAGES`, and finished on the rerun. Armbian's own Wi-Fi service
+  competes with NetworkManager there; not a Debian installer case.
 - [x] First real setup run with the firefoxconfig package on a VM: `dpkg -i`,
   the startup cache clear and the Yazi picker from Firefox all worked.
 - [ ] When the firefoxconfig `.deb` moves off GitHub releases, add `url` to its

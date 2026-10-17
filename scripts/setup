@@ -46,7 +46,7 @@ def pinned_releases(path=REPO / 'releases.toml'):
             if not re.fullmatch(r'[0-9a-f]{64}', digest):
                 raise ValueError(f'{name}: {asset} needs a SHA-256 digest in releases.toml')
     return releases
-BUILD_PACKAGES = ['build-essential', 'meson', 'ninja-build', 'libinih-dev', 'libsystemd-dev', 'scdoc']
+BUILD_PACKAGES = ['build-essential', 'pkgconf', 'meson', 'ninja-build', 'libinih-dev', 'libsystemd-dev', 'scdoc']
 
 
 def run(*args, dry=False, **kwargs):
