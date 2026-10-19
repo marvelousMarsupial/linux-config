@@ -16,8 +16,8 @@ acts as a modifier:
 keyd matches the keyboard by ID. `0001:0001` is the usual internal keyboard
 ("AT Translated Set 2 keyboard"), so external keyboards, such as a split board
 with its own home row modifiers, are left alone. To check the ID, run the keyd
-command with `monitor` under sudo and type on the laptop keys. Debian may not
-name the command `keyd`; `dpkg -L keyd | grep bin/` shows its name. If the ID
+command with `monitor` under sudo and type on the laptop keys. Debian names
+the command `keyd.rvaiya`, so that is `sudo keyd.rvaiya monitor`. If the ID
 differs, edit the `[ids]` line in `/etc/keyd/laptop.conf` and run
 `sudo systemctl restart keyd`. A rerun of
 setup backs up the edited file and restores the repo version, so change the
