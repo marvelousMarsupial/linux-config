@@ -419,9 +419,10 @@ def home_row_mods(dry):
                 run('sudo', 'install', '-d', '-m', '0700', backup.parent)
                 run('sudo', 'cp', '-a', dest, backup)
             run('sudo', 'install', '-Dm644', source, dest)
-    run('sudo', 'systemctl', 'enable', '--now', 'keyd.service', dry=dry)
-    # A running daemon only picks up config changes on reload.
-    run('sudo', 'keyd', 'reload', dry=dry)
+    run('sudo', 'systemctl', 'enable', 'keyd.service', dry=dry)
+    # A running daemon only reads its config at start. Restart through systemd,
+    # since Debian may not name the keyd command keyd.
+    run('sudo', 'systemctl', 'restart', 'keyd.service', dry=dry)
 
 
 def ifupdown_stanzas(lines):

@@ -521,7 +521,7 @@ class BootstrapTests(unittest.TestCase):
             setup.home_row_mods(False)
             self.assertEqual(dest.read_bytes(), (REPO / 'system/keyd/laptop.conf').read_bytes())
             self.assertEqual(commands[0], ('sudo', 'apt-get', 'install', '-y', 'keyd'))
-            self.assertEqual(commands[-1], ('sudo', 'keyd', 'reload'))
+            self.assertEqual(commands[-1], ('sudo', 'systemctl', 'restart', 'keyd.service'))
             # A rerun with the same map leaves the file alone.
             commands.clear()
             setup.home_row_mods(False)
