@@ -431,7 +431,15 @@ def network_manager(dry):
     interfaces = Path('/etc/network/interfaces')
     if not interfaces.is_file():
         return
-    lines = interfaces.read_text().splitlines(keepends=True)
+    try:
+        text = interfaces.read_text()
+    except PermissionError:
+        # The installer makes the file root-only when it holds a Wi-Fi passphrase.
+        if dry:
+            print(f'Notice: {interfaces} is readable only by root; a real run reads it with sudo.')
+            return
+        text = run('sudo', 'cat', interfaces, capture_output=True, text=True).stdout
+    lines = text.splitlines(keepends=True)
     stanzas = ifupdown_stanzas(lines)
     static = {s['name'] for s in stanzas if s['method'] not in ('dhcp', 'auto', 'manual')}
     for name in sorted(static):
@@ -466,7 +474,8 @@ def network_manager(dry):
         source = temporary / 'interfaces'
         source.write_text('# linux-config setup commented out the stanzas below; NetworkManager owns these interfaces.\n'
                           + ''.join(rendered))
-        run('sudo', 'install', '-Dm644', source, interfaces)
+        # Commented stanzas still carry the passphrase, so the file stays root-only.
+        run('sudo', 'install', '-Dm600', source, interfaces)
         for name, ssid, psk in wifi:
             # A keyfile keeps the passphrase out of argument lists and process listings.
             keyfile = temporary / f'{ssid}.nmconnection'

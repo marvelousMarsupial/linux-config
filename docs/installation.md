@@ -112,7 +112,7 @@ certificates installed:
 curl -fsSL https://raw.githubusercontent.com/marvelousMarsupial/linux-config/main/scripts/bootstrap | bash
 ```
 
-Pass `--dry-run`, `--dev-tools` or `--autologin` after `bash` to forward them to
+Pass `--dry-run`, `--dev-tools` or `--autologin` after `bash -s --` to forward them to
 setup. To use
 another host or a release tag, set the two environment variables; fetch the
 bootstrap from the same tag you select:
