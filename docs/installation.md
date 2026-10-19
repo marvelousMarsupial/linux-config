@@ -253,8 +253,9 @@ connector names can change without affecting them.
 layout with its reasoning.
 
 `system/` mirrors selected `/etc` files. Full setup applies the two APT policy
-files, the nftables policy and its service override. Lid and udev changes stay
-manual:
+files, the nftables policy and its service override, and the keyd map for home
+row modifiers on the built-in keyboard (see [keyboard.md](keyboard.md)). Lid
+and udev changes stay manual:
 
 - `system/systemd/logind.conf.d/lid.conf` suspends on lid close, including on
   external power, and ignores lid close while docked. Review it for the machine,

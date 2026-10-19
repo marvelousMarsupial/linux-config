@@ -494,6 +494,44 @@ class BootstrapTests(unittest.TestCase):
                 enabled = next(call for call in calls if call[:3] == ('sudo', 'systemctl', 'enable'))
                 self.assertEqual('libvirtd.service' in enabled, virtualization)
 
+    def test_home_row_mods_install_keyd_only_when_apt_offers_it(self):
+        commands = []
+        def local_path(value):
+            value = str(value)
+            return self.home / value.lstrip('/') if value.startswith(('/etc/', '/var/')) else Path(value)
+        def command(*args, **kwargs):
+            commands.append(tuple(map(str, args)))
+            if args[1] == 'install' and '-d' not in args:
+                Path(args[-1]).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(args[-2], args[-1])
+        dest = local_path('/etc/keyd/laptop.conf')
+        for policy in ('', 'keyd:\n  Installed: (none)\n  Candidate: (none)\n'):
+            with self.subTest(policy=policy), patch.object(setup, 'run', side_effect=command), \
+                    patch.object(setup.subprocess, 'run') as apt, patch('sys.stdout', new_callable=io.StringIO) as out:
+                apt.return_value.stdout = policy
+                setup.home_row_mods(False)
+            self.assertEqual(commands, [])
+            self.assertIn('home row modifiers were skipped', out.getvalue())
+        def offered(args, **kwargs):
+            if args[0] == 'apt-cache':
+                return subprocess.CompletedProcess(args, 0, 'keyd:\n  Candidate: 2.5.0-1\n')
+            return subprocess.CompletedProcess(args, 1)
+        with patch.object(setup, 'Path', side_effect=local_path), patch.object(setup, 'run', side_effect=command), \
+                patch.object(setup.subprocess, 'run', side_effect=offered):
+            setup.home_row_mods(False)
+            self.assertEqual(dest.read_bytes(), (REPO / 'system/keyd/laptop.conf').read_bytes())
+            self.assertEqual(commands[0], ('sudo', 'apt-get', 'install', '-y', 'keyd'))
+            self.assertEqual(commands[-1], ('sudo', 'keyd', 'reload'))
+            # A rerun with the same map leaves the file alone.
+            commands.clear()
+            setup.home_row_mods(False)
+            self.assertFalse(any(c[1] == 'install' and c[2] == '-Dm644' for c in commands))
+        config = (REPO / 'system/keyd/laptop.conf').read_text()
+        for key, modifier in (('a', 'meta'), ('s', 'alt'), ('d', 'control'), ('f', 'shift'),
+                              ('j', 'shift'), ('k', 'control'), ('l', 'alt'), ('semicolon', 'meta')):
+            self.assertIn(f'{key} = lettermod({modifier}, {key}, ', config)
+        self.assertIn('[ids]\n0001:0001\n', config)
+
     def test_other_username_is_rendered_and_repeat_install_is_clean(self):
         result = run(str(REPO / 'scripts/install'), '--home', str(self.home))
         self.assertEqual(result.returncode, 0, result.stderr)
