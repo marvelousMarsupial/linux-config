@@ -83,10 +83,29 @@ class PanelTests(unittest.TestCase):
                                        ('yes:' + 'x'*50, '', 'WiFi '+'x'*19+'…'),
                                        ('yes:Caf\\:Net', '', 'WiFi Caf:Net'),
                                        ('no:Other', 'lo UP\nenx123 UP', 'Ethernet'),
-                                       ('', 'lo UP\nwlan0 UP\nenp1 DOWN', 'WiFi'),
+                                       ('', 'lo UP\nwlan0 UP\nenp1 DOWN', 'WiFi not managed'),
                                        ('', 'lo UP\nenp1 DOWN', 'Offline')):
             with self.subTest(wifi=wifi, links=links), patch.object(panel, 'run', side_effect=[wifi, links]):
                 self.assertEqual(panel.get_network(), expected)
+
+    def test_battery_found_by_type_not_name(self):
+        panel = load_script('status-panel')
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            for name, kind, scope in (('AC', 'Mains', None), ('BAT1', 'Battery', 'System'),
+                                      ('hidpp_battery_0', 'Battery', 'Device')):
+                (root / name).mkdir()
+                (root / name / 'type').write_text(kind + '\n')
+                if scope:
+                    (root / name / 'scope').write_text(scope + '\n')
+            (root / 'BAT1' / 'capacity').write_text('57\n')
+            (root / 'BAT1' / 'status').write_text('Discharging\n')
+            real = panel.Path
+            with patch.object(panel, 'Path', side_effect=lambda p: root if p == '/sys/class/power_supply' else real(p)):
+                self.assertEqual(panel.get_power(), 'Battery 57%')
+            (root / 'BAT1' / 'type').write_text('Mains\n')
+            with patch.object(panel, 'Path', side_effect=lambda p: root if p == '/sys/class/power_supply' else real(p)):
+                self.assertEqual(panel.get_power(), 'Power connected')
 
     def test_popup_is_read_only_and_has_no_application_search_label(self):
         panel = load_script('status-panel')

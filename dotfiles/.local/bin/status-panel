@@ -85,7 +85,9 @@ def get_network() -> str:
             if parts[0].startswith(("en", "eth", "em")):
                 return "Ethernet"
             if parts[0].startswith("wl"):
-                return "WiFi"
+                # Up but NetworkManager reports no active network, so ifupdown
+                # or another tool still owns it and wifi-menu cannot manage it.
+                return "WiFi not managed"
     return "Offline"
 
 
@@ -95,10 +97,27 @@ def get_vpn() -> str:
     return f"VPN {trunc(' '.join(names), SSID_MAX)}" if names else ""
 
 
+def find_battery() -> Path | None:
+    'Return the laptop battery in sysfs, whatever the kernel named it.'
+    # Names vary (BAT0, BAT1, BATT, CMB0), so match on type. Device-scoped
+    # batteries belong to mice and headsets, not the laptop.
+    for supply in sorted(Path("/sys/class/power_supply").glob("*")):
+        try:
+            if (supply / "type").read_text().strip() != "Battery":
+                continue
+            scope = supply / "scope"
+            if scope.exists() and scope.read_text().strip() == "Device":
+                continue
+        except OSError:
+            continue
+        return supply
+    return None
+
+
 def get_power() -> str:
     'Return a power status line.'
-    bat = Path("/sys/class/power_supply/BAT0")
-    if not bat.exists():
+    bat = find_battery()
+    if bat is None:
         return "Power connected"
     try:
         pct = (bat / "capacity").read_text().strip()
