@@ -531,6 +531,12 @@ class BootstrapTests(unittest.TestCase):
                               ('j', 'shift'), ('k', 'control'), ('l', 'alt'), ('semicolon', 'meta')):
             self.assertIn(f'{key} = lettermod({modifier}, {key}, ', config)
         self.assertIn('[ids]\n0001:0001\n', config)
+        self.assertIn('space = lettermod(symbols, space, ', config)
+        symbols = dict(line.split(' = ') for line in config.split('[symbols]\n')[1].splitlines()
+                       if ' = ' in line)
+        self.assertEqual(len(symbols), 26)
+        self.assertEqual((symbols['d'], symbols['f'], symbols['g'], symbols['h'], symbols['j'], symbols['k']),
+                         ('leftbrace', 'S-leftbrace', 'S-9', 'S-0', 'S-rightbrace', 'rightbrace'))
 
     def test_other_username_is_rendered_and_repeat_install_is_clean(self):
         result = run(str(REPO / 'scripts/install'), '--home', str(self.home))

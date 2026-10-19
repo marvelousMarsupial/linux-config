@@ -13,6 +13,18 @@ acts as a modifier:
 | `d` and `k` | Control |
 | `f` and `j` | Shift |
 
+Holding space opens a symbol layer copied from the split board:
+
+| Left | Symbols | Right | Symbols |
+| --- | --- | --- | --- |
+| q w e r t | ! @ # $ % | y u i o p | ^ & * - = |
+| a s d f g | \` < [ { ( | h j k l ; | ) } ] > : |
+| z | ~ | n m , . / | _ + \| \\ ; |
+
+Space pressed within 150 ms of a letter stays a space, so pause briefly
+before a symbol that follows a word, such as the `(` in `foo(`. Space types on
+release, a little later than a plain key.
+
 keyd matches the keyboard by ID. `0001:0001` is the usual internal keyboard
 ("AT Translated Set 2 keyboard"), so external keyboards, such as a split board
 with its own home row modifiers, are left alone. To check the ID, run the keyd
