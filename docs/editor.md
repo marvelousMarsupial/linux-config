@@ -30,7 +30,7 @@ v0.12.2 and verifies a pinned SHA-256 checksum before extraction; overriding
 [Official release digests](https://github.com/neovim/neovim/releases/expanded_assets/v0.12.2).
 The lazy.nvim bootstrap checks out the exact commit recorded in the lock file.
 
-IPython is available as `ipython3`. Both `cat` and `bat` use Debian's batcat
+`--dev-tools` adds IPython as `ipython3`. Both `cat` and `bat` use Debian's batcat
 with a rounded frame that hugs the longest line in interactive terminals; pipes
 stay unchanged and
 `batcat` remains available directly.

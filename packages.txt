@@ -25,7 +25,6 @@ gir1.2-gtk-3.0
 git
 grim
 hicolor-icon-theme
-ipython3
 jq
 iproute2
 kanshi
