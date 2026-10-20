@@ -25,6 +25,7 @@ LESSONS, and dated evidence in the security audit and testing documents.
 | --- | --- |
 | [Appearance](appearance.md) | Palettes, typography, dark defaults and the theme picker. |
 | [Glass mode](glass.md) | Translucent desktop, wallpaper styles and rollback. |
+| [Keyboard](keyboard.md) | Home row modifiers on the built-in laptop keyboard through keyd. |
 | [Window behavior](window-behavior.md) | Fullscreen, floating dialogs, the popup guard and touchpad gestures. |
 | [Notifications](notifications.md) | Searchable Mako history and desktop shortcut. |
 | [Portals](portals.md) | Sway screen sharing and Firefox file dialogs through Yazi. |

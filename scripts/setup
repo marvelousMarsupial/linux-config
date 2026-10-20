@@ -396,6 +396,35 @@ def host_settings(user, dry, virtualization):
     run('sudo', 'systemctl', 'enable', '--now', *services, 'apt-daily.timer', 'apt-daily-upgrade.timer', dry=dry)
 
 
+def home_row_mods(dry):
+    """Install keyd and the home row modifier map for the built-in laptop keyboard.
+
+    keyd matches the keyboard by ID, so external boards keep their own layout.
+    Debian has to offer the package; otherwise setup says so and moves on.
+    """
+    policy = subprocess.run(['apt-cache', 'policy', 'keyd'], capture_output=True, text=True).stdout
+    if 'Candidate:' not in policy or 'Candidate: (none)' in policy:
+        print('Notice: APT does not offer keyd, so home row modifiers were skipped. See docs/keyboard.md.')
+        return
+    run('sudo', 'apt-get', 'install', '-y', 'keyd', dry=dry)
+    source = REPO / 'system/keyd/laptop.conf'
+    dest = Path('/etc/keyd/laptop.conf')
+    if not (dest.is_file() and dest.read_bytes() == source.read_bytes()):
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+        backup = Path('/var/backups/linux-config') / stamp / 'keyd/laptop.conf'
+        if dry:
+            print(f'Back up {dest} if present, then install {source}')
+        else:
+            if subprocess.run(['sudo', 'test', '-e', str(dest)]).returncode == 0:
+                run('sudo', 'install', '-d', '-m', '0700', backup.parent)
+                run('sudo', 'cp', '-a', dest, backup)
+            run('sudo', 'install', '-Dm644', source, dest)
+    run('sudo', 'systemctl', 'enable', 'keyd.service', dry=dry)
+    # A running daemon only reads its config at start. Restart through systemd,
+    # since Debian may not name the keyd command keyd.
+    run('sudo', 'systemctl', 'restart', 'keyd.service', dry=dry)
+
+
 def ifupdown_stanzas(lines):
     """Split /etc/network/interfaces into (name, method, options, line numbers) per iface stanza."""
     stanzas, current = [], None
@@ -431,7 +460,15 @@ def network_manager(dry):
     interfaces = Path('/etc/network/interfaces')
     if not interfaces.is_file():
         return
-    lines = interfaces.read_text().splitlines(keepends=True)
+    try:
+        text = interfaces.read_text()
+    except PermissionError:
+        # The installer makes the file root-only when it holds a Wi-Fi passphrase.
+        if dry:
+            print(f'Notice: {interfaces} is readable only by root; a real run reads it with sudo.')
+            return
+        text = run('sudo', 'cat', interfaces, capture_output=True, text=True).stdout
+    lines = text.splitlines(keepends=True)
     stanzas = ifupdown_stanzas(lines)
     static = {s['name'] for s in stanzas if s['method'] not in ('dhcp', 'auto', 'manual')}
     for name in sorted(static):
@@ -466,7 +503,8 @@ def network_manager(dry):
         source = temporary / 'interfaces'
         source.write_text('# linux-config setup commented out the stanzas below; NetworkManager owns these interfaces.\n'
                           + ''.join(rendered))
-        run('sudo', 'install', '-Dm644', source, interfaces)
+        # Commented stanzas still carry the passphrase, so the file stays root-only.
+        run('sudo', 'install', '-Dm600', source, interfaces)
         for name, ssid, psk in wifi:
             # A keyfile keeps the passphrase out of argument lists and process listings.
             keyfile = temporary / f'{ssid}.nmconnection'
@@ -536,7 +574,8 @@ def main():
     editor = [str(REPO / 'scripts/setup-editor'), '--skip-apt']
     if args.dev_tools:
         # setup-editor skips its APT stage when called here.
-        run('sudo', 'apt-get', 'install', '-y', 'build-essential', 'clangd', 'clang-format', 'nodejs', 'npm', 'shellcheck', dry=args.dry_run)
+        run('sudo', 'apt-get', 'install', '-y', 'build-essential', 'clangd', 'clang-format', 'ipython3', 'lazygit', 'nodejs', 'npm',
+            'python3-matplotlib', 'python3-numpy', 'python3-scipy', 'shellcheck', dry=args.dry_run)
         editor.append('--dev-tools')
     colors_present = (home / '.config/sway/colors').is_file()
     run(*editor, dry=args.dry_run)
@@ -551,6 +590,7 @@ def main():
         run(home / '.local/bin/theme', 'apply', 'summer-dusk', dry=args.dry_run)
     host_settings(user, args.dry_run, 'libvirt-daemon-system' in packages)
     network_manager(args.dry_run)
+    home_row_mods(args.dry_run)
     if args.autologin:
         autologin(user, args.dry_run)
     if shutil.which('tailscale'):

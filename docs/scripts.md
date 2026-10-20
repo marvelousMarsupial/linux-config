@@ -13,7 +13,7 @@ with executable permissions. Repository maintenance commands live in `scripts/`.
 | scripts/bootstrap | Downloads a temporary checkout, forwards `--dry-run` and `--dev-tools` to setup, and removes the checkout afterward, including on failure. HTTPS sources only. |
 | scripts/install | Atomic per-file copies with backups, a named retirement list, bytecode exclusion, symlink boundary checks, and merges of only the dark-theme key for KeePassXC and OpenSnitch. Renders the theme hook path and desktop entries for the destination user. Not a transaction across the whole home. |
 | scripts/install-receipt | Records the source commit, modified-checkout flag, completion date and install scope after a successful installation. |
-| scripts/setup-editor | Installs Neovim 0.12.2 with a pinned SHA-256, copies user files, installs and checks plugins; `--dev-tools` adds compilers, Node, language servers, formatters and parsers; `--skip-apt` skips the package step. |
+| scripts/setup-editor | Installs Neovim 0.12.2 with a pinned SHA-256, copies user files, installs and checks plugins; `--dev-tools` adds compilers, IPython with NumPy, SciPy and Matplotlib, lazygit, Node, language servers, formatters and parsers; `--skip-apt` skips the package step. |
 | scripts/setup-shell | Installs fzf-tab v1.2.0 after checking the pinned Git commit; dry run and alternate home supported; backs up replaced copies. |
 | scripts/editor-tools.lua | Explicit optional tool and parser installs; exits nonzero when verification fails. |
 | scripts/check | Syntax, TOML and six palette renders; `--full` adds the offline suite. Skips zsh and Neovim checks with a message when they are absent. |

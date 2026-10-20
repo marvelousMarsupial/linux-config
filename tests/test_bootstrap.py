@@ -150,7 +150,7 @@ class BootstrapTests(unittest.TestCase):
             self.assertIn(line + '\n', connection)
         self.assertRegex(connection, r'uuid=[0-9a-f-]{36}\n')
         installs = [c for c in commands if c[1] == 'install' and c[2] == '-Dm600']
-        self.assertEqual(len(installs), 1)
+        self.assertEqual([c[-1] for c in installs], [str(interfaces), str(keyfile)])
         self.assertEqual(commands[-1], ('sudo', 'nmcli', 'connection', 'reload'))
         self.assertFalse(any('s3cret' in ' '.join(c) for c in commands))
         backups = list((self.home / 'var/backups').rglob('interfaces'))
@@ -163,6 +163,32 @@ class BootstrapTests(unittest.TestCase):
             interfaces.write_text('auto lo\niface lo inet loopback\n')
             setup.network_manager(False)
             self.assertEqual(commands, [])
+
+    def test_ifupdown_handover_reads_root_only_file_with_sudo(self):
+        commands = []
+        def local_path(value):
+            value = str(value)
+            return self.home / value.lstrip('/') if value.startswith(('/etc/', '/var/')) else Path(value)
+        def command(*args, **kwargs):
+            commands.append(tuple(map(str, args)))
+            if args[1] == 'cat':
+                return subprocess.CompletedProcess(args, 0, 'allow-hotplug wlp4s0\niface wlp4s0 inet dhcp\n')
+        interfaces = local_path('/etc/network/interfaces')
+        interfaces.parent.mkdir(parents=True)
+        interfaces.write_text('')
+        real_read = Path.read_text
+        def read_text(path, *args, **kwargs):
+            if path == interfaces:
+                raise PermissionError(13, 'Permission denied')
+            return real_read(path, *args, **kwargs)
+        with patch.object(setup, 'Path', side_effect=local_path), patch.object(setup, 'run', side_effect=command), \
+                patch.object(Path, 'read_text', read_text), patch('sys.stdout', new_callable=io.StringIO) as out:
+            setup.network_manager(True)
+            self.assertEqual(commands, [])
+            self.assertIn('readable only by root', out.getvalue())
+            setup.network_manager(False)
+        self.assertEqual(commands[0], ('sudo', 'cat', str(interfaces)))
+        self.assertIn('Hand wlp4s0 from ifupdown', out.getvalue())
 
     def test_dry_run_does_not_write_home_or_call_sudo(self):
         binary = self.home / 'bin'
@@ -467,6 +493,50 @@ class BootstrapTests(unittest.TestCase):
                 self.assertIn(('sudo', 'usermod', '-aG', 'video,adm,systemd-journal,libvirt,kvm' if virtualization else 'video,adm,systemd-journal', 'someone'), calls)
                 enabled = next(call for call in calls if call[:3] == ('sudo', 'systemctl', 'enable'))
                 self.assertEqual('libvirtd.service' in enabled, virtualization)
+
+    def test_home_row_mods_install_keyd_only_when_apt_offers_it(self):
+        commands = []
+        def local_path(value):
+            value = str(value)
+            return self.home / value.lstrip('/') if value.startswith(('/etc/', '/var/')) else Path(value)
+        def command(*args, **kwargs):
+            commands.append(tuple(map(str, args)))
+            if args[1] == 'install' and '-d' not in args:
+                Path(args[-1]).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(args[-2], args[-1])
+        dest = local_path('/etc/keyd/laptop.conf')
+        for policy in ('', 'keyd:\n  Installed: (none)\n  Candidate: (none)\n'):
+            with self.subTest(policy=policy), patch.object(setup, 'run', side_effect=command), \
+                    patch.object(setup.subprocess, 'run') as apt, patch('sys.stdout', new_callable=io.StringIO) as out:
+                apt.return_value.stdout = policy
+                setup.home_row_mods(False)
+            self.assertEqual(commands, [])
+            self.assertIn('home row modifiers were skipped', out.getvalue())
+        def offered(args, **kwargs):
+            if args[0] == 'apt-cache':
+                return subprocess.CompletedProcess(args, 0, 'keyd:\n  Candidate: 2.5.0-1\n')
+            return subprocess.CompletedProcess(args, 1)
+        with patch.object(setup, 'Path', side_effect=local_path), patch.object(setup, 'run', side_effect=command), \
+                patch.object(setup.subprocess, 'run', side_effect=offered):
+            setup.home_row_mods(False)
+            self.assertEqual(dest.read_bytes(), (REPO / 'system/keyd/laptop.conf').read_bytes())
+            self.assertEqual(commands[0], ('sudo', 'apt-get', 'install', '-y', 'keyd'))
+            self.assertEqual(commands[-1], ('sudo', 'systemctl', 'restart', 'keyd.service'))
+            # A rerun with the same map leaves the file alone.
+            commands.clear()
+            setup.home_row_mods(False)
+            self.assertFalse(any(c[1] == 'install' and c[2] == '-Dm644' for c in commands))
+        config = (REPO / 'system/keyd/laptop.conf').read_text()
+        for key, modifier in (('a', 'meta'), ('s', 'alt'), ('d', 'control'), ('f', 'shift'),
+                              ('j', 'shift'), ('k', 'control'), ('l', 'alt'), ('semicolon', 'meta')):
+            self.assertIn(f'{key} = lettermod({modifier}, {key}, ', config)
+        self.assertIn('[ids]\n0001:0001\n', config)
+        self.assertIn('space = lettermod(symbols, space, ', config)
+        symbols = dict(line.split(' = ') for line in config.split('[symbols]\n')[1].splitlines()
+                       if ' = ' in line)
+        self.assertEqual(len(symbols), 26)
+        self.assertEqual((symbols['d'], symbols['f'], symbols['g'], symbols['h'], symbols['j'], symbols['k']),
+                         ('leftbrace', 'S-leftbrace', 'S-9', 'S-0', 'S-rightbrace', 'rightbrace'))
 
     def test_other_username_is_rendered_and_repeat_install_is_clean(self):
         result = run(str(REPO / 'scripts/install'), '--home', str(self.home))
