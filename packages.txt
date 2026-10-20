@@ -29,7 +29,6 @@ jq
 iproute2
 kanshi
 keepassxc
-lazygit
 less
 smartmontools
 libasound2t64
@@ -50,11 +49,8 @@ playerctl
 python3
 python3-gi
 python3-jinja2
-python3-matplotlib
-python3-numpy
 python3-opensnitch-ui
 python3-qt-material
-python3-scipy
 python3-yaml
 qtwayland5
 ripgrep

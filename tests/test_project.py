@@ -10,7 +10,8 @@ class ProjectTests(unittest.TestCase):
                     if line and not line.startswith('#')}
         self.assertTrue({'jq', 'bat', 'chromium'} <= packages)
         self.assertFalse(packages & {'podman', 'docker.io', 'incus', 'lxc', 'build-essential',
-                                     'clangd', 'clang-format', 'ipython3', 'nodejs', 'npm', 'shellcheck', 'tmux'})
+                                     'clangd', 'clang-format', 'ipython3', 'lazygit', 'nodejs', 'npm', 'python3-matplotlib',
+                                     'python3-numpy', 'python3-scipy', 'shellcheck', 'tmux'})
         self.assertIn('wireguard-tools', packages)
         self.assertFalse((REPO / 'dotfiles/.config/nvim/lua/plugins/obsidian.lua').exists())
         self.assertFalse((REPO / 'dotfiles/.local/bin/vm-menu').exists())
