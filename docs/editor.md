@@ -26,9 +26,10 @@ package step; full setup uses it. Existing tools are never uninstalled.
 
 The dev containers of
 [remote-editor](https://github.com/marvelousMarsupial/remote-editor) run
-`setup-shell` and `setup-editor --dev-tools --skip-apt` from this repository
-when their base image is built, so a container has the same shell, Yazi and
-editor as the desktop. Rebuild that image after changing the editor here.
+`setup-shell` and `setup-editor --dev-tools --skip-apt --terminal` from this
+repository when their base image is built, so a container has the same shell,
+Yazi and editor as the desktop without its desktop files. Rebuild that image
+after changing the editor here.
 
 Downloads need access to GitHub and npm. The Neovim download defaults to
 v0.12.2 and verifies a pinned SHA-256 checksum before extraction; overriding

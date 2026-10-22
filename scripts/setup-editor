@@ -5,14 +5,17 @@ umask 077
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 dev_tools=false
 skip_apt=false
+install_args=()
 for argument in "$@"; do
     case "$argument" in
         --dev-tools) dev_tools=true ;;
         --skip-apt) skip_apt=true ;;
+        --terminal) install_args+=(--terminal) ;;
         --help)
-            echo 'Usage: scripts/setup-editor [--dev-tools] [--skip-apt]'
+            echo 'Usage: scripts/setup-editor [--dev-tools] [--skip-apt] [--terminal]'
             echo 'Installs Neovim, plugins, IPython, jq and bat'
             echo '--dev-tools adds compilers, IPython with NumPy, SciPy and Matplotlib, lazygit, Node, shellcheck, language servers, formatters and parsers'
+            echo '--terminal copies only the shell, Yazi, Neovim and bat files (dev containers)'
             exit 0 ;;
         *) echo "Unknown option: $argument" >&2; exit 1 ;;
     esac
@@ -61,7 +64,7 @@ Nothing installed' >&2
     mv "$download_dir/nvim" "$HOME/.local/nvim"
     ln -sfnT "$HOME/.local/nvim/bin/nvim" "$HOME/.local/bin/nvim"
 fi
-"$repo_dir/scripts/install"
+"$repo_dir/scripts/install" "${install_args[@]}"
 nvim --headless '+Lazy! install' '+lua for name, plugin in pairs(require("lazy.core.config").plugins) do if not plugin._.installed or require("lazy.core.plugin").has_errors(plugin) then vim.api.nvim_err_writeln("Plugin installation failed: " .. name); vim.cmd("cquit 1") end end' +qa
 if "$dev_tools"; then
     export LINUX_CONFIG_EDITOR_SETUP="$repo_dir/scripts/editor-tools.lua"

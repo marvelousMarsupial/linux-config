@@ -12,6 +12,7 @@ import tempfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--dry-run', action='store_true')
 parser.add_argument('--home', type=Path, default=Path.home(), help='Destination home directory')
+parser.add_argument('--terminal', action='store_true', help='Only the shell, Yazi, Neovim and bat files (dev containers)')
 args = parser.parse_args()
 # New directories and backups must remain private even with a shared umask.
 os.umask(0o077)
@@ -26,6 +27,9 @@ protected = {'.config/kanshi/config', '.config/nvim/lazy-lock.json',
 # Apply only the chosen theme (and OpenSnitch's history database) to existing app
 # configs; never replace histories, browser pairing settings or firewall
 # preferences with a template. /home/user is rendered for the destination home.
+# What a terminal-only install (a dev container) copies; the desktop files stay out.
+terminal = ('.zshrc', '.zsh_aliases', '.zsh_alias_reminder', '.bashrc', '.config/starship.toml',
+            '.config/nvim/', '.config/yazi/', '.local/bin/bat', '.local/bin/motd')
 managed_settings = {
     '.config/keepassxc/keepassxc.ini': [('GUI', 'ApplicationTheme', 'dark')],
     '.config/opensnitch/settings.conf': [('global', 'theme', 'dark_amber.xml'),
@@ -49,6 +53,8 @@ for source in sorted((repo / 'dotfiles').rglob('*')):
     if '__pycache__' in source.parts or source.suffix == '.pyc' or not source.is_file():
         continue
     rel = source.relative_to(repo / 'dotfiles')
+    if args.terminal and not str(rel).startswith(terminal):
+        continue
     dest = home / rel
     if not dest.parent.resolve().is_relative_to(home):
         raise SystemExit(f"Refusing path outside destination home: {dest}")
@@ -108,6 +114,8 @@ for rel in ('.config/systemd/user/sway-polkit-agent.service',
             '.local/bin/status-osd', '.local/bin/pass-picker', '.local/bin/transparency-trial', '.local/bin/monitor-info',
             '.config/systemd/user/whisper-server.service',
             '.config/tmux/colors.conf', '.config/theme/templates/tmux-colors.conf.j2'):
+    if args.terminal and not rel.startswith(terminal):
+        continue
     dest = home / rel
     if not dest.parent.resolve().is_relative_to(home):
         raise SystemExit(f"Refusing path outside destination home: {dest}")
@@ -124,6 +132,8 @@ for rel in ('.config/systemd/user/sway-polkit-agent.service',
         dest.unlink()
 print(f'{count} file(s) {"would change" if args.dry_run else "changed"}.')
 if not args.dry_run:
-    subprocess.run(['bash', str(repo / 'scripts/install-receipt'), str(repo), str(home)], check=True)
+    subprocess.run(['bash', str(repo / 'scripts/install-receipt'), str(repo), str(home),
+                    'terminal-install' if args.terminal else 'config-install'], check=True)
     print(f'Backups: {backup}')
-    print('Run theme apply <scheme> to render colors, then reload Sway.')
+    if not args.terminal:
+        print('Run theme apply <scheme> to render colors, then reload Sway.')

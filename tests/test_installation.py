@@ -33,6 +33,16 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse(list(self.home.rglob('*.pyc')))
         self.assertFalse(list(self.home.rglob('__pycache__')))
 
+    def test_terminal_install_skips_desktop_files(self):
+        result = self.install('--terminal')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for rel in ('.zshrc', '.config/starship.toml', '.config/nvim/init.lua', '.config/yazi/yazi.toml', '.local/bin/bat'):
+            self.assertTrue((self.home / rel).is_file(), rel)
+        for rel in ('.config/sway/config', '.config/foot/foot.ini', '.local/bin/theme', '.config/systemd'):
+            self.assertFalse((self.home / rel).exists(), rel)
+        self.assertNotIn('theme apply', result.stdout)
+        self.assertIn('terminal-install', (self.home / '.local/state/linux-config/install-info').read_text())
+
     def test_preserves_colors_monitors_and_plugin_lock(self):
         paths = ['.config/kanshi/config', '.config/sway/colors', '.config/foot/colors.ini',
                  '.config/nvim/lazy-lock.json', '.config/nvim/lua/plugins/colorscheme.lua']
