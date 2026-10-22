@@ -10,6 +10,7 @@ return {
     pyright = "pyright-langserver",
     ruff = "ruff",
     bashls = "bash-language-server",
+    rust_analyzer = "rust-analyzer", -- from rustup, not Mason
   },
   mason = {
     "typescript-language-server", "html-lsp", "json-lsp", "yaml-language-server",
@@ -18,6 +19,6 @@ return {
   },
   parsers = {
     "c", "cpp", "typescript", "tsx", "javascript", "html", "css", "json",
-    "yaml", "lua", "python", "markdown", "markdown_inline", "bash", "vim", "vimdoc", "query",
+    "yaml", "lua", "python", "markdown", "markdown_inline", "bash", "vim", "vimdoc", "query", "rust", "toml",
   },
 }

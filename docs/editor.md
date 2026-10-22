@@ -24,6 +24,13 @@ and parsers.
 The desktop package list excludes these. `--skip-apt` skips the privileged
 package step; full setup uses it. Existing tools are never uninstalled.
 
+The dev containers of
+[remote-editor](https://github.com/marvelousMarsupial/remote-editor) run
+`setup-shell` and `setup-editor --dev-tools --skip-apt --terminal` from this
+repository when their base image is built, so a container has the same shell,
+Yazi and editor as the desktop without its desktop files. Rebuild that image
+after changing the editor here.
+
 Downloads need access to GitHub and npm. The Neovim download defaults to
 v0.12.2 and verifies a pinned SHA-256 checksum before extraction; overriding
 `NVIM_VERSION` also requires a verified `NVIM_SHA256`.
@@ -39,10 +46,12 @@ stay unchanged and
 ## Languages and tools
 
 Configured languages: C/C++, TypeScript/JavaScript/TSX, HTML/CSS, JSON/JSONC,
-YAML, Lua (including the Neovim config), Python and shell. Python uses pyright
-for completion and ruff for linting, import sorting and formatting. Shell
-scripts use bash-language-server with shellcheck and format with shfmt at four
-spaces. clangd uses your project's
+YAML, Lua (including the Neovim config), Python, shell and Rust. Python uses
+pyright for completion and ruff for linting, import sorting and formatting.
+Shell scripts use bash-language-server with shellcheck and format with shfmt at
+four spaces. Rust uses rust-analyzer when rustup has installed it (it is not
+part of `--dev-tools`; the dev containers ship it) and formats through the
+server. clangd uses your project's
 `compile_commands.json`; with CMake, configure with
 `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`. For other build systems, provide a compile
 database or a `.clangd` file. TypeScript projects need their normal

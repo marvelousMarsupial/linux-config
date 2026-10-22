@@ -150,6 +150,8 @@ for testing. Copies are independent of the checkout.
 
 The installer also retires a named list of files from removed integrations,
 with the same backups. It does not uninstall packages or stop system services.
+`--terminal` copies only the shell, Yazi, Neovim and bat files, which is what
+the remote-editor dev containers use; the desktop files stay out.
 
 After installing or changing user units:
 
