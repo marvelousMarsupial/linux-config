@@ -31,6 +31,10 @@ The same setup can run without a local checkout through
 [remote bootstrap](docs/installation.md#remote-bootstrap), which downloads a
 temporary checkout and removes it when setup finishes.
 
+The [remote-editor](https://github.com/marvelousMarsupial/remote-editor) dev
+containers install the shell and editor from this repository with the same
+scripts; see [editor](docs/editor.md#setup).
+
 For config-only updates, use `./scripts/install --dry-run` and `./scripts/install`.
 The config installer backs up changed files and preserves local monitor profiles,
 plugin locks and generated colors. Run `./scripts/check --full` to verify the repo.
